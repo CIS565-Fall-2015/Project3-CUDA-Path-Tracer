@@ -60,6 +60,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 
 static Scene *hst_scene;
 static glm::vec3 *dev_image;
+static Geom *dev_geoms;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -67,6 +68,19 @@ void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+
+	//Copy geoms to dev_geoms
+	
+	int geoSize = hst_scene->geoms.size()*sizeof(Geom);
+	Geom * hst_geoms = (Geom *)malloc(geoSize);
+
+	std::copy(hst_scene->geoms.begin(),hst_scene->geoms.end(),hst_geoms);
+	/* //??? or:
+	hst_geoms = & hst_scene->geoms[0];
+	*/
+
+	cudaMalloc((void**)&dev_geoms, geoSize);
+	cudaMemcpy(dev_geoms, hst_geoms, geoSize, cudaMemcpyHostToDevice);
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
@@ -76,11 +90,105 @@ void pathtraceInit(Scene *scene) {
 }
 
 void pathtraceFree() {
+	cudaFree(dev_geoms);
     cudaFree(dev_image);
     // TODO: clean up the above static variables
 
     checkCUDAError("pathtraceFree");
 }
+
+__device__ Ray GenerateRayFromCam(Camera cam, int x, int y)
+{
+	Ray ray_xy;
+	ray_xy.origin = cam.position;
+
+	glm::vec3 C_ = cam.view;
+	glm::vec3 U_ = cam.up;
+	glm::vec3 A_ = glm::cross(C_, U_);
+	glm::vec3 B_ = glm::cross(A_, C_);
+	glm::vec3 M_ = cam.position + C_;
+
+	float tanPhi = tan(cam.fov.x*PI / 360);
+	float tanTheta = tanPhi*(float)cam.resolution.x / (float)cam.resolution.y;
+	glm::vec3 V_ = glm::normalize(B_)*glm::length(C_)*tanPhi;
+	glm::vec3 H_ = glm::normalize(A_)*glm::length(C_)*tanTheta;
+
+	float Sx = ((float)x + 0.5) / (cam.resolution.x - 1);
+	float Sy = ((float)y + 0.5) / (cam.resolution.y - 1);
+	glm::vec3 Pw = M_ + (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
+	glm::vec3 Dir_ = Pw - cam.position;
+
+	ray_xy.direction = glm::normalize(Dir_);
+
+	//??? something goes wrong with camera control left/right
+
+	return ray_xy;
+}
+
+/**
+* Test
+* 1. Camera Generate Rays
+*/
+__global__ void Test(Camera cam, Geom * dev_geo, int geoNum, int iter, glm::vec3 *image) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+
+		thrust::default_random_engine rng = random_engine(iter, index, 0);
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		Ray crntRay = GenerateRayFromCam(cam, x, y);
+		/*
+		//Ray Cast Direction test
+		glm::vec3 DirColor = crntRay.direction;
+		DirColor.x = DirColor.x < 0 ? (-DirColor.x) : DirColor.x;
+		DirColor.y = DirColor.y < 0 ? (-DirColor.y) : DirColor.y;
+		DirColor.z = DirColor.z < 0 ? (-DirColor.z) : DirColor.z;
+		*/	
+		glm::vec3 pixelColor(0, 0, 0);
+
+		glm::vec3 intrPoint;
+		glm::vec3 intrNormal;	
+		float intrT = -1 ;
+
+		// Intersection with objects/geoms
+		//??? slow...
+		for (int i = 0; i<geoNum; i++)
+		{
+			glm::vec3 temp_intrPoint;
+			glm::vec3 temp_intrNormal;	
+			float temp_T;
+			glm::vec3 temp_color;
+				
+			switch (dev_geo[i].type)
+			{
+			case SPHERE:
+				temp_T = sphereIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
+				temp_color = glm::vec3(1,0,0);
+				break;
+			case CUBE:
+				temp_T = boxIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
+				temp_color = glm::vec3(0, 1, 0);
+				break;
+			default:
+				break;
+			}
+			if (temp_T < 0) continue;
+			if (intrT < 0 || temp_T < intrT)
+			{ 
+				intrT = temp_T; 
+				intrPoint = temp_intrPoint;
+				intrNormal = temp_intrNormal;
+				pixelColor = temp_intrNormal;
+			}
+		}
+		
+		if (intrT>0)
+			image[index] += pixelColor;
+	}
+}
+
 
 /**
  * Example function to generate static and test the CUDA-GL interop.
@@ -139,8 +247,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   (Easy way is to make them black or background-colored.)
 
     // TODO: perform one iteration of path tracing
-
-    generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	int geoNum = hst_scene->geoms.size();
+	Test <<<blocksPerGrid, blockSize >>>(cam, dev_geoms, geoNum, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
