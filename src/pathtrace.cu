@@ -58,8 +58,8 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
     }
 }
 
-static Scene *hst_scene;
-static glm::vec3 *dev_image;
+static Scene *hst_scene = NULL;
+static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -76,7 +76,7 @@ void pathtraceInit(Scene *scene) {
 }
 
 void pathtraceFree() {
-    cudaFree(dev_image);
+    cudaFree(dev_image); // no-op if dev_image is null
     // TODO: clean up the above static variables
 
     checkCUDAError("pathtraceFree");
@@ -86,7 +86,7 @@ void pathtraceFree() {
  * Example function to generate static and test the CUDA-GL interop.
  * Delete this once you're done looking at it!
  */
-__global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
+__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -107,6 +107,8 @@ __global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
+__global__ 
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -122,25 +124,36 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
 
-    ///////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////
 
-    // Recap:
-    // * Initialize array of path rays (using rays that come out of the camera)
-    //   * You can pass the Camera object to that kernel.
-    // * For each depth:
-    //   * Compute one ray along each path - many will terminate.
-    //     You'll have to decide how to represent your path rays and how
-    //     you'll mark terminated rays.
-    //   * Add all of the terminated rays' results into the appropriate pixels.
-    //   * Stream compact away all of the terminated paths.
-    //     You may use your implementation or `thrust::remove_if` or its
-    //     cousins.
-    // * Finally, handle all of the paths that still haven't terminated.
-    //   (Easy way is to make them black or background-colored.)
+	// Recap:
+	// * Initialize array of path rays (using rays that come out of the camera)
+	//   * You can pass the Camera object to that kernel.
+	//   * Each path ray is a (ray, color) pair, where color starts as the
+	//     multiplicative identity, white = (1, 1, 1).
+	//   * For debugging, you can output your ray directions as colors.
+	// * For each depth:
+	//   * Compute one new (ray, color) pair along each path - note
+	//     that many rays will terminate by hitting a light or nothing at all.
+	//     You'll have to decide how to represent your path rays and how
+	//     you'll mark terminated rays.
+	//     * Color is attenuated (multiplied) by reflections off of any object
+	//       surface.
+	//     * You can debug your ray-scene intersections by displaying various
+	//       values as colors, e.g., the first surface normal, the first bounced
+	//       ray direction, the first unlit material color, etc.
+	//   * Add all of the terminated rays' results into the appropriate pixels.
+	//   * Stream compact away all of the terminated paths.
+	//     You may use either your implementation or `thrust::remove_if` or its
+	//     cousins.
+	// * Finally, handle all of the paths that still haven't terminated.
+	//   (Easy way is to make them black or background-colored.)
 
-    // TODO: perform one iteration of path tracing
+	// TODO: perform one iteration of path tracing
+	
 
-    generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	// TODO: Remove this
+	generateNoiseDeleteMe << <blocksPerGrid, blockSize >> >(cam, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 

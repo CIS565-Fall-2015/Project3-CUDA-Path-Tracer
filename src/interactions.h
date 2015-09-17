@@ -65,4 +65,5 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+	// why would i modify color here? are I not just scattering the ray?
 }
