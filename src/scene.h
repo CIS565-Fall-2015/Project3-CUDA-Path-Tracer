@@ -4,6 +4,9 @@
 #include <sstream>
 #include <fstream>
 #include <iostream>
+
+#include <thrust/host_vector.h>
+
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
@@ -22,5 +25,7 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
+	//thrust::host_vector<Geom> geoms;
+	//thrust::host_vector<Material> materials;
     RenderState state;
 };

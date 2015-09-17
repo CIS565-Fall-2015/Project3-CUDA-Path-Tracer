@@ -5,14 +5,23 @@
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
 
+
+#define BACKGROUND_COLOR (glm::vec3(0.0f))
+
+
 enum GeomType {
     SPHERE,
     CUBE,
+	//TRIANGLE
 };
 
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
+
+	//MY
+	int image_index;
+	bool terminated;
 };
 
 struct Geom {
@@ -44,6 +53,9 @@ struct Camera {
     glm::vec3 view;
     glm::vec3 up;
     glm::vec2 fov;
+
+	glm::vec3 right;	// same in x direction of the screen
+	
 };
 
 struct RenderState {
