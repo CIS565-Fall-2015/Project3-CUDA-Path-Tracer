@@ -92,6 +92,7 @@ void pathtraceFree() {
     checkCUDAError("pathtraceFree");
 }
 
+<<<<<<< HEAD
 __global__ void generateCameraRays(Camera cam, Ray *rays) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -143,6 +144,13 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom
 
 __global__ void findIntersections(int geomCount, Camera cam, Ray *rays,
         glm::vec3 *image, Geom *geoms) {
+=======
+/**
+ * Example function to generate static and test the CUDA-GL interop.
+ * Delete this once you're done looking at it!
+ */
+__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
+>>>>>>> 796cae6... generateStatic -> generateNoise
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
