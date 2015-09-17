@@ -62,6 +62,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Ray *dev_rays = NULL;
+static Geom *dev_geom = NULL;
 
 /* Initialize static variables. */
 void pathtraceInit(Scene *scene) {
@@ -75,6 +76,9 @@ void pathtraceInit(Scene *scene) {
     cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
     cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
 
+    cudaMalloc(&dev_geom, pixelcount * sizeof(Ray));
+    cudaMemcpy(dev_geom, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -83,6 +87,7 @@ void pathtraceFree() {
     // no-ops if pointers are null
     cudaFree(dev_image);
     cudaFree(dev_rays);
+    cudaFree(dev_geom);
 
     checkCUDAError("pathtraceFree");
 }
@@ -95,7 +100,7 @@ __global__ void generateCameraRays(Camera cam, Ray *rays) {
         int index = x + (y * cam.resolution.x);
 
         float screen_x = ((float) x * 2.f / (float)cam.resolution.x) - 1.f;
-        float screen_y = ((float) y * 2.f / (float)cam.resolution.y) - 1.f;
+        float screen_y = -1 * (((float) y * 2.f / (float)cam.resolution.y) - 1.f);
 
         glm::vec3 cam_right = glm::cross(cam.view, cam.up);
         glm::vec3 cam_up = glm::cross(cam_right, cam.view);
@@ -111,6 +116,51 @@ __global__ void generateCameraRays(Camera cam, Ray *rays) {
     }
 }
 
+__device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom& nearest) {
+    float nearest_t = -1;
+    for (int i = 0; i < geomCount; i++) {
+        Geom g = geoms[i];
+        glm::vec3 intersection = glm::vec3(0, 0, 0);
+        glm::vec3 normal = glm::vec3(0, 0, 0);
+        float t = -1;
+
+        switch (g.type) {
+        case SPHERE:
+            t = sphereIntersectionTest(g, r, intersection, normal);
+            break;
+        case CUBE:
+            t = boxIntersectionTest(g, r, intersection, normal);
+            break;
+        }
+
+        if (t > 0 && (t < nearest_t || nearest_t == -1)) {
+            nearest = g;
+            nearest_t = t;
+        }
+    }
+    return nearest_t;
+}
+
+__global__ void findIntersections(int geomCount, Camera cam, Ray *rays,
+        glm::vec3 *image, Geom *geoms) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+        Ray r = rays[index];
+
+        Geom nearest;
+        float t = nearestIntersectionGeom(r, geoms, geomCount, nearest);
+
+        if (t > 0) {
+            image[index] += glm::vec3(1, 1, 1);
+        } else {
+            image[index] += glm::vec3(0, 0, 0);
+        }
+    }
+}
+
 __global__ void generateDebugCamera(Camera cam, Ray *rays, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -119,31 +169,6 @@ __global__ void generateDebugCamera(Camera cam, Ray *rays, glm::vec3 *image) {
         int index = x + (y * cam.resolution.x);
 
         image[index] += rays[index].direction;
-    }
-}
-
-/**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
- */
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
     }
 }
 
@@ -189,8 +214,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays);
     checkCUDAError("rays");
-    generateDebugCamera<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
-    checkCUDAError("debug");
+
+    //generateDebugCamera<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
+
+    findIntersections<<<blocksPerGrid, blockSize>>>(
+            hst_scene->geoms.size(), cam, dev_rays, dev_image, dev_geom);
 
     ///////////////////////////////////////////////////////////////////////////
 
