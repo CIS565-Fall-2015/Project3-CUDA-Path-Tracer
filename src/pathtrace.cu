@@ -58,11 +58,12 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
     }
 }
 
+/* Static variables for device memory, scene/camera info, etc */
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
-// TODO: static variables for device memory, scene/camera info, etc
-// ...
+static Ray *dev_rays = NULL;
 
+/* Initialize static variables. */
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
@@ -70,16 +71,55 @@ void pathtraceInit(Scene *scene) {
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
-    // TODO: initialize the above static variables added above
+
+    cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
+    cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
 
     checkCUDAError("pathtraceInit");
 }
 
+/* Clean up static variables. */
 void pathtraceFree() {
-    cudaFree(dev_image);  // no-op if dev_image is null
-    // TODO: clean up the above static variables
+    // no-ops if pointers are null
+    cudaFree(dev_image);
+    cudaFree(dev_rays);
 
     checkCUDAError("pathtraceFree");
+}
+
+__global__ void generateCameraRays(Camera cam, Ray *rays) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+
+        float screen_x = ((float) x * 2.f / (float)cam.resolution.x) - 1.f;
+        float screen_y = ((float) y * 2.f / (float)cam.resolution.y) - 1.f;
+
+        glm::vec3 cam_right = glm::cross(cam.view, cam.up);
+        glm::vec3 cam_up = glm::cross(cam_right, cam.view);
+
+        glm::vec3 img_point = (cam.position + cam.view)
+            + (cam_right * screen_x) + (cam_up * screen_y);
+        glm::vec3 ray_dir = glm::normalize(img_point - cam.position);
+
+        Ray r;
+        r.origin = cam.position;
+        r.direction = ray_dir;
+        rays[index] = r;
+    }
+}
+
+__global__ void generateDebugCamera(Camera cam, Ray *rays, glm::vec3 *image) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+
+        image[index] += rays[index].direction;
+    }
 }
 
 /**
@@ -147,9 +187,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    // TODO: perform one iteration of path tracing
-
-    generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+    generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays);
+    checkCUDAError("rays");
+    generateDebugCamera<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
+    checkCUDAError("debug");
 
     ///////////////////////////////////////////////////////////////////////////
 
