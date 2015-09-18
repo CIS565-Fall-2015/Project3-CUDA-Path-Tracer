@@ -20,6 +20,7 @@ public:
     Scene(string filename);
     ~Scene();
 
+	int lightIdx = 0;//??? multilight
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     RenderState state;

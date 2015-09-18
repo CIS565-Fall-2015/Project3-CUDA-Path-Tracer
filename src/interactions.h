@@ -54,14 +54,59 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  * You may need to change the parameter list for your purposes!
  */
 __host__ __device__
-void scatterRay(
+glm::vec3 scatterRay(
         Ray &ray,
-        glm::vec3 &color,
+        float intrT,
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
-        thrust::default_random_engine &rng) {
+        thrust::default_random_engine &rrr) {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
+		if (m.emittance>0)
+		{
+			ray.carry *= m.emittance*m.color;//???? is this right....?
+			ray.terminated = true;
+		}
+		// Shading 
+		else if (m.hasReflective || m.hasRefractive)
+		{
+			//!!! later : reflective or refractive
+			if (m.hasReflective)
+			{
+				ray.origin = getPointOnRay(ray, intrT);
+				ray.direction = glm::reflect(ray.direction, normal);
+				ray.carry *= m.specular.color;
+			}
+			if (m.hasRefractive)
+			{
+				//rays[index].origin = getPointOnRay(rays[index], intrT);
+				//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
+				//rays[index].carry *= intrMat.specular.color;
+			}
+			//later fresnel
+
+		}
+		else // diffuse / specular
+		{
+			//!!! later : specular
+			//http://www.tomdalling.com/blog/modern-opengl/07-more-lighting-ambient-specular-attenuation-gamma/
+		
+			glm::vec3 newDir = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
+			float specCoeff = 0;
+			if (m.specular.exponent > 0)
+			{
+				glm::vec3 refl = glm::reflect(-newDir, normal);
+				float cosAngle = max(0.0f, glm::dot(-ray.direction, refl));
+				specCoeff = pow(cosAngle, m.specular.exponent);
+				//specComp = specCoeff*intrMat.specular.color;
+			}
+			ray.origin = getPointOnRay(ray, intrT);
+			ray.carry *= (m.color*(1 - specCoeff) + m.specular.color*specCoeff);
+			ray.direction = newDir;
+		}
+		return ray.carry;
+
 }

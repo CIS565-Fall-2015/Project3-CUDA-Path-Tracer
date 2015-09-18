@@ -64,6 +64,7 @@ static Geom *dev_geoms;
 static Material *dev_mats;
 bool doStreamCompact = false;
 Ray * dev_rays;
+int ligntObjIdx = 0;
 
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
@@ -73,6 +74,7 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	doStreamCompact = strCmpt;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+	ligntObjIdx = scene->lightIdx;
 
 	//(1) Initialize array of path rays
 	int raySize = pixelcount*sizeof(Ray);
@@ -171,16 +173,35 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 
 		//??? antialising
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		thrust::default_random_engine rng_x = random_engine(iter, index, 1);
-		thrust::default_random_engine rng_y = random_engine(iter, index, 2);
+		thrust::default_random_engine rng = random_engine(iter, index, 1);
+		//thrust::default_random_engine rng_y = random_engine(iter, index, 2);
 
-		float Sx = ((float)x + u01(rng_x) - 0.5) / (cam.resolution.x - 1);
-		float Sy = ((float)y + u01(rng_y) - 0.5) / (cam.resolution.y - 1);
+		float Sx = ((float)x + u01(rng) - 0.5) / (cam.resolution.x - 1);
+		float Sy = ((float)y + u01(rng) - 0.5) / (cam.resolution.y - 1);
 		glm::vec3 Pw = M_ - (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
 		glm::vec3 Dir_ = Pw - cam.position;
 
 		rays[index].direction = glm::normalize(Dir_);
 	}
+}
+
+__device__ float rayIntersection(Geom geometry, Ray r,glm::vec3& intersectionPoint, glm::vec3& normal, int &materIdx)
+{
+	float temp_T = -1;
+	switch (geometry.type)
+	{
+	case SPHERE:
+		temp_T = sphereIntersectionTest(geometry, r, intersectionPoint, normal);
+		materIdx = geometry.materialid;
+		break;
+	case CUBE:
+		temp_T = boxIntersectionTest(geometry, r, intersectionPoint, normal);
+		materIdx = geometry.materialid;// glm::vec3(0, 1, 0);
+		break;
+	default:
+		break;
+	}
+	return temp_T;
 }
 
 __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter,int depth)
@@ -199,84 +220,28 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
-		//glm::vec3 pixelColor(0, 0, 0);
 		Material intrMat;
 		for (int i = 0; i<geoNum; i++)
 		{
 			glm::vec3 temp_intrPoint;
 			glm::vec3 temp_intrNormal;
 			float temp_T;
-			Material temp_Mat;
-			
-			switch (dev_geo[i].type)
-			{
-			case SPHERE:
-				temp_T = sphereIntersectionTest(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal);
-				temp_Mat = dev_mat[dev_geo[i].materialid];
-				break;
-			case CUBE:
-				temp_T = boxIntersectionTest(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal);
-				temp_Mat = dev_mat[dev_geo[i].materialid];// glm::vec3(0, 1, 0);
-				break;
-			default:
-				break;
-			}
+			int temp_MatIdx;
+			temp_T = rayIntersection(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal, temp_MatIdx);
+
 			if (temp_T < 0) continue;
 			if (intrT < 0 || temp_T < intrT && temp_T >0)
 			{
 				intrT = temp_T;
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
-				intrMat = temp_Mat;
+				intrMat = dev_mat[temp_MatIdx];;
 			}
 		}
 		if (intrT > 0)//intersect with obj, update ray
 		{
-			if (intrMat.emittance>0)
-			{
-				rays[index].carry *= intrMat.emittance*intrMat.color;//???? is this right....?
-				rays[index].terminated = true;
-			}
-			// Shading 
-			else if (intrMat.hasReflective||intrMat.hasRefractive)
-			{
-				//!!! later : reflective or refractive
-				if (intrMat.hasReflective)
-				{
-					rays[index].origin = getPointOnRay(rays[index], intrT);
-					rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
-					rays[index].carry *= intrMat.specular.color;
-				}
-				if (intrMat.hasRefractive)
-				{
-					//rays[index].origin = getPointOnRay(rays[index], intrT);
-					//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
-					//rays[index].carry *= intrMat.specular.color;
-				}
-				//later fresnel
-
-			}
-			else // diffuse / specular
-			{
-				//!!! later : specular
-				//http://www.tomdalling.com/blog/modern-opengl/07-more-lighting-ambient-specular-attenuation-gamma/
-				thrust::uniform_real_distribution<float> u01(0, 1);
-				thrust::default_random_engine rr = random_engine(iter, index, depth);
-				glm::vec3 newDir = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
-				float specCoeff = 0;
-				if (intrMat.specular.exponent > 0)
-				{
-					glm::vec3 refl = glm::reflect(-newDir, intrNormal);
-					float cosAngle = max(0.0f, glm::dot(-rays[index].direction, refl));
-					specCoeff = pow(cosAngle, intrMat.specular.exponent);
-					//specComp = specCoeff*intrMat.specular.color;
-				}
-				rays[index].origin = getPointOnRay(rays[index], intrT);
-				rays[index].carry *= (intrMat.color*(1 - specCoeff) + intrMat.specular.color*specCoeff);
-				rays[index].direction = newDir;
-
-			}
-			
+			thrust::default_random_engine rr = random_engine(iter, index, depth);
+			scatterRay(rays[index], intrT, intrPoint, intrNormal, intrMat, rr);
 		}
 		else
 		{
@@ -286,7 +251,6 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 
 	}
 }
-
 
 __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *image)
 {
@@ -304,19 +268,62 @@ __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *i
 
 }
 
-__global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *image)
+__global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int geoNum, int lightIndex)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	//int index = x + (y * cam.resolution.x);
 	if (index<raysNum)
 	{	
-		if (rays[index].terminated)
+		//Direct lighting
+		//(1) random point on light
+		//(2) surface point (ray.origin) to light_point, anything in between?
+		//(3) if nothing in between, cos ray, 
+		//dev_geo[ligntObjIdx]
+		glm::vec4 pointOnLight(0,0,0,0);
+		thrust::default_random_engine rng = random_engine(blockIdx.x + threadIdx.x, index, 1);
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		pointOnLight.x = u01(rng);
+		pointOnLight.y = u01(rng);
+		pointOnLight.z = u01(rng);
+		pointOnLight = dev_geo[lightIndex].transform*pointOnLight;
+
+		glm::vec3 intrPoint;
+		glm::vec3 intrNormal;
+		float intrT = -1;
+		int intrMatIdx;
+
+		Ray surToLight;
+		surToLight.origin = rays[index].origin;
+		surToLight.direction = glm::normalize((glm::vec3)pointOnLight - rays[index].origin);
+		//!!! later : Function this forloop into rayIntersection.
+		for (int i = 0; i<geoNum; i++)
+		{
+			glm::vec3 temp_intrPoint;
+			glm::vec3 temp_intrNormal;
+			float temp_T;
+			int temp_MatIdx;
+			temp_T = rayIntersection(dev_geo[i], surToLight, temp_intrPoint, temp_intrNormal, temp_MatIdx);
+
+			if (temp_T < 0) continue;
+			if (intrT < 0 || temp_T < intrT && temp_T >0)
+			{
+				intrT = temp_T;
+				intrPoint = temp_intrPoint;
+				intrNormal = temp_intrNormal;
+				intrMatIdx = temp_MatIdx;
+			}
+		}
+
+		if (intrMatIdx == lightIndex)//Direct light???
+		{
+			image[rays[index].imageIndex] += scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rng);
+		}
+		else
 		{
 			image[rays[index].imageIndex] += glm::vec3(0, 0, 0); // !!! later background
 		}
 	}
-
 }
 
 /**
@@ -488,7 +495,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//(3) Handle all not terminated
 	int bSize = blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(totalRays,cam, dev_rays, dev_image);//??? block size
+	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);//??? block size
 	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////

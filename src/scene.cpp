@@ -176,6 +176,10 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.emittance = atof(tokens[1].c_str());
             }
         }
+		if (newMaterial.emittance>0)
+		{
+			lightIdx = materials.size();
+		}
         materials.push_back(newMaterial);
         return 1;
     }
