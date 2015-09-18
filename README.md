@@ -30,6 +30,11 @@ base code is meant to serve as a strong starting point for a CUDA path tracer,
 you are not required to use it if you don't want to. You may also change any
 part of the base code as you please. **This is YOUR project.**
 
+**Recommendation:** Every image you save should automatically get a different
+filename. Don't delete all of them! For the benefit of your README, keep a
+bunch of them around so you can pick a few to document your progress at the
+end.
+
 ### Contents
 
 * `src/` C++/CUDA source files.
@@ -101,6 +106,7 @@ the grader's discretion (based on difficulty and coolness).
   online or export them from your favorite 3D modeling application.
   With approval, you may use a third-party OBJ loading code to bring the data
   into C++.
+  * You can use the triangle intersection function `glm::intersectRayTriangle`.
 
 This 'extra features' list is not comprehensive. If you have a particular idea
 you would like to implement (e.g. acceleration structures, etc.), please
@@ -181,9 +187,6 @@ Materials are defined in the following fashion:
 * REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
 * REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
 * REFRIOR (float ior) //index of refraction for Fresnel effects
-* SCATTER (float scatter) //scatter flag, 0 for no, 1 for yes
-* ABSCOEFF (float r) (float b) (float g) //absorption coefficient for scattering
-* RSCTCOEFF (float rsctcoeff) //reduced scattering coefficient
 * EMITTANCE (float emittance) //the emittance of the material. Anything >0
   makes the material a light source.
 
@@ -197,7 +200,6 @@ Cameras are defined in the following fashion:
   other distributed raytracing applications
 * DEPTH (int depth) //maximum depth (number of times the path will bounce)
 * FILE (string filename) //file to output render to upon completion
-* frame (frame number) //start of a frame
 * EYE (float x) (float y) (float z) //camera's position in worldspace
 * VIEW (float x) (float y) (float z) //camera's view direction
 * UP (float x) (float y) (float z) //camera's up vector
@@ -209,7 +211,6 @@ Objects are defined in the following fashion:
   "mesh". Note that cubes and spheres are unit sized and centered at the
   origin.
 * material (material ID) //material to assign this object
-* frame (frame number) //start of a frame
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
