@@ -19,6 +19,17 @@ int height;
 //-------------------------------
 
 int main(int argc, char** argv) {
+
+	//std::cout<<sizeof(char)<<std::endl;
+	//std::cout<<sizeof(int)<<std::endl;
+	//std::cout<<sizeof(glm::vec3)<<std::endl;
+	//std::cout<<sizeof(Ray)<<std::endl;
+	//std::cout<<sizeof(Path)<<std::endl;
+	//std::cout<<sizeof(Geom)<<std::endl;
+	//std::cout<<sizeof(Material)<<std::endl;
+
+
+
     startTimeString = currentTimeString();
 
     if (argc < 2) {

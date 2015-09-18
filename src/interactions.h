@@ -59,10 +59,72 @@ void scatterRay(
         glm::vec3 &color,
         glm::vec3 intersect,
         glm::vec3 normal,
-        glm::vec3 emittedColor,
+        //glm::vec3 emittedColor,
         const Material &m,
-        thrust::default_random_engine &rng) {
+        thrust::default_random_engine &rng) 
+{
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+	
+	
+
+	
+
+	
+	int num_ray_type = 0;
+	int scatter_type_array[3];
+
+	//diffuse
+	scatter_type_array[num_ray_type] = 0;
+	num_ray_type++;
+
+	if(m.hasReflective)
+	{
+		scatter_type_array[num_ray_type] = 1;
+		num_ray_type++;
+	}
+
+	if(m.hasRefractive)
+	{
+		scatter_type_array[num_ray_type] = 2;
+		num_ray_type++;
+	}
+
+	//TODO: other ray type (sub scatter...)
+
+
+	int scatter_ray_type = 0;
+	//random choose;
+	if(num_ray_type > 1)
+	{
+		thrust::uniform_int_distribution<int> uirand(0, num_ray_type-1);
+		scatter_ray_type = scatter_type_array[uirand(rng)];
+	}
+	
+	
+
+
+	if(scatter_ray_type == 0)
+	{
+		//diffuse
+		//color *= m.color * max (glm::dot( -ray.direction, normal) , 0.0f);
+		ray.direction = calculateRandomDirectionInHemisphere(normal,rng);
+		color *= m.color * glm::dot( ray.direction, normal) * (float)num_ray_type;
+		ray.origin = intersect + normal * EPSILON;
+
+	}
+	else if(scatter_ray_type == 1)
+	{
+		//reflective
+		color *= m.specular.color * (float)num_ray_type;
+		ray.direction = ray.direction + 2 * glm::dot( -ray.direction, normal) * normal;
+		ray.origin = intersect + normal * EPSILON;
+	}
+	//else if(scatter_ray_type == 2)
+	//{
+	//	//refractive
+	//}
+	
+	
 }

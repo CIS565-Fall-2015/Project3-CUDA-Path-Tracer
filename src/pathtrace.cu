@@ -66,13 +66,15 @@ static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
-static Ray * dev_ray0;
-static Ray * dev_ray1;
+static Path * dev_path;
+
+//static Ray * dev_ray0;
+//static Ray * dev_ray1;
 
 //static thrust::device_vector<Ray> * dev_ray0;
 
-static Ray * dev_ray_cur;
-static Ray * dev_ray_next;
+//static Ray * dev_ray_cur;
+//static Ray * dev_ray_next;
 
 //static thrust::device_vector<Geom> dev_geom;			//global memory
 //static thrust::device_vector<Material> dev_material;	//global
@@ -89,17 +91,18 @@ void pathtraceInit(Scene *scene) {
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
 
-	dev_ray_cur = dev_ray0;
-	dev_ray_next = dev_ray1;
+	
 
-	cudaMalloc(&dev_ray_cur, pixelcount * sizeof(Ray));
+	cudaMalloc(&dev_path, pixelcount * sizeof(Path));
 
-	//dev_geom = scene->geoms;
-	//dev_material = scene->materials;
+	
 
 	cudaMalloc(&dev_geom, scene->geoms.size() * sizeof (Geom));
-
 	cudaMemcpy(dev_geom, scene->geoms.data() , scene->geoms.size() * sizeof (Geom), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_material,scene->geoms.size() * sizeof(Material));
+	cudaMemcpy(dev_material,scene->materials.data() , scene->materials.size() * sizeof (Material), cudaMemcpyHostToDevice);
+
 	//Geom * d = dev_geom;
 	//for (std::vector<Geom>::iterator it = scene->geoms.begin() ; it != scene->geoms.end(); ++it) {
 	//	int *src = &((*it)[0]);
@@ -118,10 +121,10 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
-	cudaFree(dev_ray0);
-	cudaFree(dev_ray1);
+	cudaFree(dev_path);
 
 	cudaFree(dev_geom);
+	cudaFree(dev_material);
 
     checkCUDAError("pathtraceFree");
 }
@@ -154,19 +157,20 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 
 
 
-__host__ __device__ void getCemeraRayAtPixel(Ray & ray,const Camera &c, int x, int y,int iter,int index)
+__host__ __device__ void getCemeraRayAtPixel(Path & path,const Camera &c, int x, int y,int iter,int index)
 {
 	thrust::default_random_engine rng = random_engine(iter, index, 0);
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
-	ray.origin = c.position;
-	ray.direction = glm::normalize(  c.view 
+	path.ray.origin = c.position;
+	path.ray.direction = glm::normalize(  c.view 
 		+ c.right * c.pixelLength.x * ( (float)x - (float)c.resolution.x * 0.5f + u01(rng) )  		//u01(rng) is for jiitering for antialiasing
 		- c.up * c.pixelLength.y * ( (float)y - (float)c.resolution.y * 0.5f + u01(rng) ) 			//u01(rng) is for jiitering for antialiasing
 		);
 
-	ray.image_index = index;
-
+	path.image_index = index;
+	path.color = glm::vec3(1.0f);
+	path.terminated = false;
 	//TODO: lens effect
 }
 
@@ -179,15 +183,15 @@ __host__ __device__ void getCemeraRayAtPixel(Ray & ray,const Camera &c, int x, i
  * motion blur - jitter scene position
  * lens effect - jitter camera position
  */
-__global__ void generateRayFromCamera(Camera cam, int iter, Ray* rays)
+__global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
-		Ray & ray = rays[index];
-		getCemeraRayAtPixel(ray,cam,x,y,iter,index);
+		Path & path = paths[index];
+		getCemeraRayAtPixel(path,cam,x,y,iter,index);
 
 		//TODO: k-d tree accleration goes here?
 
@@ -197,64 +201,93 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Ray* rays)
 
 
 
-__global__ void pathTraceOneBounce(int depth,int num_rays,glm::vec3 * image
-										,Ray * rays
+__global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 * image
+										,Path * paths
 										,Geom * geoms, int geoms_size,Material * materials, int materials_size
 										//,const thrust::device_vector<Geom> & geoms , const thrust::device_vector<Material> & materials
 										)
 {
 	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
-	int ray_index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
+	int path_index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
 	
-	if(ray_index < num_rays)
+	if(path_index < num_paths)
 	{
-		Ray & ray = rays[ray_index];
+		Path & path = paths[path_index];
 		//calculate intersection
 		float t;
 		glm::vec3 intersect_point;
 		glm::vec3 normal;
 		//naive parse through global geoms
 		//for ( thrust::device_vector<Geom>::iterator it = geoms.begin(); it != geoms.end(); ++it)
+		float t_min = FLT_MAX;
+		int hit_geom_index = -1;
 		for(int i = 0; i < geoms_size; i++)
 		{
 			//Geom & geom = static_cast<Geom>(*it);
+			glm::vec3 tmp_intersect;
+			glm::vec3 tmp_normal;
 			Geom & geom = geoms[i];
 			if( geom.type == CUBE)
 			{
-				t = boxIntersectionTest(geom,ray,intersect_point,normal);
+				t = boxIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
 			}
 			else if( geom.type == SPHERE)
 			{
-				t = sphereIntersectionTest(geom,ray,intersect_point,normal);
+				t = sphereIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
 			}
 			else
 			{
 				//TODO: triangle
 				printf("ERROR: geom type error at %d\n",i);
 			}
+
+			if(t > 0 && t_min > t)
+			{
+				t_min = t;
+				hit_geom_index = i;
+				intersect_point = tmp_intersect;
+				normal = tmp_normal;
+			}
 		}
 
 
-		if(t < -0.9f)
+		if(hit_geom_index == -1)
 		{
-			ray.terminated = false;
-			image[ray.image_index] += BACKGROUND_COLOR;
-			//image[ray.image_index] += glm::vec3(1.0f);
+			path.terminated = true;
+			image[path.image_index] += BACKGROUND_COLOR;
 		}
 		else
 		{
-			//TODO: BSDF
+			//hit something
+			Geom & geom = geoms[hit_geom_index];
+			Material & material = materials[geom.materialid];
 
-			//TODO:scatter ray
+			if(material.emittance > EPSILON)
+			{
+				//light source
+				path.terminated = true;
+				image[path.image_index] += path.color * material.color * material.emittance;
+			}
+			else
+			{
+				path.terminated = false;
+				thrust::default_random_engine rng = random_engine(iter, path.image_index, depth);
+				scatterRay(path.ray,path.color,intersect_point,normal,material,rng);
+			}
 
-			//test: paint it white
-			image[ray.image_index] += glm::vec3(1.0f);
 		}
 	}
 }
 
 
-
+struct is_path_terminated
+{
+  __host__ __device__
+  bool operator()(const Path path)
+  {
+	  return path.terminated;
+  }
+};
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -280,10 +313,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //     multiplicative identity, white = (1, 1, 1).
     //   * For debugging, you can output your ray directions as colors.
     // * For each depth:
-    //   * Compute one new (ray, color) pair along each path - note
-    //     that many rays will terminate by hitting a light or nothing at all.
-    //     You'll have to decide how to represent your path rays and how
-    //     you'll mark terminated rays.
+	//   * Compute one new (ray, color) pair along each path (using scatterRay).
+	//     Note that many rays will terminate by hitting a light or hitting
+	//     nothing at all. You'll have to decide how to represent your path rays
+	//     and how you'll mark terminated rays.
     //     * Color is attenuated (multiplied) by reflections off of any object
     //       surface.
     //     * You can debug your ray-scene intersections by displaying various
@@ -303,16 +336,32 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	int depth = 0;
 
-	generateRayFromCamera<<<blocksPerGrid,blockSize>>>(cam,iter,dev_ray_cur);
+	generateRayFromCamera<<<blocksPerGrid,blockSize>>>(cam,iter,dev_path);
 	checkCUDAError("generate camera ray");
 
-	//test
 	
-	pathTraceOneBounce<<<blocksPerGrid,blockSize>>>(depth,pixelcount,dev_image, dev_ray_cur
-		, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size());
-	checkCUDAError("trace first bounce");
-	depth ++;
+	Path* dev_path_end = dev_path + pixelcount;
+	//loop
+	while (dev_path_end != dev_path && depth < traceDepth)
+	{
+		pathTraceOneBounce<<<blocksPerGrid,blockSize>>>(iter,depth, dev_path_end - dev_path  ,dev_image, dev_path
+			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size());
+		checkCUDAError("trace one bounce");
+		cudaDeviceSynchronize();
+		depth ++;
 
+		//stream compaction
+		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		//try
+		//{
+		//	dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		//}
+		//catch(thrust::system_error e)
+		//{
+		//	std::cerr<<e.what()<<std::endl;
+		//}
+		//dev_path_end = dev_path;
+	}
 
     ///////////////////////////////////////////////////////////////////////////
 

@@ -7,7 +7,7 @@
 
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
-
+//#define MAX_RAY_TRACE_DEPTH (5)
 
 enum GeomType {
     SPHERE,
@@ -18,10 +18,6 @@ enum GeomType {
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
-
-	//MY
-	int image_index;
-	bool terminated;
 };
 
 struct Geom {
@@ -65,4 +61,17 @@ struct RenderState {
     int traceDepth;
     std::vector<glm::vec3> image;
     std::string imageName;
+};
+
+
+
+//MY
+
+struct Path
+{
+	Ray ray;
+	glm::vec3 color;
+
+	int image_index;
+	bool terminated;
 };
