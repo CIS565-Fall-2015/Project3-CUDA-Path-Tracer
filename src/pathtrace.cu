@@ -207,8 +207,9 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 										//,const thrust::device_vector<Geom> & geoms , const thrust::device_vector<Material> & materials
 										)
 {
-	int blockId = blockIdx.x + blockIdx.y * gridDim.x;
-	int path_index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
+	//int blockId = blockIdx.x + blockIdx.y * gridDim.x;
+	//int path_index = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
+	int path_index =  blockIdx.x * blockDim.x * blockDim.y + threadIdx.y * blockDim.x + threadIdx.x;
 	
 	if(path_index < num_paths)
 	{
@@ -300,6 +301,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
+	const int blockSizeTotal = blockSideLength * blockSideLength;
     const dim3 blocksPerGrid(
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
@@ -344,7 +346,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//loop
 	while (dev_path_end != dev_path && depth < traceDepth)
 	{
-		pathTraceOneBounce<<<blocksPerGrid,blockSize>>>(iter,depth, dev_path_end - dev_path  ,dev_image, dev_path
+		int num_path = dev_path_end - dev_path;
+		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
+		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
 			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size());
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
@@ -352,15 +356,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		//stream compaction
 		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
-		//try
-		//{
-		//	dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
-		//}
-		//catch(thrust::system_error e)
-		//{
-		//	std::cerr<<e.what()<<std::endl;
-		//}
-		//dev_path_end = dev_path;
 	}
 
     ///////////////////////////////////////////////////////////////////////////
