@@ -236,21 +236,27 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 			else if (intrMat.hasReflective||intrMat.hasRefractive)
 			{
 				//!!! later : reflective or refractive
+				//rays[index].origin = getPointOnRay(rays[index], intrT);
+				//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
 			}
-			else if (intrMat.specular.exponent>0)
+			else // diffuse / specular
 			{
 				//!!! later : specular
-			}
-			//!!! later : scatter
-			else // diffuse
-			{//??? absorb
-				thrust::default_random_engine rng = random_engine(index, iter, depth);
+				//http://www.tomdalling.com/blog/modern-opengl/07-more-lighting-ambient-specular-attenuation-gamma/
 				thrust::uniform_real_distribution<float> u01(0, 1);
-
-				rays[index].origin = getPointOnRay(rays[index], intrT);
 				thrust::default_random_engine rr = random_engine(iter, index, depth);
-				rays[index].direction = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
-				rays[index].carry *= intrMat.color;
+				glm::vec3 newDir = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
+				float specCoeff = 0;
+				if (intrMat.specular.exponent > 0)
+				{
+					glm::vec3 refl = glm::reflect(-newDir, intrNormal);
+					float cosAngle = max(0.0f, glm::dot(-rays[index].direction, refl));
+					specCoeff = pow(cosAngle, intrMat.specular.exponent);
+					//specComp = specCoeff*intrMat.specular.color;
+				}
+				rays[index].origin = getPointOnRay(rays[index], intrT);
+				rays[index].carry *= (intrMat.color*(1 - specCoeff) + intrMat.specular.color*specCoeff);
+				rays[index].direction = newDir;
 
 			}
 			
