@@ -281,6 +281,7 @@ __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *i
 		if (rays[index].terminated)
 		{
 			image[rays[index].imageIndex] += rays[index].carry;
+			rays[index].carry = glm::vec3(0,0,0);
 		}
 	}
 
@@ -468,7 +469,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
 	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(totalRays,cam, dev_rays, dev_image);//??? block size
 	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
-	
 
     ///////////////////////////////////////////////////////////////////////////
 

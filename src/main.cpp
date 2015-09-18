@@ -27,10 +27,13 @@ int main(int argc, char** argv) {
     }
 
     const char *sceneFile = argv[1];
-
+	string strCompactArg = argv[2];
+	if (strCompactArg == "s" || strCompactArg == "S")
+	{
+		printf("Using stream compaction.\n", strCompactArg);
+	}
     // Load scene file
     scene = new Scene(sceneFile);
-
     // Set up camera stuff from loaded path tracer settings
     iteration = 0;
     renderState = &scene->state;
