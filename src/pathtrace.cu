@@ -145,7 +145,7 @@ __device__ Ray GenerateRayFromCam(Camera cam, int x, int y)
 	return ray_xy;
 }
 
-__global__ void kernInitPathRays(Camera cam,Ray * rays)
+__global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -169,8 +169,13 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays)
 		glm::vec3 V_ = glm::normalize(B_)*glm::length(C_)*tanPhi;
 		glm::vec3 H_ = glm::normalize(A_)*glm::length(C_)*tanTheta;
 
-		float Sx = ((float)x + 0.5) / (cam.resolution.x - 1);
-		float Sy = ((float)y + 0.5) / (cam.resolution.y - 1);
+		//??? antialising
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		thrust::default_random_engine rng_x = random_engine(iter, index, 1);
+		thrust::default_random_engine rng_y = random_engine(iter, index, 2);
+
+		float Sx = ((float)x + u01(rng_x) - 0.5) / (cam.resolution.x - 1);
+		float Sy = ((float)y + u01(rng_y) - 0.5) / (cam.resolution.y - 1);
 		glm::vec3 Pw = M_ - (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
 		glm::vec3 Dir_ = Pw - cam.position;
 
@@ -242,6 +247,13 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 					rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
 					rays[index].carry *= intrMat.specular.color;
 				}
+				if (intrMat.hasRefractive)
+				{
+					//rays[index].origin = getPointOnRay(rays[index], intrT);
+					//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
+					//rays[index].carry *= intrMat.specular.color;
+				}
+				//later fresnel
 
 			}
 			else // diffuse / specular
@@ -449,7 +461,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 
 	//(1) Initialize array of path rays
-	kernInitPathRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays);
+	kernInitPathRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays,iter);
 
 	//(2) For each depth:
 	int geoNum = hst_scene->geoms.size();
