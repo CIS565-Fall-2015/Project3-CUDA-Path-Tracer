@@ -280,14 +280,15 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 		//(2) surface point (ray.origin) to light_point, anything in between?
 		//(3) if nothing in between, cos ray, 
 		//dev_geo[ligntObjIdx]
-		glm::vec4 pointOnLight(0,0,0,0);
+		glm::vec4 pointOnLight(0,0,0,1);
 		thrust::default_random_engine rng = random_engine(blockIdx.x + threadIdx.x, index, 1);
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		pointOnLight.x = u01(rng);
-		pointOnLight.y = u01(rng);
-		pointOnLight.z = u01(rng);
-		pointOnLight = dev_geo[lightIndex].transform*pointOnLight;
-
+		pointOnLight.x = u01(rng)-0.5;
+		pointOnLight.y = u01(rng)-0.5;
+		pointOnLight.z = u01(rng)-0.5;
+		//pointOnLight.w = 1;
+		pointOnLight = dev_geo[lightIndex].transform *pointOnLight;
+		//pointOnLight = glm::vec4(0, 10, 0, 1);
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
@@ -318,10 +319,12 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 		if (intrMatIdx == lightIndex)//Direct light???
 		{
 			image[rays[index].imageIndex] += scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rng);
+			rays[index].terminated = true;
 		}
 		else
 		{
 			image[rays[index].imageIndex] += glm::vec3(0, 0, 0); // !!! later background
+			rays[index].terminated = true;
 		}
 	}
 }

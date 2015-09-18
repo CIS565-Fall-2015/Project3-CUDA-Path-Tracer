@@ -97,7 +97,7 @@ SCALE       .01 10 10
 // Back wall
 OBJECT 3
 cube
-material 5
+material 1
 TRANS       0 5 -5
 ROTAT       0 90 0
 SCALE       .01 10 10
