@@ -108,9 +108,9 @@ void scatterRay(
 	if(scatter_ray_type == 0)
 	{
 		//diffuse
-		//color *= m.color * max (glm::dot( -ray.direction, normal) , 0.0f);
 		ray.direction = calculateRandomDirectionInHemisphere(normal,rng);
-		color *= m.color * glm::dot( ray.direction, normal) * (float)num_ray_type;
+		//color *= m.color * glm::dot( ray.direction, normal) * (float)num_ray_type;
+		color *= m.color  * (float)num_ray_type;
 		ray.origin = intersect + normal * EPSILON;
 
 	}
