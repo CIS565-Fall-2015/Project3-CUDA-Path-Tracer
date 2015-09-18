@@ -15,6 +15,12 @@ struct Ray {
     glm::vec3 direction;
 };
 
+struct BounceRay {
+	Ray ray;
+	glm::vec3 color;
+	int index;
+};
+
 struct Geom {
     enum GeomType type;
     int materialid;

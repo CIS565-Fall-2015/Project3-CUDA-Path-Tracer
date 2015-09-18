@@ -53,7 +53,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__
+__device__
 void scatterRay(
         Ray &ray,
         glm::vec3 &color,
@@ -65,4 +65,14 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
+	// Assume perfect reflection
+	if (m.hasReflective){
+		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
+	}
+	else{
+		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+	}
+	ray.origin = intersect;
+	color = color * emittedColor;
 }

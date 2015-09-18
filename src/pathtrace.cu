@@ -63,6 +63,9 @@ static glm::vec3 *dev_image;
 static Ray* dev_rays;
 static Geom* dev_geoms;
 static Material* dev_materials;
+static glm::vec3* dev_colors;
+
+static BounceRay* dev_brays;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -80,6 +83,9 @@ void pathtraceInit(Scene *scene) {
 
 	const int numObjects = hst_scene->geoms.size();
 	cudaMalloc((void**)&dev_rays, pixelcount*sizeof(Ray));
+	cudaMalloc((void**)&dev_colors, pixelcount*sizeof(glm::vec3));
+	cudaMalloc((void**)&dev_brays, pixelcount*sizeof(BounceRay));
+
 	cudaMalloc((void**)&dev_geoms, numObjects*sizeof(Geom));
 	cudaMalloc((void**)&dev_materials, numObjects*sizeof(Material));
 
@@ -93,13 +99,14 @@ void pathtraceFree() {
     cudaFree(dev_image);
     // TODO: clean up the above static variables
 	cudaFree(dev_rays);
+	cudaFree(dev_colors);
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
     checkCUDAError("pathtraceFree");
 
 }
 
-__global__ void initRays(int iter, Camera cam, Ray* rays){
+__global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors, BounceRay* brays){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -120,18 +127,20 @@ __global__ void initRays(int iter, Camera cam, Ray* rays){
 
 		rays[index].origin = cam.position;
 		rays[index].direction = direction;
+		colors[index] = glm::vec3(1.0, 1.0, 1.0);
+
+		brays[index].ray.origin = cam.position;
+		brays[index].ray.direction = direction;
+		brays[index].color = glm::vec3(1.0);
+		brays[index].index = index;
 	}
 }
 
-__global__ void intersect(Camera cam, Ray* rays, glm::vec3* image, int numObjects, const Geom* geoms, const Material* materials){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+__global__ void bounce(const int numRays, BounceRay* brays, const int numObjects, const Geom* geoms, const Material* materials){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-	if (x < cam.resolution.x && y < cam.resolution.y){
-		int index = x + (y * cam.resolution.x);
-
-		Ray ray = rays[index];
-		Ray new_ray;
+	if (index < numRays){
+		BounceRay bray = brays[index];
 
 		glm::vec3 normal;
 		glm::vec3 intersectionPoint;
@@ -140,6 +149,54 @@ __global__ void intersect(Camera cam, Ray* rays, glm::vec3* image, int numObject
 		glm::vec3 minNormal;
 		glm::vec3 minIntersectionPoint;
 		float minDist = INFINITY;
+		int obj_index = -1;
+
+		for (int i = 0; i < numObjects; i++){
+			if (geoms[i].type == SPHERE){
+				isIntersection = sphereIntersectionTest(geoms[i], bray.ray, intersectionPoint, normal);
+			}
+			else {
+				isIntersection = boxIntersectionTest(geoms[i], bray.ray, intersectionPoint, normal);
+			}
+
+			if (isIntersection > 0 && minDist > glm::distance(bray.ray.origin, intersectionPoint)){
+				minNormal = normal;
+				minIntersectionPoint = intersectionPoint;
+				minDist = glm::distance(bray.ray.origin, intersectionPoint);
+				obj_index = i;
+			}
+		}
+
+		if (obj_index >= 0){
+			//Material c = materials[index];
+			//Geom g = geoms[index];
+			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[obj_index].color, materials[obj_index], thrust::default_random_engine());
+			//colors[index] = glm::vec3(0.0,1.0,0.0);
+		}
+		else{
+			colors[index] = glm::vec3(0.0);
+		}
+
+	}
+}
+
+__global__ void intersect(Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y){
+		int index = x + (y * cam.resolution.x);
+
+		Ray ray = rays[index];
+
+		glm::vec3 normal;
+		glm::vec3 intersectionPoint;
+		float isIntersection;
+
+		glm::vec3 minNormal;
+		glm::vec3 minIntersectionPoint;
+		float minDist = INFINITY;
+		int obj_index = -1;
 
 		for (int i = 0; i < numObjects; i++){
 			if (geoms[i].type == SPHERE){
@@ -153,10 +210,30 @@ __global__ void intersect(Camera cam, Ray* rays, glm::vec3* image, int numObject
 				minNormal = normal;
 				minIntersectionPoint = intersectionPoint;
 				minDist = glm::distance(ray.origin, intersectionPoint);
+				obj_index = i;
 			}
 		}
 
-		image[index] = minDist == INFINITY ? glm::vec3(1.0,1.0,1.0) : glm::vec3(1.0,255.0,1.0);
+		if (obj_index >= 0){
+			//Material c = materials[index];
+			//Geom g = geoms[index];
+			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[obj_index].color, materials[obj_index], thrust::default_random_engine());
+			//colors[index] = glm::vec3(0.0,1.0,0.0);
+		}
+		else{
+			colors[index] = glm::vec3(0.0);
+		}
+		//image[index] = minDist == INFINITY ? glm::vec3(1.0,1.0,1.0) : glm::vec3(1.0,255.0,1.0);
+	}
+}
+
+__global__ void updatePixels(Camera cam, glm::vec3* colors, glm::vec3* image){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+		image[index] += colors[index];
 	}
 }
 
@@ -219,14 +296,17 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 	//Ray* rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
-	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays);
+	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
 	//cudaDeviceSynchronize();
 
-	intersect<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image, numObjects, dev_geoms, dev_materials);
+	for (int i = 0; i < traceDepth; i++){
+		intersect <<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		cudaDeviceSynchronize();
+	}
 	//cudaDeviceSynchronize();
 
-
-    generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
+    //generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
