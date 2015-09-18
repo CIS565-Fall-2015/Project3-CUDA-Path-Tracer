@@ -61,8 +61,9 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 /* Static variables for device memory, scene/camera info, etc */
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
-static Ray *dev_rays = NULL;
 static Geom *dev_geom = NULL;
+
+static Pixel *dev_pixels = NULL;
 
 /* Initialize static variables. */
 void pathtraceInit(Scene *scene) {
@@ -73,11 +74,11 @@ void pathtraceInit(Scene *scene) {
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 
-    cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
-    cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
-
-    cudaMalloc(&dev_geom, pixelcount * sizeof(Ray));
+    cudaMalloc(&dev_geom, scene->geoms.size() * sizeof(Geom));
     cudaMemcpy(dev_geom, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_pixels, pixelcount * sizeof(Pixel));
+    cudaMemset(dev_pixels, 0, pixelcount * sizeof(Pixel));
 
     checkCUDAError("pathtraceInit");
 }
@@ -86,13 +87,13 @@ void pathtraceInit(Scene *scene) {
 void pathtraceFree() {
     // no-ops if pointers are null
     cudaFree(dev_image);
-    cudaFree(dev_rays);
     cudaFree(dev_geom);
+    cudaFree(dev_pixels);
 
     checkCUDAError("pathtraceFree");
 }
 
-__global__ void generateCameraRays(Camera cam, Ray *rays) {
+__global__ void generateCameraRays(Camera cam, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -112,7 +113,13 @@ __global__ void generateCameraRays(Camera cam, Ray *rays) {
         Ray r;
         r.origin = cam.position;
         r.direction = ray_dir;
-        rays[index] = r;
+
+        Pixel px;
+        px.terminated = false;
+        px.ray = r;
+        px.color = glm::vec3(1, 1, 1);
+        px.coord = glm::ivec2(x, y);
+        pixels[index] = px;
     }
 }
 
@@ -141,34 +148,50 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom
     return nearest_t;
 }
 
-__global__ void findIntersections(int geomCount, Camera cam, Ray *rays,
-        glm::vec3 *image, Geom *geoms) {
+__global__ void findIntersections(int geomCount, Camera cam, glm::vec3 *image,
+        Geom *geoms, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
-        Ray r = rays[index];
+        Pixel px = pixels[index];
+        Ray r = px.ray;
 
         Geom nearest;
         float t = nearestIntersectionGeom(r, geoms, geomCount, nearest);
 
         if (t > 0) {
-            image[index] += glm::vec3(1, 1, 1);
         } else {
-            image[index] += glm::vec3(0, 0, 0);
+            pixels[index].terminated = true;
         }
     }
 }
 
-__global__ void generateDebugCamera(Camera cam, Ray *rays, glm::vec3 *image) {
+__global__ void debugCameraRays(Camera cam, glm::vec3 *image, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        image[index] += rays[index].direction;
+        image[index] += pixels[index].ray.direction;
+    }
+}
+
+__global__ void debugIntersections(Camera cam, glm::vec3 *image, Pixel *pixels) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+        Pixel px = pixels[index];
+
+        if (px.terminated == true) {
+            image[index] += glm::vec3(0, 0, 0);
+        } else {
+            image[index] += glm::vec3(1, 1, 1);
+        }
     }
 }
 
@@ -212,13 +235,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays);
+    generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_pixels);
     checkCUDAError("rays");
 
-    //generateDebugCamera<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
+    //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
     findIntersections<<<blocksPerGrid, blockSize>>>(
-            hst_scene->geoms.size(), cam, dev_rays, dev_image, dev_geom);
+            hst_scene->geoms.size(), cam, dev_image, dev_geom,
+            dev_pixels);
+
+    debugIntersections<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
     ///////////////////////////////////////////////////////////////////////////
 

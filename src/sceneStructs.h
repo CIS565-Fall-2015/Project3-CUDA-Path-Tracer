@@ -53,3 +53,10 @@ struct RenderState {
     std::vector<glm::vec3> image;
     std::string imageName;
 };
+
+struct Pixel {
+    bool terminated;
+    Ray ray;
+    glm::vec3 color;
+    glm::ivec2 coord;
+};
