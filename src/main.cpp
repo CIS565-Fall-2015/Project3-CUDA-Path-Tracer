@@ -14,6 +14,8 @@ int iteration;
 int width;
 int height;
 
+bool ifStreamCompact = false;
+
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
@@ -27,11 +29,16 @@ int main(int argc, char** argv) {
     }
 
     const char *sceneFile = argv[1];
-	string strCompactArg = argv[2];
-	if (strCompactArg == "s" || strCompactArg == "S")
+	if (argv[2]!=NULL)
 	{
-		printf("Using stream compaction.\n", strCompactArg);
+		string strCompactArg = argv[2];
+		if (strCompactArg == "s" || strCompactArg == "S")
+		{
+			printf("Using stream compaction.\n", strCompactArg);
+			ifStreamCompact = true;
+		}
 	}
+
     // Load scene file
     scene = new Scene(sceneFile);
     // Set up camera stuff from loaded path tracer settings
@@ -93,7 +100,7 @@ void runCuda() {
 
     if (iteration == 0) {
         pathtraceFree();
-        pathtraceInit(scene);
+		pathtraceInit(scene, ifStreamCompact);
     }
 
     if (iteration < renderState->iterations) {

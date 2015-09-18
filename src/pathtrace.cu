@@ -62,13 +62,15 @@ static Scene *hst_scene= NULL;
 static glm::vec3 *dev_image = NULL;
 static Geom *dev_geoms;
 static Material *dev_mats;
+bool doStreamCompact = false;
 Ray * dev_rays;
 
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
-void pathtraceInit(Scene *scene) {
+void pathtraceInit(Scene *scene,bool strCmpt) {
     hst_scene = scene;
+	doStreamCompact = strCmpt;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
@@ -461,8 +463,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		// b. Add all terminated rays results into pixels
 		kernUpdateImage <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_image);
 		// c. Stream compact away/thrust::remove_if all terminated paths.
-		newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
-		totalRays = (int)(newRayEnd - RayStart);
+		if (doStreamCompact)
+		{
+			newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
+			totalRays = (int)(newRayEnd - RayStart);
+		}
+
 	}
 	//(3) Handle all not terminated
 	int bSize = blockSize.x*blockSize.y*blockSize.z;
