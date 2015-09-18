@@ -139,7 +139,7 @@ __device__ Ray GenerateRayFromCam(Camera cam, int x, int y)
 	ray_xy.direction = glm::normalize(Dir_);
 
 	//??? something goes wrong with camera control left/right
-	///!!!todolater:antialising
+	///!!!later:antialising
 	return ray_xy;
 }
 
@@ -176,7 +176,7 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays)
 	}
 }
 
-__global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter)
+__global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter,int depth)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -215,7 +215,7 @@ __global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom 
 				break;
 			}
 			if (temp_T < 0) continue;
-			if (intrT < 0 || temp_T < intrT)
+			if (intrT < 0 || temp_T < intrT && temp_T >0)
 			{
 				intrT = temp_T;
 				intrPoint = temp_intrPoint;
@@ -242,16 +242,21 @@ __global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom 
 			//!!! later : scatter
 			else // diffuse
 			{//??? absorb
-				thrust::default_random_engine rng = random_engine(index,iter,  0);
+				thrust::default_random_engine rng = random_engine(index,iter,  depth);
 				thrust::uniform_real_distribution<float> u01(0, 1);
 				
-				if (u01(rng) > 0.5)
+				//if (u01(rng) > 0.4)
 				{
 					rays[index].origin = getPointOnRay(rays[index], intrT);
-					thrust::default_random_engine rr = random_engine(iter, index, 0);//???!!! what's this....
+					thrust::default_random_engine rr = random_engine(iter, index, depth);//???!!! what's this....
 					rays[index].direction = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
-					rays[index].carry *= intrMat.color*0.5f ;
+					rays[index].carry *= intrMat.color;// *0.6f;
 				}
+				/*else
+				{
+					rays[index].terminated = true;
+					rays[index].carry = glm::vec3(0, 0, 0);// later background color
+				}*/
 				
 			}
 			
@@ -264,10 +269,7 @@ __global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom 
 
 	}
 }
-/**
-* Test
-* 1. Camera Generate Rays
-*/
+
 
 __global__ void kernFinalImage(Camera cam, Ray * rays, glm::vec3 *image)
 {
@@ -301,6 +303,10 @@ __global__ void kernUpdateImage(Camera cam, Ray * rays, glm::vec3 *image)
 
 }
 
+/**
+* Test
+* 1. Camera Generate Rays
+*/
 __global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat, int geoNum, int iter, glm::vec3 *image) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -387,6 +393,15 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
+struct is_terminated
+{
+	__host__ __device__ 
+		bool operator()(const Ray ray_xy)
+	{
+		return ray_xy.terminated;
+	}
+};
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -437,7 +452,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	for (int i = 0; i < traceDepth; i++)
 	{
 		// a. Compute one ray along each path
-		kernComputeRay <<<blocksPerGrid, blockSize >>>(cam, dev_rays, dev_mats, dev_geoms, geoNum, iter);
+		kernComputeRay <<<blocksPerGrid, blockSize >>>(cam, dev_rays, dev_mats, dev_geoms, geoNum, iter,i);
 		// b. Add all terminated rays results into pixels
 		kernUpdateImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);
 		// c. Stream compact away/thrust::remove_if all terminated paths.
@@ -446,7 +461,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//(3) Handle all not terminated
 	kernFinalImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);//??? block size
 	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
-
+	
 
     ///////////////////////////////////////////////////////////////////////////
 
