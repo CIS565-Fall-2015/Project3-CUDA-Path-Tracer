@@ -4,7 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
-
+#include <thrust\device_ptr.h>
 #include "sceneStructs.h"
 #include "scene.h"
 #include "glm/glm.hpp"
@@ -176,14 +176,14 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays)
 	}
 }
 
-__global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter,int depth)
+__global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter,int depth)
 {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	if (x < cam.resolution.x && y < cam.resolution.y) 
-	{
-		int index = x + (y * cam.resolution.x);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//int index = x + (y * cam.resolution.x);
+	//if (x < cam.resolution.x && y < cam.resolution.y) 
+	if (index<raysNum)
+	{	
 		if (rays[index].terminated)
 		{
 			return;//!!! later compact
@@ -271,33 +271,31 @@ __global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom 
 }
 
 
-__global__ void kernFinalImage(Camera cam, Ray * rays, glm::vec3 *image)
+__global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *image)
 {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	if (x < cam.resolution.x && y < cam.resolution.y)
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//int index = x + (y * cam.resolution.x);
+	if (index<raysNum)
 	{
-		int index = x + (y * cam.resolution.x);
 		if (rays[index].terminated)
 		{
-			image[index] += glm::vec3(0, 0, 0); // !!! later background
+			image[rays[index].imageIndex] += rays[index].carry;
 		}
 	}
 
 }
 
-__global__ void kernUpdateImage(Camera cam, Ray * rays, glm::vec3 *image)
+__global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *image)
 {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	if (x < cam.resolution.x && y < cam.resolution.y) 
-	{
-		int index = x + (y * cam.resolution.x);	
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//int index = x + (y * cam.resolution.x);
+	if (index<raysNum)
+	{	
 		if (rays[index].terminated)
 		{
-			image[index] += rays[index].carry;
+			image[rays[index].imageIndex] += glm::vec3(0, 0, 0); // !!! later background
 		}
 	}
 
@@ -449,17 +447,26 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	//(2) For each depth:
 	int geoNum = hst_scene->geoms.size();
+	int totalRays = cam.resolution.x*cam.resolution.y;
+	
 	for (int i = 0; i < traceDepth; i++)
 	{
+		int bSize = blockSize.x*blockSize.y*blockSize.z;
+		dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
+		thrust::device_ptr<Ray> RayStart(dev_rays);
+		thrust::device_ptr<Ray> newRayEnd = RayStart + totalRays;
 		// a. Compute one ray along each path
-		kernComputeRay <<<blocksPerGrid, blockSize >>>(cam, dev_rays, dev_mats, dev_geoms, geoNum, iter,i);
+		kernComputeRay <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_mats, dev_geoms, geoNum, iter, i);
 		// b. Add all terminated rays results into pixels
-		kernUpdateImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);
+		kernUpdateImage <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_image);
 		// c. Stream compact away/thrust::remove_if all terminated paths.
-		//thrust::remove_if(dev_rays[0],dev_rays+cam.resolution.x*cam.resolution.y,)
+		newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
+		totalRays = (int)(newRayEnd - RayStart);
 	}
 	//(3) Handle all not terminated
-	kernFinalImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);//??? block size
+	int bSize = blockSize.x*blockSize.y*blockSize.z;
+	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
+	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(totalRays,cam, dev_rays, dev_image);//??? block size
 	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
 	
 
