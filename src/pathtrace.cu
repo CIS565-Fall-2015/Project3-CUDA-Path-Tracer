@@ -61,6 +61,8 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene;
 static glm::vec3 *dev_image;
 static Geom *dev_geoms;
+static Material *dev_mats;
+Ray * dev_rays;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -68,6 +70,10 @@ void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+
+	//(1) Initialize array of path rays
+	int raySize = pixelcount*sizeof(Ray);
+	cudaMalloc((void**)&dev_rays, raySize);
 
 	//Copy geoms to dev_geoms
 	
@@ -82,6 +88,13 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc((void**)&dev_geoms, geoSize);
 	cudaMemcpy(dev_geoms, hst_geoms, geoSize, cudaMemcpyHostToDevice);
 
+	//Copy materials to dev_mats
+	int matSize = hst_scene->materials.size()*sizeof(Material);
+
+	cudaMalloc((void**)&dev_mats, matSize);
+	cudaMemcpy(dev_mats, hst_scene->materials.data(), matSize, cudaMemcpyHostToDevice);
+
+	// dev_image initialize
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
@@ -90,7 +103,9 @@ void pathtraceInit(Scene *scene) {
 }
 
 void pathtraceFree() {
+	cudaFree(dev_rays);
 	cudaFree(dev_geoms);
+	cudaFree(dev_mats);
     cudaFree(dev_image);
     // TODO: clean up the above static variables
 
@@ -121,15 +136,169 @@ __device__ Ray GenerateRayFromCam(Camera cam, int x, int y)
 	ray_xy.direction = glm::normalize(Dir_);
 
 	//??? something goes wrong with camera control left/right
-
+	///!!!todolater:antialising
 	return ray_xy;
 }
 
+__global__ void kernInitPathRays(Camera cam,Ray * rays)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	if (x < cam.resolution.x && y < cam.resolution.y)
+	{
+		int index = x + (y * cam.resolution.x);
+		rays[index].pixelIndex = glm::vec2(x,y);
+		rays[index].imageIndex = index;
+		rays[index].terminated = false;
+		rays[index].origin = cam.position;
+		rays[index].carry = glm::vec3(1,1,1);
+
+		glm::vec3 C_ = cam.view;
+		glm::vec3 U_ = cam.up;
+		glm::vec3 A_ = glm::cross(C_, U_);
+		glm::vec3 B_ = glm::cross(A_, C_);
+		glm::vec3 M_ = cam.position + C_;
+
+		float tanPhi = tan(cam.fov.x*PI / 360);
+		float tanTheta = tanPhi*(float)cam.resolution.x / (float)cam.resolution.y;
+		glm::vec3 V_ = glm::normalize(B_)*glm::length(C_)*tanPhi;
+		glm::vec3 H_ = glm::normalize(A_)*glm::length(C_)*tanTheta;
+
+		float Sx = ((float)x + 0.5) / (cam.resolution.x - 1);
+		float Sy = ((float)y + 0.5) / (cam.resolution.y - 1);
+		glm::vec3 Pw = M_ + (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
+		glm::vec3 Dir_ = Pw - cam.position;
+
+		rays[index].direction = glm::normalize(Dir_);
+	}
+}
+
+__global__ void kernComputeRay(Camera cam, Ray * rays, Material * dev_mat ,Geom * dev_geo, int geoNum,int iter)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) 
+	{
+		int index = x + (y * cam.resolution.x);
+		if (rays[index].terminated)
+		{
+			return;//!!! later compact
+		}
+		// intersection with objects
+		glm::vec3 intrPoint;
+		glm::vec3 intrNormal;
+		float intrT = -1;
+		//glm::vec3 pixelColor(0, 0, 0);
+		Material intrMat;
+		for (int i = 0; i<geoNum; i++)
+		{
+			glm::vec3 temp_intrPoint;
+			glm::vec3 temp_intrNormal;
+			float temp_T;
+			Material temp_Mat;
+			
+			switch (dev_geo[i].type)
+			{
+			case SPHERE:
+				temp_T = sphereIntersectionTest(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal);
+				temp_Mat = dev_mat[dev_geo[i].materialid];
+				break;
+			case CUBE:
+				temp_T = boxIntersectionTest(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal);
+				temp_Mat = dev_mat[dev_geo[i].materialid];// glm::vec3(0, 1, 0);
+				break;
+			default:
+				break;
+			}
+			if (temp_T < 0) continue;
+			if (intrT < 0 || temp_T < intrT)
+			{
+				intrT = temp_T;
+				intrPoint = temp_intrPoint;
+				intrNormal = temp_intrNormal;
+				intrMat = temp_Mat;
+			}
+		}
+		if (intrT > 0)//intersect with obj, update ray
+		{
+			if (intrMat.emittance>0)
+			{
+				rays[index].carry *= intrMat.emittance*intrMat.color;//???? is this right....?
+				rays[index].terminated = true;
+			}
+			// Shading 
+			else if (intrMat.hasReflective||intrMat.hasRefractive)
+			{
+				//!!! later : reflective or refractive
+			}
+			else if (intrMat.specular.exponent>0)
+			{
+				//!!! later : specular
+			}
+			//!!! later : scatter
+			else // diffuse
+			{//??? absorb
+				thrust::default_random_engine rng = random_engine(index,iter,  0);
+				thrust::uniform_real_distribution<float> u01(0, 1);
+				
+				if (u01(rng) > 0.5)
+				{
+					rays[index].origin = getPointOnRay(rays[index], intrT);
+					thrust::default_random_engine rr = random_engine(iter, index, 0);//???!!! what's this....
+					rays[index].direction = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
+					rays[index].carry *= intrMat.color*0.5f ;
+				}
+				
+			}
+			
+		}
+		else
+		{
+			rays[index].terminated = true;
+			rays[index].carry = glm::vec3(0,0,0);// later background color
+		}
+
+	}
+}
 /**
 * Test
 * 1. Camera Generate Rays
 */
-__global__ void Test(Camera cam, Geom * dev_geo, int geoNum, int iter, glm::vec3 *image) {
+
+__global__ void kernFinalImage(Camera cam, Ray * rays, glm::vec3 *image)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y)
+	{
+		int index = x + (y * cam.resolution.x);
+		if (rays[index].terminated)
+		{
+			image[index] += glm::vec3(0, 0, 0); // !!! later background
+		}
+	}
+
+}
+
+__global__ void kernUpdateImage(Camera cam, Ray * rays, glm::vec3 *image)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) 
+	{
+		int index = x + (y * cam.resolution.x);	
+		if (rays[index].terminated)
+		{
+			image[index] += rays[index].carry;
+		}
+	}
+
+}
+
+__global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat, int geoNum, int iter, glm::vec3 *image) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -138,7 +307,7 @@ __global__ void Test(Camera cam, Geom * dev_geo, int geoNum, int iter, glm::vec3
 
 		thrust::default_random_engine rng = random_engine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		Ray crntRay = GenerateRayFromCam(cam, x, y);
+		Ray crntRay = rays[index];// GenerateRayFromCam(cam, x, y);
 		/*
 		//Ray Cast Direction test
 		glm::vec3 DirColor = crntRay.direction;
@@ -165,11 +334,11 @@ __global__ void Test(Camera cam, Geom * dev_geo, int geoNum, int iter, glm::vec3
 			{
 			case SPHERE:
 				temp_T = sphereIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
-				temp_color = glm::vec3(1,0,0);
+				temp_color = dev_mat[dev_geo[i].materialid].color;
 				break;
 			case CUBE:
 				temp_T = boxIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
-				temp_color = glm::vec3(0, 1, 0);
+				temp_color = dev_mat[dev_geo[i].materialid].color;// glm::vec3(0, 1, 0);
 				break;
 			default:
 				break;
@@ -180,7 +349,7 @@ __global__ void Test(Camera cam, Geom * dev_geo, int geoNum, int iter, glm::vec3
 				intrT = temp_T; 
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
-				pixelColor = temp_intrNormal;
+				pixelColor = temp_color;
 			}
 		}
 		
@@ -247,8 +416,24 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   (Easy way is to make them black or background-colored.)
 
     // TODO: perform one iteration of path tracing
+
+	//(1) Initialize array of path rays
+	kernInitPathRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays);
+
+	//(2) For each depth:
 	int geoNum = hst_scene->geoms.size();
-	Test <<<blocksPerGrid, blockSize >>>(cam, dev_geoms, geoNum, iter, dev_image);
+	for (int i = 0; i < traceDepth; i++)
+	{
+		// a. Compute one ray along each path
+		kernComputeRay <<<blocksPerGrid, blockSize >>>(cam, dev_rays, dev_mats, dev_geoms, geoNum, iter);
+		// b. Add all terminated rays results into pixels
+		kernUpdateImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);
+		// c. Stream compact away/thrust::remove_if all terminated paths.
+		//thrust::remove_if(dev_rays[0],dev_rays+cam.resolution.x*cam.resolution.y,)
+	}
+	//(3) Handle all not terminated
+	kernFinalImage<<<blocksPerGrid, blockSize >>>(cam,dev_rays,dev_image);//??? block size
+	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
