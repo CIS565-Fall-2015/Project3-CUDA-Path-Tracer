@@ -236,8 +236,13 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 			else if (intrMat.hasReflective||intrMat.hasRefractive)
 			{
 				//!!! later : reflective or refractive
-				//rays[index].origin = getPointOnRay(rays[index], intrT);
-				//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
+				if (intrMat.hasReflective)
+				{
+					rays[index].origin = getPointOnRay(rays[index], intrT);
+					rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
+					rays[index].carry *= intrMat.specular.color;
+				}
+
 			}
 			else // diffuse / specular
 			{
