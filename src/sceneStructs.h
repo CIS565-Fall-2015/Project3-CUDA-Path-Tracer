@@ -56,6 +56,7 @@ struct Camera {
 
 	glm::vec3 right;	// same in x direction of the screen
 	
+	glm::vec2 pixelLength;
 };
 
 struct RenderState {

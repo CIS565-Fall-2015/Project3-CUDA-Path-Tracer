@@ -158,14 +158,14 @@ __host__ __device__ void getCemeraRayAtPixel(Ray & ray,const Camera &c, int x, i
 {
 	thrust::default_random_engine rng = random_engine(iter, index, 0);
 	thrust::uniform_real_distribution<float> u01(0, 1);
-	Ray r;
-	r.origin = c.position;
-	r.direction = glm::normalize(  c.view * 0.5f * (float)c.resolution.y / c.fov.y
-		+ c.right * ((float)x - (float)c.resolution.x / 2.0f + u01(rng) )		//u01(rng) is for jiitering for antialiasing
-		- c.up * ((float)y - (float)c.resolution.y / 2.0f + u01(rng) )			//u01(rng) is for jiitering for antialiasing
+
+	ray.origin = c.position;
+	ray.direction = glm::normalize(  c.view 
+		+ c.right * c.pixelLength.x * ( (float)x - (float)c.resolution.x * 0.5f + u01(rng) )  		//u01(rng) is for jiitering for antialiasing
+		- c.up * c.pixelLength.y * ( (float)y - (float)c.resolution.y * 0.5f + u01(rng) ) 			//u01(rng) is for jiitering for antialiasing
 		);
 
-	r.image_index = index;
+	ray.image_index = index;
 
 	//TODO: lens effect
 }

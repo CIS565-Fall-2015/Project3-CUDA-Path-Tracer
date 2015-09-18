@@ -135,8 +135,12 @@ int Scene::loadCamera() {
     float fovx = (atan(xscaled) * 180) / PI;
     camera.fov = glm::vec2(fovx, fovy);
 
+	//MY: store tan(fovy) and tan(fovx)
+	camera.pixelLength = glm::vec2(2*xscaled/(float)camera.resolution.x,2*yscaled/(float)camera.resolution.y);
 
 	//MY: calculate right vector
+	camera.view = glm::normalize(camera.view);
+
 	camera.right = glm::normalize(glm::cross(camera.view, camera.up));
 	
 	//make sure up is perpendicular to view
