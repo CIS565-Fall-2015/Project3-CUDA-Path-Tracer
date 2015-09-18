@@ -106,7 +106,7 @@ void pathtraceFree() {
 
 }
 
-__global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors, BounceRay* brays){
+__global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -128,54 +128,6 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors, Bou
 		rays[index].origin = cam.position;
 		rays[index].direction = direction;
 		colors[index] = glm::vec3(1.0, 1.0, 1.0);
-
-		brays[index].ray.origin = cam.position;
-		brays[index].ray.direction = direction;
-		brays[index].color = glm::vec3(1.0);
-		brays[index].index = index;
-	}
-}
-
-__global__ void bounce(const int numRays, BounceRay* brays, const int numObjects, const Geom* geoms, const Material* materials){
-	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-	if (index < numRays){
-		BounceRay bray = brays[index];
-
-		glm::vec3 normal;
-		glm::vec3 intersectionPoint;
-		float isIntersection;
-
-		glm::vec3 minNormal;
-		glm::vec3 minIntersectionPoint;
-		float minDist = INFINITY;
-		int obj_index = -1;
-
-		for (int i = 0; i < numObjects; i++){
-			if (geoms[i].type == SPHERE){
-				isIntersection = sphereIntersectionTest(geoms[i], bray.ray, intersectionPoint, normal);
-			}
-			else {
-				isIntersection = boxIntersectionTest(geoms[i], bray.ray, intersectionPoint, normal);
-			}
-
-			if (isIntersection > 0 && minDist > glm::distance(bray.ray.origin, intersectionPoint)){
-				minNormal = normal;
-				minIntersectionPoint = intersectionPoint;
-				minDist = glm::distance(bray.ray.origin, intersectionPoint);
-				obj_index = i;
-			}
-		}
-
-		if (obj_index >= 0){
-			//Material c = materials[index];
-			//Geom g = geoms[index];
-			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[obj_index].color, materials[obj_index], thrust::default_random_engine());
-			//colors[index] = glm::vec3(0.0,1.0,0.0);
-		}
-		else{
-			colors[index] = glm::vec3(0.0);
-		}
 
 	}
 }
@@ -299,10 +251,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
 	//cudaDeviceSynchronize();
 
-	for (int i = 0; i < traceDepth; i++){
-		intersect <<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
-		cudaDeviceSynchronize();
-	}
+	intersect << <blocksPerGrid, blockSize >> >(cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+
 	//cudaDeviceSynchronize();
 
 	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
