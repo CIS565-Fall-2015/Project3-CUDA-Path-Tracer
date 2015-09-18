@@ -164,14 +164,14 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays)
 		glm::vec3 B_ = glm::cross(A_, C_);
 		glm::vec3 M_ = cam.position + C_;
 
-		float tanPhi = tan(cam.fov.x*PI / 360);
+		float tanPhi = tan(cam.fov.x*PI / 180);
 		float tanTheta = tanPhi*(float)cam.resolution.x / (float)cam.resolution.y;
 		glm::vec3 V_ = glm::normalize(B_)*glm::length(C_)*tanPhi;
 		glm::vec3 H_ = glm::normalize(A_)*glm::length(C_)*tanTheta;
 
 		float Sx = ((float)x + 0.5) / (cam.resolution.x - 1);
 		float Sy = ((float)y + 0.5) / (cam.resolution.y - 1);
-		glm::vec3 Pw = M_ + (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
+		glm::vec3 Pw = M_ - (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
 		glm::vec3 Dir_ = Pw - cam.position;
 
 		rays[index].direction = glm::normalize(Dir_);
@@ -244,22 +244,14 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 			//!!! later : scatter
 			else // diffuse
 			{//??? absorb
-				thrust::default_random_engine rng = random_engine(index,iter,  depth);
+				thrust::default_random_engine rng = random_engine(index, iter, depth);
 				thrust::uniform_real_distribution<float> u01(0, 1);
-				
-				//if (u01(rng) > 0.4)
-				{
-					rays[index].origin = getPointOnRay(rays[index], intrT);
-					thrust::default_random_engine rr = random_engine(iter, index, depth);//???!!! what's this....
-					rays[index].direction = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
-					rays[index].carry *= intrMat.color;// *0.6f;
-				}
-				/*else
-				{
-					rays[index].terminated = true;
-					rays[index].carry = glm::vec3(0, 0, 0);// later background color
-				}*/
-				
+
+				rays[index].origin = getPointOnRay(rays[index], intrT);
+				thrust::default_random_engine rr = random_engine(iter, index, depth);
+				rays[index].direction = glm::normalize(calculateRandomDirectionInHemisphere(intrNormal, rr));
+				rays[index].carry *= intrMat.color;
+
 			}
 			
 		}
