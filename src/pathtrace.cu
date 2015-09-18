@@ -62,6 +62,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Geom *dev_geom = NULL;
+static Material *dev_mats = NULL;
 
 static Pixel *dev_pixels = NULL;
 
@@ -75,7 +76,11 @@ void pathtraceInit(Scene *scene) {
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 
     cudaMalloc(&dev_geom, scene->geoms.size() * sizeof(Geom));
-    cudaMemcpy(dev_geom, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_geom,  scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
+    cudaMalloc(&dev_mats, scene->materials.size() * sizeof(Material));
+    cudaMemcpy(dev_mats,  scene->materials.data(), scene->materials.size() *
+            sizeof(Material), cudaMemcpyHostToDevice);
 
     cudaMalloc(&dev_pixels, pixelcount * sizeof(Pixel));
     cudaMemset(dev_pixels, 0, pixelcount * sizeof(Pixel));
@@ -88,6 +93,7 @@ void pathtraceFree() {
     // no-ops if pointers are null
     cudaFree(dev_image);
     cudaFree(dev_geom);
+    cudaFree(dev_mats);
     cudaFree(dev_pixels);
 
     checkCUDAError("pathtraceFree");
@@ -148,8 +154,8 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom
     return nearest_t;
 }
 
-__global__ void findIntersections(int geomCount, Camera cam, glm::vec3 *image,
-        Geom *geoms, Pixel *pixels) {
+__global__ void findIntersections(Camera cam, glm::vec3 *image,
+        Pixel *pixels, Geom *geoms, int geomCount, Material *mats) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -162,7 +168,10 @@ __global__ void findIntersections(int geomCount, Camera cam, glm::vec3 *image,
         float t = nearestIntersectionGeom(r, geoms, geomCount, nearest);
 
         if (t > 0) {
+            Material m = mats[nearest.materialid];
+            pixels[index].color = m.color;
         } else {
+            pixels[index].color = glm::vec3(0, 0, 0);
             pixels[index].terminated = true;
         }
     }
@@ -179,7 +188,7 @@ __global__ void debugCameraRays(Camera cam, glm::vec3 *image, Pixel *pixels) {
     }
 }
 
-__global__ void debugIntersections(Camera cam, glm::vec3 *image, Pixel *pixels) {
+__global__ void debugIntersectionColors(Camera cam, glm::vec3 *image, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -187,11 +196,7 @@ __global__ void debugIntersections(Camera cam, glm::vec3 *image, Pixel *pixels) 
         int index = x + (y * cam.resolution.x);
         Pixel px = pixels[index];
 
-        if (px.terminated == true) {
-            image[index] += glm::vec3(0, 0, 0);
-        } else {
-            image[index] += glm::vec3(1, 1, 1);
-        }
+        image[index] += px.color;
     }
 }
 
@@ -241,10 +246,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
     findIntersections<<<blocksPerGrid, blockSize>>>(
-            hst_scene->geoms.size(), cam, dev_image, dev_geom,
-            dev_pixels);
+            cam, dev_image, dev_pixels, dev_geom, hst_scene->geoms.size(),
+            dev_mats);
 
-    debugIntersections<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
+    debugIntersectionColors<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
     ///////////////////////////////////////////////////////////////////////////
 
