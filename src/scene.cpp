@@ -174,7 +174,10 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.indexOfRefraction = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "EMITTANCE") == 0) {
                 newMaterial.emittance = atof(tokens[1].c_str());
-            }
+			}
+			else if (strcmp(tokens[0].c_str(), "BSSRDF") == 0) {
+				newMaterial.bssrdf = atof(tokens[1].c_str());
+			}
         }
 		if (newMaterial.emittance>0)
 		{

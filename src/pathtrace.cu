@@ -278,19 +278,16 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 	{	
 		//Direct lighting
 		//(1) random point on light
-		//(2) surface point (ray.origin) to light_point, anything in between?
-		//(3) if nothing in between, cos ray, 
-		//dev_geo[ligntObjIdx]
+		// curently, only one box light source
+		// !!!later : a.multiply lights; b.sphere light
 		glm::vec4 pointOnLight(0,0,0,1);
 		thrust::default_random_engine rng = random_engine(iter, index, 1);
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		pointOnLight.x = u01(rng)-0.5;
 		pointOnLight.y = u01(rng)-0.5;
 		pointOnLight.z = u01(rng)-0.5;
-		//pointOnLight.w = 1;
-		pointOnLight = dev_geo[lightIndex].transform *pointOnLight;
-		//pointOnLight = glm::vec4(0, 10, 0, 1);
-		//pointOnLight = glm::vec4(dev_geo[lightIndex].translation, 1);
+		pointOnLight = dev_geo[lightIndex].transform *pointOnLight; 
+		//(2) surface point (ray.origin) to light_point, anything in between?
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
@@ -317,17 +314,16 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 				intrMatIdx = temp_MatIdx;
 			}
 		}
-
-		if (intrMatIdx == lightIndex)//Direct light???
+		//(3) if nothing in between, cos ray, calc direct illumination
+		if (intrMatIdx == lightIndex)
 		{
-			//image[rays[index].imageIndex] += scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rng);//!!! here intrMatIdx is not right...
+			//Direct Illumination
+			//!!! later : reduce bounce
 			glm::vec3 color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
 			color *= rays[index].carry;
 			scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
 			color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
-			//color *= (rays[index].direction*surToLight.direction);
 			image[rays[index].imageIndex] += color;
-			//image[rays[index].imageIndex] += glm::vec3(0,0,0);
 			rays[index].terminated = true;
 		}
 		else

@@ -89,6 +89,24 @@ glm::vec3 scatterRay(
 			//later fresnel
 
 		}
+		else if (m.bssrdf>0) //try brute-force bssrdf
+		{
+			//(1) incident or exitant or currently inside obj ?
+			//	if incident:
+			if (incident)
+			{
+				glm::vec3 refraDir = -glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
+				ray.direction = refraDir;
+				ray.carry *= m.color;
+				//!!! calculate s0
+			}
+			else if (inside)
+			{
+				//compare si=|xo-ray.orig| with s0
+			}
+			else if (exitant){}
+			
+		}
 		else // diffuse / specular
 		{
 			//!!! later : specular
