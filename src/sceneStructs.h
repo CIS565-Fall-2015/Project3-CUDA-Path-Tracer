@@ -13,6 +13,9 @@ enum GeomType {
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
+	glm::vec3 color;
+	int pixel_index; // the index of the pixel in the array
+	bool alive; //whether or not hte thread is still running
 };
 
 struct Geom {
@@ -35,7 +38,7 @@ struct Material {
     float hasReflective;
     float hasRefractive;
     float indexOfRefraction;
-    float emittance;
+    float emittance; //is emittance needed? maybe for light?
 };
 
 struct Camera {

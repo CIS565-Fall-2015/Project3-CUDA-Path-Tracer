@@ -59,11 +59,14 @@ void scatterRay(
         glm::vec3 &color,
         glm::vec3 intersect,
         glm::vec3 normal,
-        glm::vec3 emittedColor,
         const Material &m,
         thrust::default_random_engine &rng) {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
-	// why would i modify color here? are I not just scattering the ray?
+
+	// check if bounce was cool. if not then mark it terminated
+
+	// all color calculations and diffuse vs spec or whatever probability stuff (which I am still kinda confused on) too
+
 }
