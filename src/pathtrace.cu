@@ -190,7 +190,8 @@ __global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, R
 			if (materials[material_index].emittance > EPSILON) {
 				// if epsilon is greater than zero then we hit a light and we need to terminate
 				rays[index].alive = false;
-				image[pixel_index] += color;
+				//TODO: I am not sure this is the correct way to calculate color when hitting a light. pretty sure it isn't. What about specular?
+				image[pixel_index] += rays[index].color * materials[material_index].color * materials[material_index].emittance;
 				// maybe i only store the image here, as an addition, since it has been terminated. yeah
 				// do the accume within an interation on the ray itself..
 
@@ -198,6 +199,8 @@ __global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, R
 			else {
 				// not a light, do a bounce;
 				scatterRay(rays[index], color, intersectionPoint, normal, materials[material_index], rng);
+				// do we save color here or inside the scatter? ie should we modify rays color or the seperate color variable?
+
 				//image[pixel_index] += color; //shouldn't be adding to this data structure i don't think
 				// unless instead of this we save the color somewhere else (on the ray?)
 				// need to update ray (it should be marked terminated inside the color update/scatter function)
@@ -268,7 +271,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	int currentDepth = 0, threadsRemaining = pixelcount; //at first we will have one ray for each pixel
 	while (threadsRemaining > 0 && currentDepth < traceDepth) {
 		//trace bounce should have threadsremaining number of luanches
-		//TraceBounce(cam, iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
+		TraceBounce<<<1, threadsRemaining>>>(cam, iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
 		threadsRemaining = StreamCompaction::Thrust::compact(threadsRemaining, dev_rays); //i don't want to use the otherone right now because it would have me copy to host and back to device. want to just keep on device
 		currentDepth++;
 	}

@@ -47,14 +47,15 @@ int compact(int n, Ray *data) {
 	thrust::device_vector<Ray>::iterator dev_data_end = thrust::remove_if(dev_data.begin(), dev_data.end(), is_terminated());
 	dev_data.resize(dev_data_end - dev_data.begin()); // the output is still the old size though
 
-	thrust::host_vector<Ray> hst_out = dev_data;
+	//thrust::host_vector<Ray> hst_out = dev_data; // can I cut this out too?
 
 	//Free old odata, allocate correct new size
-	int num_remaining = hst_out.size();
-	free(data);
-	data = (Ray*)malloc(num_remaining * sizeof(Ray));
+	int num_remaining = dev_data.size();
+	cudaFree(data);
+	cudaMalloc(&data, num_remaining * sizeof(Ray));
+	//data = (Ray*)malloc(num_remaining * sizeof(Ray));
 	for (int i = 0; i < num_remaining; i++) {
-		data[i] = hst_out[i];
+		data[i] = dev_data[i];
 	}
 
 	return num_remaining;
