@@ -15,6 +15,14 @@ struct Ray {
     glm::vec3 direction;
 };
 
+struct RayState
+{
+	Ray ray;
+	glm::ivec2 pixelIndex;
+	glm::vec3 rayColor;
+	bool isAlive;
+};
+
 struct Geom {
     enum GeomType type;
     int materialid;
@@ -44,6 +52,9 @@ struct Camera {
     glm::vec3 view;
     glm::vec3 up;
     glm::vec2 fov;
+    glm::vec3 H;
+    glm::vec3 V;
+    glm::vec3 M;
 };
 
 struct RenderState {
@@ -53,3 +64,4 @@ struct RenderState {
     std::vector<glm::vec3> image;
     std::string imageName;
 };
+

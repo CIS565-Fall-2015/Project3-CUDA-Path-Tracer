@@ -81,6 +81,7 @@ void runCuda() {
         cam.up = glm::vec3(rotmat * glm::vec4(u, 0.f));
         cam.position += cammove.x * r + cammove.y * u + cammove.z * v;
         theta = phi = 0;
+        scene->configureCamera();
         cammove = glm::vec3();
         camchanged = false;
     }

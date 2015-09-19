@@ -16,6 +16,7 @@ private:
     int loadMaterial(string materialid);
     int loadGeom(string objectid);
     int loadCamera();
+
 public:
     Scene(string filename);
     ~Scene();
@@ -23,4 +24,6 @@ public:
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     RenderState state;
+
+    void configureCamera();
 };

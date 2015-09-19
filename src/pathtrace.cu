@@ -58,26 +58,65 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
     }
 }
 
-static Scene *hst_scene;
-static glm::vec3 *dev_image;
+static Scene *hst_scene = NULL;
+static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
+
+static Camera *dev_camera = NULL;
+static Geom *dev_geoms = NULL;
+static int* dev_geoms_count = NULL;
+static Material *dev_materials = NULL;
+static RenderState *dev_state = NULL;
+
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
+    //std::vector<Geom> geoms = hst_scene->geoms;
+    //std::vector<Material> materials = hst_scene->materials;
+
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
+
+
+    //Copy Camera
+    cudaMalloc((void**)&dev_camera, sizeof(Camera));
+    cudaMemcpy(dev_camera, &hst_scene->state.camera, sizeof(Camera), cudaMemcpyHostToDevice);
+
+    //Copy geometry
+    cudaMalloc((void**)&dev_geoms, hst_scene->geoms.size() * sizeof(Geom));
+    cudaMemcpy(dev_geoms, hst_scene->geoms.data(), hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
+    //Copy geometry count
+    int geom_count = hst_scene->geoms.size();
+    cudaMalloc((void**)&dev_geoms_count, sizeof(int));
+    cudaMemcpy(dev_geoms_count, &geom_count, sizeof(int), cudaMemcpyHostToDevice);
+
+    //Copy material
+    cudaMalloc((void**)&dev_materials, hst_scene->materials.size() * sizeof(Material));
+    cudaMemcpy(dev_materials, hst_scene->materials.data(), hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
+
+    //Copy state
+    cudaMalloc((void**)&dev_state, sizeof(RenderState));
+    cudaMemcpy(dev_state, &hst_scene->state, sizeof(RenderState), cudaMemcpyHostToDevice);
 
     checkCUDAError("pathtraceInit");
 }
 
 void pathtraceFree() {
-    cudaFree(dev_image);
+
+	cudaFree(dev_image);
     // TODO: clean up the above static variables
+
+    cudaFree(dev_camera);
+    cudaFree(dev_geoms);
+    cudaFree(dev_materials);
+    cudaFree(dev_state);
+    cudaFree(dev_geoms_count);
 
     checkCUDAError("pathtraceFree");
 }
@@ -107,6 +146,82 @@ __global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
+//Kernel function that gets all the ray directions
+__global__ void kernGetRayDirections(Camera * camera, RayState* rays)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < camera->resolution.x && y < camera->resolution.y)
+	{
+		int index = x + (y * camera->resolution.x);
+
+		//Find the ray direction
+		glm::vec3 rayDir = (camera->M + (2.0f*x - 1.0f) * camera->H + (2.0f*y - 1.0f) * camera->V);
+		rayDir -= camera->position;
+		rayDir = glm::normalize(rayDir);
+
+		rays[index].ray.direction = rayDir;
+		rays[index].ray.origin = camera->position;
+		rays[index].isAlive = true;
+		rays[index].rayColor = glm::vec3(1);
+		rays[index].pixelIndex = glm::ivec2(x, y);
+	}
+}
+
+//Kernel function that performs one iteration of tracing the path.
+__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, int iter, glm::vec3* image)
+{
+	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	 if (x < camera->resolution.x && y < camera->resolution.y)
+	 {
+		 int index = x + (y * camera->resolution.x);
+
+		 glm::vec3 intersectionPoint, normal;
+		 float min_t = 0, t; //FLT_MAX
+		 Ray r = ray->ray;
+		 int nearestIndex = -1;
+		 glm::vec3 nearestIntersectionPoint, nearestNormal;
+
+		 //Find geometry intersection
+		 for(int i=0; i<(*geomCount); ++i)
+		 {
+			 if(geoms[i].type == CUBE)
+			 {
+				 //t = boxIntersectionTest(geoms[i], r, intersectionPoint, normal);
+			 }
+
+			 else if(geoms[i].type = SPHERE)
+			 {
+				 t = sphereIntersectionTest(geoms[i], r, intersectionPoint, normal);
+			 }
+
+			 if(t < min_t && t > 0)
+			 {
+				 min_t = t;
+				 nearestIntersectionPoint = intersectionPoint;
+				 nearestIndex = i;
+				 nearestNormal = normal;
+			 }
+		 }
+
+		 //If the nearest index remains unchanged, means no intersection and we can kill the ray.
+		 if(nearestIndex == -1)
+		 {
+			 ray->isAlive = false;
+			 image[index] = ray->rayColor;
+		 }
+
+		 //else find the material color
+		 else
+		 {
+			 image[index] = glm::vec3(1);
+		 }
+    }
+}
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -128,9 +243,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Initialize array of path rays (using rays that come out of the camera)
     //   * You can pass the Camera object to that kernel.
     // * For each depth:
-    //   * Compute one ray along each path - many will terminate.
-    //     You'll have to decide how to represent your path rays and how
-    //     you'll mark terminated rays.
+    //   * Compute one new (ray, color) pair along each path (using scatterRay).
+    //     Note that many rays will terminate by hitting a light or hitting
+    //     nothing at all. You'll have to decide how to represent your path rays
+    //     and how you'll mark terminated rays.
     //   * Add all of the terminated rays' results into the appropriate pixels.
     //   * Stream compact away all of the terminated paths.
     //     You may use your implementation or `thrust::remove_if` or its
@@ -140,7 +256,24 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+    //RayState* dev_rays;
+
+    //cudaMalloc((void**)&dev_rays, pixelcount * sizeof(RayState));
+
+    //Setup initial rays
+    //kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays);
+
+  //  for(int i=0; i<traceDepth; ++i)
+//    {
+    	//Take one step, should make dead rays as false
+    	//kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, dev_geoms, dev_geoms_count, dev_materials, iter, dev_image);
+
+    	//Compact rays
+    	//thrust::remove_if(thrust::)
+//    }
+
+
+        generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -150,6 +283,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+
+    //cudaFree(dev_rays);
 
     checkCUDAError("pathtrace");
 }

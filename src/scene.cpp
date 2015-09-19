@@ -68,19 +68,17 @@ int Scene::loadGeom(string objectid) {
             vector<string> tokens = utilityCore::tokenizeString(line);
 
             //load tranformations
-            for (int i = 0; i < 3; i++) {
-                glm::vec3 translation;
-                glm::vec3 rotation;
-                glm::vec3 scale;
-                utilityCore::safeGetline(fp_in, line);
-                tokens = utilityCore::tokenizeString(line);
-                if (strcmp(tokens[0].c_str(), "TRANS") == 0) {
-                    newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-                } else if (strcmp(tokens[0].c_str(), "ROTAT") == 0) {
-                    newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-                } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
-                    newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-                }
+            if (strcmp(tokens[0].c_str(), "TRANS") == 0)
+            {
+            	newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+            }
+            else if (strcmp(tokens[0].c_str(), "ROTAT") == 0)
+            {
+            	newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+            }
+            else if (strcmp(tokens[0].c_str(), "SCALE") == 0)
+            {
+            	newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             }
 
             utilityCore::safeGetline(fp_in, line);
@@ -127,19 +125,15 @@ int Scene::loadCamera() {
         vector<string> tokens = utilityCore::tokenizeString(line);
 
         //load camera properties
-        for (int i = 0; i < 3; i++) {
-            //glm::vec3 translation; glm::vec3 rotation; glm::vec3 scale;
-            utilityCore::safeGetline(fp_in, line);
-            tokens = utilityCore::tokenizeString(line);
-            if (strcmp(tokens[0].c_str(), "EYE") == 0) {
-                camera.position = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            } else if (strcmp(tokens[0].c_str(), "VIEW") == 0) {
-                camera.view = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            } else if (strcmp(tokens[0].c_str(), "UP") == 0) {
-                camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            }
+        if (strcmp(tokens[0].c_str(), "EYE") == 0) {
+        	camera.position = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
         }
-
+        else if (strcmp(tokens[0].c_str(), "VIEW") == 0) {
+        	camera.view = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+        }
+        else if (strcmp(tokens[0].c_str(), "UP") == 0) {
+        	camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+        }
         utilityCore::safeGetline(fp_in, line);
     }
 
@@ -154,6 +148,7 @@ int Scene::loadCamera() {
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
 
+    configureCamera();
     cout << "Loaded camera!" << endl;
     return 1;
 }
@@ -168,7 +163,7 @@ int Scene::loadMaterial(string materialid) {
         Material newMaterial;
 
         //load static properties
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 7; i++) {
             string line;
             utilityCore::safeGetline(fp_in, line);
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -193,4 +188,20 @@ int Scene::loadMaterial(string materialid) {
         materials.push_back(newMaterial);
         return 1;
     }
+}
+
+void Scene::configureCamera()
+{
+	RenderState &state = this->state;
+	Camera &camera = state.camera;
+
+	glm::vec3 A = glm::cross(camera.view, camera.up);
+	glm::vec3 B = glm::cross(A, camera.view);
+
+	camera.M = camera.position + camera.view;
+
+	float l = glm::length(camera.view);
+
+	camera.H = glm::normalize(A) * (l) * tan(float(camera.fov.x) * 0.5f);
+	camera.V = glm::normalize(B) * (l) * tan(float(camera.fov.y) * 0.5f);
 }
