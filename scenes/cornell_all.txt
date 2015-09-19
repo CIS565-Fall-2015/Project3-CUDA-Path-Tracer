@@ -130,6 +130,6 @@ SCALE       3 3 3
 OBJECT 7
 sphere
 material 1
-TRANS       2 2 0
+TRANS       0 2 0
 ROTAT       0 0 0
 SCALE       3.5 3.5 3.5

@@ -220,7 +220,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
-		Material intrMat;
+		int intrMatIdx;
 		for (int i = 0; i<geoNum; i++)
 		{
 			glm::vec3 temp_intrPoint;
@@ -235,13 +235,14 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 				intrT = temp_T;
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
-				intrMat = dev_mat[temp_MatIdx];;
+				intrMatIdx = temp_MatIdx;
 			}
 		}
 		if (intrT > 0)//intersect with obj, update ray
 		{
 			thrust::default_random_engine rr = random_engine(iter, index, depth);
-			scatterRay(rays[index], intrT, intrPoint, intrNormal, intrMat, rr);
+			scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
+			rays[index].origMatIdx = intrMatIdx;
 		}
 		else
 		{
@@ -289,6 +290,7 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 		//pointOnLight.w = 1;
 		pointOnLight = dev_geo[lightIndex].transform *pointOnLight;
 		//pointOnLight = glm::vec4(0, 10, 0, 1);
+		pointOnLight = glm::vec4(dev_geo[lightIndex].translation, 1);
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
@@ -318,7 +320,14 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 
 		if (intrMatIdx == lightIndex)//Direct light???
 		{
-			image[rays[index].imageIndex] += scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rng);
+			//image[rays[index].imageIndex] += scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rng);//!!! here intrMatIdx is not right...
+			glm::vec3 color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
+			color *= rays[index].carry;
+			scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
+			color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
+			//color *= (rays[index].direction*surToLight.direction);
+			image[rays[index].imageIndex] += color;
+			//image[rays[index].imageIndex] += glm::vec3(0,0,0);
 			rays[index].terminated = true;
 		}
 		else
