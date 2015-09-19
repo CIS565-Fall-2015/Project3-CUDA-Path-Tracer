@@ -7,6 +7,7 @@
 
 #include "sceneStructs.h"
 #include "scene.h"
+
 #include "glm/glm.hpp"
 #include "glm/gtx/norm.hpp"
 #include "utilities.h"
@@ -30,8 +31,7 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     exit(EXIT_FAILURE);
 }
 
-__host__ __device__ thrust::default_random_engine random_engine(
-        int iter, int index = 0, int depth = 0) {
+__host__ __device__ thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth) {
     return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
 }
 
@@ -132,7 +132,7 @@ __global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
         thrust::uniform_real_distribution<float> u01(0, 1);
 
         // CHECKITOUT: Note that on every iteration, noise gets added onto
@@ -147,7 +147,7 @@ __global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 }
 
 //Kernel function that gets all the ray directions
-__global__ void kernGetRayDirections(Camera * camera, RayState* rays)
+__global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -156,8 +156,15 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays)
 	{
 		int index = x + (y * camera->resolution.x);
 
+		//TODO : Tweak the random variable here if the image looks fuzzy
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+		thrust::uniform_real_distribution<float> u01(0, 0.005);
+
 		//Find the ray direction
-		glm::vec3 rayDir = (camera->M + (2.0f*x - 1.0f) * camera->H + (2.0f*y - 1.0f) * camera->V);
+		float sx = float(x) / ((float) (camera->resolution.x) - 1.0f);
+		float sy = float(y) / ((float) (camera->resolution.y) - 1.0f);
+
+		glm::vec3 rayDir = (camera->M + (2.0f*sx - 1.0f + u01(rng)) * camera->H - (2.0f*sy - 1.0f + u01(rng)) * camera->V);
 		rayDir -= camera->position;
 		rayDir = glm::normalize(rayDir);
 
@@ -165,12 +172,14 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays)
 		rays[index].ray.origin = camera->position;
 		rays[index].isAlive = true;
 		rays[index].rayColor = glm::vec3(1);
-		rays[index].pixelIndex = glm::ivec2(x, y);
+		rays[index].pixelIndex = index;
+
+//		printf("%d %d : %f %f %f\n", x, y, rayDir.x, rayDir.y, rayDir.z);
 	}
 }
 
 //Kernel function that performs one iteration of tracing the path.
-__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, int iter, glm::vec3* image)
+__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, glm::vec3* image)
 {
 	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -180,8 +189,8 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 		 int index = x + (y * camera->resolution.x);
 
 		 glm::vec3 intersectionPoint, normal;
-		 float min_t = 0, t; //FLT_MAX
-		 Ray r = ray->ray;
+		 float min_t = FLT_MAX, t;
+		 RayState r = ray[index];
 		 int nearestIndex = -1;
 		 glm::vec3 nearestIntersectionPoint, nearestNormal;
 
@@ -190,12 +199,12 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 		 {
 			 if(geoms[i].type == CUBE)
 			 {
-				 //t = boxIntersectionTest(geoms[i], r, intersectionPoint, normal);
+				 t = boxIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);
 			 }
 
-			 else if(geoms[i].type = SPHERE)
+			 else if(geoms[i].type == SPHERE)
 			 {
-				 t = sphereIntersectionTest(geoms[i], r, intersectionPoint, normal);
+				 t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);
 			 }
 
 			 if(t < min_t && t > 0)
@@ -211,13 +220,14 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 		 if(nearestIndex == -1)
 		 {
 			 ray->isAlive = false;
-			 image[index] = ray->rayColor;
+			 image[r.pixelIndex] += glm::vec3(0);
 		 }
 
 		 //else find the material color
 		 else
 		 {
-			 image[index] = glm::vec3(1);
+
+			 image[r.pixelIndex] += glm::vec3(1);
 		 }
     }
 }
@@ -226,6 +236,7 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
+
 void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera &cam = hst_scene->state.camera;
@@ -256,24 +267,24 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    //RayState* dev_rays;
+    RayState* dev_rays = NULL;
 
-    //cudaMalloc((void**)&dev_rays, pixelcount * sizeof(RayState));
+    cudaMalloc((void**)&dev_rays, pixelcount * sizeof(RayState));
 
     //Setup initial rays
-    //kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays);
+    kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, iter);
 
-  //  for(int i=0; i<traceDepth; ++i)
-//    {
+    for(int i=0; i<traceDepth; ++i)
+    {
     	//Take one step, should make dead rays as false
-    	//kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, dev_geoms, dev_geoms_count, dev_materials, iter, dev_image);
+    	kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, dev_geoms, dev_geoms_count, dev_materials, dev_image);
 
     	//Compact rays
-    	//thrust::remove_if(thrust::)
-//    }
+    	thrust::remove_if(thrust::)
+    }
 
 
-        generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+//        generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -284,7 +295,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
-    //cudaFree(dev_rays);
+    cudaFree(dev_rays);
 
     checkCUDAError("pathtrace");
 }

@@ -18,7 +18,7 @@ struct Ray {
 struct RayState
 {
 	Ray ray;
-	glm::ivec2 pixelIndex;
+	int pixelIndex;
 	glm::vec3 rayColor;
 	bool isAlive;
 };

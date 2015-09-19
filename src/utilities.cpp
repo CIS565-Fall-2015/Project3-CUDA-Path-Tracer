@@ -110,3 +110,8 @@ std::istream& utilityCore::safeGetline(std::istream& is, std::string& t) {
         }
     }
 }
+
+void utilityCore::printVec3(glm::vec3 v)
+{
+	printf("%f %f %f\n", v.x, v.y, v.z);
+}

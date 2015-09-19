@@ -202,6 +202,10 @@ void Scene::configureCamera()
 
 	float l = glm::length(camera.view);
 
-	camera.H = glm::normalize(A) * (l) * tan(float(camera.fov.x) * 0.5f);
-	camera.V = glm::normalize(B) * (l) * tan(float(camera.fov.y) * 0.5f);
+	camera.H = glm::normalize(A) * (l) * tan(float(camera.fov.x));
+	camera.V = glm::normalize(B) * (l) * tan(float(camera.fov.y));
+
+	utilityCore::printVec3(camera.M);
+	utilityCore::printVec3(camera.H);
+	utilityCore::printVec3(camera.V);
 }
