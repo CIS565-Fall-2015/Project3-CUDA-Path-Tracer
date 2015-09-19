@@ -1,5 +1,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <thrust/scan.h>
@@ -16,49 +17,11 @@ struct is_terminated {
 	}
 };
 
-/*
-int compact(int n, Ray *data) {
-	thrust::host_vector<Ray> hst_in(data, data + n);
-	thrust::device_vector<Ray> dev_data = hst_in;
-
-	thrust::device_vector<Ray>::iterator dev_data_end = thrust::remove_if(dev_data.begin(), dev_data.end(), is_terminated());
-	dev_data.resize(dev_data_end - dev_data.begin()); // the output is still the old size though
-
-	thrust::host_vector<Ray> hst_out = dev_data;
-
-	//Free old odata, allocate correct new size
-	int num_remaining = hst_out.size();
-	free(data);
-	data = (Ray*)malloc(num_remaining * sizeof(Ray));
-	for (int i = 0; i < num_remaining; i++) {
-		data[i] = hst_out[i];
-	}
-
-	return num_remaining;
-}
-*/
-
 /**
-* Performs stream compaction on idata, removing terminated rays, returns number remaining.
+* Performs stream compaction on array of Rays, removing those that are terminated.
 */
-int compact(int n, Ray *data) {
-	thrust::device_vector<Ray> dev_data(data, data + (n * sizeof(Ray))); //WARNING: TRIPLE CHECK THIS IS RIGHT SIZE
-
-	thrust::device_vector<Ray>::iterator dev_data_end = thrust::remove_if(dev_data.begin(), dev_data.end(), is_terminated());
-	dev_data.resize(dev_data_end - dev_data.begin()); // the output is still the old size though
-
-	//thrust::host_vector<Ray> hst_out = dev_data; // can I cut this out too?
-
-	//Free old odata, allocate correct new size
-	int num_remaining = dev_data.size();
-	cudaFree(data);
-	cudaMalloc(&data, num_remaining * sizeof(Ray));
-	//data = (Ray*)malloc(num_remaining * sizeof(Ray));
-	for (int i = 0; i < num_remaining; i++) {
-		data[i] = dev_data[i];
-	}
-
-	return num_remaining;
+Ray *compact(Ray *data, Ray *data_end) {
+	return thrust::remove_if(thrust::device, data, data_end, is_terminated());
 }
 
 /**

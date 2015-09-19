@@ -42,17 +42,28 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 }
 
 /**
- * Scatter a ray with some probabilities according to the material properties.
- * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
- * A perfect specular surface scatters in the reflected ray direction.
- * In order to apply multiple effects to one surface, probabilistically choose
- * between them.
- *
- * This method applies its changes to the Ray parameter `ray` in place.
- * It also modifies the color `color` of the ray in place.
- *
- * You may need to change the parameter list for your purposes!
- */
+* Scatter a ray with some probabilities according to the material properties.
+* For example, a diffuse surface scatters in a cosine-weighted hemisphere.
+* A perfect specular surface scatters in the reflected ray direction.
+* In order to apply multiple effects to one surface, probabilistically choose
+* between them.
+*
+* The visual effect you want is to straight-up add the diffuse and specular
+* components. You can do this in a few ways. This logic also applies to
+* combining other types of materias (such as refractive).
+* - (NOT RECOMMENDED - converges slowly or badly especially for pure-diffuse
+*   or pure-specular. In principle this correct, though.)
+*   Always take a 50/50 split between a diffuse bounce and a specular bounce,
+*   but multiply the result of either one by 1/0.5 to cancel the 0.5 chance
+*   of it happening.
+* - Pick the split based on the intensity of each color, and multiply each
+*   branch result by the inverse of that branch's probability (same as above).
+*
+* This method applies its changes to the Ray parameter `ray` in place.
+* It also modifies the color `color` of the ray in place.
+*
+* You may need to change the parameter list for your purposes!
+*/
 __host__ __device__
 void scatterRay(
         Ray &ray,
@@ -61,12 +72,59 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
-    // TODO: implement this.
-    // A basic implementation of pure-diffuse shading will just call the
-    // calculateRandomDirectionInHemisphere defined above.
+	if (m.hasReflective) {
+		//First must determine if this is perfectly specular or not
+		// is this only when there's an exponent? or when the diffuse is zero?
+		// for now i will go with the exponent being non zero
+		glm::vec3 specularColor = m.specular.color;
+		glm::vec3 diffuseColor = m.color;
+		float specularExponent = m.specular.exponent;
+		if (specularExponent != 0) {
+			// non perfect
+			float thetaS, phiS;
+			thrust::uniform_real_distribution<float> u01(0, 1);
+			float xi1 = u01(rng), xi2 = u01(rng); //random values between 0 and 1
+			glm::vec3 direction;
+			
+			thetaS = glm::acos(1.0f / (pow(xi1, specularExponent + 1)));
+			phiS = 2.0f * PI * xi2;
+			direction.x = glm::cos(phiS) * glm::sin(thetaS);
+			direction.y = glm::sin(phiS) * glm::sin(thetaS);
+			direction.z = glm::cos(thetaS);
+			
+			ray.origin = intersect + normal * EPSILON;
+			ray.direction = glm::normalize(direction); //do i need to normalize this?
 
-	// check if bounce was cool. if not then mark it terminated
+			// now color
+			// Calculate intensity values
+			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;
+			float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
 
-	// all color calculations and diffuse vs spec or whatever probability stuff (which I am still kinda confused on) too
+			float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
+			float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
 
+			if (specularProbability >= diffuseProbability) {
+				color *= specularColor * (1.0f / specularProbability);
+			}
+			else {
+				//diffuse won
+				color *= diffuseColor * (1.0f / diffuseProbability);
+			}
+		}
+		else {
+			// perfect mirror
+			//can just do the glm reflect and normal color shit
+			ray.origin = intersect + normal * EPSILON;
+			ray.direction = glm::reflect(intersect, normal);
+			color *= specularColor;
+		}
+	}
+	else {
+		// diffuse only
+		ray.origin = intersect + normal * EPSILON;
+		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		color *= m.color;
+	}
+
+	// TODO: Add refraction. Can something be diffuse, refractive, and reflective? (glass). how to do...
 }
