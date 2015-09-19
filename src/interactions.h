@@ -113,9 +113,8 @@ void scatterRay(
 		}
 		else {
 			// perfect mirror
-			//can just do the glm reflect and normal color shit
 			ray.origin = intersect + normal * EPSILON;
-			ray.direction = glm::reflect(intersect, normal);
+			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
 			color *= specularColor;
 		}
 	}
