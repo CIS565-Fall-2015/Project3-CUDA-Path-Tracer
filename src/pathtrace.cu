@@ -269,7 +269,7 @@ __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *i
 
 }
 
-__global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int geoNum, int lightIndex)
+__global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int geoNum, int lightIndex)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -282,7 +282,7 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 		//(3) if nothing in between, cos ray, 
 		//dev_geo[ligntObjIdx]
 		glm::vec4 pointOnLight(0,0,0,1);
-		thrust::default_random_engine rng = random_engine(blockIdx.x + threadIdx.x, index, 1);
+		thrust::default_random_engine rng = random_engine(iter, index, 1);
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		pointOnLight.x = u01(rng)-0.5;
 		pointOnLight.y = u01(rng)-0.5;
@@ -290,7 +290,7 @@ __global__ void kernFinalImage(int raysNum, Camera cam, Ray * rays, glm::vec3 *i
 		//pointOnLight.w = 1;
 		pointOnLight = dev_geo[lightIndex].transform *pointOnLight;
 		//pointOnLight = glm::vec4(0, 10, 0, 1);
-		pointOnLight = glm::vec4(dev_geo[lightIndex].translation, 1);
+		//pointOnLight = glm::vec4(dev_geo[lightIndex].translation, 1);
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;
 		float intrT = -1;
@@ -507,7 +507,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//(3) Handle all not terminated
 	int bSize = blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);//??? block size
+	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);//??? block size
 	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
