@@ -55,8 +55,8 @@ struct RenderState {
 };
 
 struct Pixel {
-    bool terminated;
     Ray ray;
     glm::vec3 color;
-    glm::ivec2 coord;
+    bool terminated;
+    int index;
 };

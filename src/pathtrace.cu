@@ -32,7 +32,8 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 
 __host__ __device__ thrust::default_random_engine random_engine(
         int iter, int index = 0, int depth = 0) {
-    return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+    //return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+    return thrust::default_random_engine(utilhash((index + 1)) ^ utilhash(iter) ^ utilhash(depth));
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -106,7 +107,7 @@ __global__ void generateCameraRays(Camera cam, Pixel *pixels) {
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        float screen_x = ((float) x * 2.f / (float)cam.resolution.x) - 1.f;
+        float screen_x = -1 * (((float) x * 2.f / (float)cam.resolution.x) - 1.f);
         float screen_y = -1 * (((float) y * 2.f / (float)cam.resolution.y) - 1.f);
 
         glm::vec3 cam_right = glm::cross(cam.view, cam.up);
@@ -124,17 +125,16 @@ __global__ void generateCameraRays(Camera cam, Pixel *pixels) {
         px.terminated = false;
         px.ray = r;
         px.color = glm::vec3(1, 1, 1);
-        px.coord = glm::ivec2(x, y);
+        px.index = index;
         pixels[index] = px;
     }
 }
 
-__device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom& nearest) {
+__device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount,
+        Geom& nearest, glm::vec3 &intersection, glm::vec3 &normal) {
     float nearest_t = -1;
     for (int i = 0; i < geomCount; i++) {
         Geom g = geoms[i];
-        glm::vec3 intersection = glm::vec3(0, 0, 0);
-        glm::vec3 normal = glm::vec3(0, 0, 0);
         float t = -1;
 
         switch (g.type) {
@@ -154,25 +154,36 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount, Geom
     return nearest_t;
 }
 
-__global__ void findIntersections(Camera cam, glm::vec3 *image,
-        Pixel *pixels, Geom *geoms, int geomCount, Material *mats) {
+__global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
+        int depth, int iter,
+        Geom *geoms, int geomCount, Material *mats) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
         Pixel px = pixels[index];
-        Ray r = px.ray;
+        if (px.terminated == false) {
+            Ray r = px.ray;
 
-        Geom nearest;
-        float t = nearestIntersectionGeom(r, geoms, geomCount, nearest);
+            glm::vec3 intersection = glm::vec3(0, 0, 0);
+            glm::vec3 normal = glm::vec3(0, 0, 0);
+            Geom nearest;
+            float t = nearestIntersectionGeom(r, geoms, geomCount, nearest, intersection, normal);
 
-        if (t > 0) {
-            Material m = mats[nearest.materialid];
-            pixels[index].color = m.color;
-        } else {
-            pixels[index].color = glm::vec3(0, 0, 0);
-            pixels[index].terminated = true;
+            if (t > 0) {
+                Material m = mats[nearest.materialid];
+                if (m.emittance > 0) {
+                    pixels[index].terminated = true;
+                } else {
+                    thrust::default_random_engine rng = random_engine(iter, index, depth);
+                    scatterRay(pixels[index].ray, pixels[index].color,
+                            intersection, normal, m, rng);
+                }
+            } else {
+                pixels[index].color = glm::vec3(0, 0, 0);
+                pixels[index].terminated = true;
+            }
         }
     }
 }
@@ -245,9 +256,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
-    findIntersections<<<blocksPerGrid, blockSize>>>(
-            cam, dev_image, dev_pixels, dev_geom, hst_scene->geoms.size(),
-            dev_mats);
+    for (int i = 0; i < 5; i++) {
+        intersect<<<blocksPerGrid, blockSize>>>(
+                cam, dev_image, dev_pixels,
+                iter, i,
+                dev_geom, hst_scene->geoms.size(), dev_mats);
+    }
 
     debugIntersectionColors<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
