@@ -3,7 +3,7 @@
 
 namespace StreamCompaction {
 namespace Thrust {
-	int compact(Ray n, Ray *odata, const Ray *idata);
+	int compact(int n, Ray *data);
     void scan(int n, int *odata, const int *idata);
 }
 }

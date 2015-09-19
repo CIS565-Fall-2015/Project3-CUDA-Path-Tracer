@@ -3,7 +3,6 @@
 #include <cmath>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
-#include <thrust/remove.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -13,10 +12,12 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
+#include "../stream_compaction/thrust.h"
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
-void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+// TODO: Why did this start throwing a multi define error?
+#define checkCUDAError(msg) checkCUDAErrorFn1(msg, FILENAME, __LINE__)
+void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;
@@ -264,9 +265,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	InitializeRays<<<blocksPerGrid, blockSize>>>(cam, iter, dev_rays);
 
 	//while the array size is not zero and less than depth
-	int currentDepth = 0;
-	while (1 && currentDepth < traceDepth) {
+	int currentDepth = 0, threadsRemaining = pixelcount; //at first we will have one ray for each pixel
+	while (threadsRemaining > 0 && currentDepth < traceDepth) {
+		//trace bounce should have threadsremaining number of luanches
 		//TraceBounce(cam, iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
+		threadsRemaining = StreamCompaction::Thrust::compact(threadsRemaining, dev_rays); //i don't want to use the otherone right now because it would have me copy to host and back to device. want to just keep on device
 		currentDepth++;
 	}
 
