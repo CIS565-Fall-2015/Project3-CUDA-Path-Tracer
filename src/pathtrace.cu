@@ -32,7 +32,8 @@ void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
 
 __host__ __device__ thrust::default_random_engine random_engine(
 	int iter, int index = 0, int depth = 0) {
-	return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+	int h = utilhash((1 << 31) | (depth << 20) | iter) ^ utilhash(index);
+	return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -63,8 +64,6 @@ static glm::vec3 *dev_image = NULL;
 static Ray* dev_rays = NULL;
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
-// TODO: static variables for device memory, scene/camera info, etc
-// ...
 
 void pathtraceInit(Scene *scene) {
 	hst_scene = scene;
@@ -124,30 +123,56 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 
 /**
  * Creates a ray through each pixel on the screen.
+  * Depth of Field: http://mzshehzanayub.blogspot.com/2012/10/gpu-path-tracer.html
  */
 __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * cam.resolution.x); // index in ray array
-
-	glm::vec3 v = glm::cross(cam.up, cam.view);
-	glm::vec3 direction;
-	float halfResX, halfResY;
-	float magnitudeX, magnitudeY;
-
-	// Jitter within the pixel (one by one)
+	
 	thrust::default_random_engine rng = random_engine(iter, index, 0);
-	thrust::uniform_int_distribution<float> u01(-0.5f, 0.5f);
+	thrust::uniform_int_distribution<float> u01(0.0f, 1.0f);
+	thrust::uniform_int_distribution<float> uHalf(-0.5f, 0.5f);
 
-	halfResX = cam.resolution.x / 2.0f;
-	halfResY = cam.resolution.y / 2.0f;
-	magnitudeX = (-(halfResX - x + u01(rng)) * sin(cam.fov.x)) / halfResX;
-	magnitudeY = ((halfResY - y + u01(rng)) * sin(cam.fov.y)) / halfResY;
+	if (cam.dof) {
+		// Depth of field
+		glm::vec3 horizontal, middle, vertical;
+		glm::vec3 pointOnUnitImagePlane, pointOnTrueImagePlane;
+		float jitteredX, jitteredY;
 
-	direction = cam.view + magnitudeX * v + magnitudeY * cam.up;
+		// Compute point on image plane, then plane at focal distance
+		horizontal = glm::cross(cam.view, cam.up) * glm::sin(cam.fov.x);
+		vertical = glm::cross(glm::cross(cam.view, cam.up), cam.view) * glm::sin(-cam.fov.y);
+		middle = cam.position + cam.view;
 
-	rays[index].origin = cam.position;
-	rays[index].direction = direction;
+		jitteredX = (uHalf(rng) + x) / (cam.resolution.x - 1);
+		jitteredY = (uHalf(rng) + y) / (cam.resolution.y - 1);
+		pointOnUnitImagePlane = middle + (((2.0f * jitteredX) - 1.0f) * horizontal) + (((2.0f * jitteredY) - 1.0f) * vertical);
+		pointOnTrueImagePlane = cam.position + ((pointOnUnitImagePlane - cam.position) * cam.focalDistance);
+
+		 // Sample a random point on the lense
+		float angle = TWO_PI * u01(rng);
+		float distance = cam.apertureRadius * glm::sqrt(u01(rng));
+		glm::vec2 aperture(glm::cos(angle) * distance, glm::sin(angle) * distance);
+
+		rays[index].origin = cam.position + (aperture.x * glm::cross(cam.view, cam.up) + (aperture.y * glm::cross(glm::cross(cam.view, cam.up), cam.view)));;
+		rays[index].direction = glm::normalize(pointOnTrueImagePlane - rays[index].origin);
+	}
+	else {
+		//No depth of field
+		glm::vec3 v = glm::cross(cam.up, cam.view);
+		float halfResX, halfResY;
+		float magnitudeX, magnitudeY;
+
+		halfResX = cam.resolution.x / 2.0f;
+		halfResY = cam.resolution.y / 2.0f;
+		magnitudeX = (-(halfResX - x + uHalf(rng)) * sin(cam.fov.x)) / halfResX;
+		magnitudeY = ((halfResY - y + uHalf(rng)) * sin(cam.fov.y)) / halfResY;
+
+		rays[index].origin = cam.position;
+		rays[index].direction = cam.view + magnitudeX * v + magnitudeY * cam.up;
+	}
+
 	rays[index].color = glm::vec3(1.0f);
 	rays[index].pixel_index = index;
 	rays[index].alive = true;

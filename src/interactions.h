@@ -73,7 +73,10 @@ void scatterRay(
         const Material &m,
         thrust::default_random_engine &rng) {
 	glm::vec3 diffuseColor = m.color;
-	if (m.hasReflective) {
+	if (m.hasReflective && m.hasRefractive) {
+		//both refractive and reflective
+	}
+	else if (m.hasReflective) {
 		//First must determine if this is perfectly specular or not
 		// is this only when there's an exponent? or when the diffuse is zero?
 		// for now i will go with the exponent being non zero
@@ -128,6 +131,9 @@ void scatterRay(
 			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
 			color *= specularColor;
 		}
+	}
+	else if (m.hasRefractive) {
+		//refractive only
 	}
 	else {
 		// diffuse only
