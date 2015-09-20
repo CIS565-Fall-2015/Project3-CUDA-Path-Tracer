@@ -42,6 +42,22 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 }
 
 /**
+* Computes Fresnel reflection coefficient using Schlick's approximation
+* https://en.wikipedia.org/wiki/Schlick%27s_approximation
+* http://www.scratchapixel.com/old/lessons/3d-basic-lessons/lesson-14-interaction-light-matter/optics-reflection-and-refraction/
+*/
+__host__ __device__
+float calculateFresnelReflectionCoefficient(Ray ray, glm::vec3 normal, float intersectIOR, float transmittedIOR) {
+	float r0 = glm::pow((intersectIOR - transmittedIOR) / (intersectIOR + transmittedIOR), 2);
+
+	// curious if this is between the direction of the ray or the intersection point, little confused
+	// shouldn't need to modify the ray so not passing the address
+	// starting to this this is wrong and should be the incident. will have to test
+	return r0 + (1.0f - r0) * glm::pow(1 - glm::dot(normal, ray.direction), 5);
+	//TRIPPLE CHECK THIS
+}
+
+/**
 * Scatter a ray with some probabilities according to the material properties.
 * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
 * A perfect specular surface scatters in the reflected ray direction.
@@ -73,17 +89,50 @@ void scatterRay(
         const Material &m,
         thrust::default_random_engine &rng) {
 	glm::vec3 diffuseColor = m.color;
+	glm::vec3 specularColor = m.specular.color;
+	thrust::uniform_real_distribution<float> u01(0, 1);
+
 	if (m.hasReflective && m.hasRefractive) {
 		//both refractive and reflective
+
+		// first need to calculate reflective coefficient using schlick;s
+		// wait how do i know if i am in the air or not?
+		float reflectionCoefficient, eta;
+		if (glm::dot(ray.direction, normal) < 0.0f) {
+			// The ray is outside the object
+			reflectionCoefficient = calculateFresnelReflectionCoefficient(ray, normal, 1.0f, m.indexOfRefraction);
+			eta = 1.0f / m.indexOfRefraction;
+		}
+		else {
+			// The ray is inside the object
+			// TODO/NOTE MAYBE THE NORMAL SHOULD BE INVERTED HERE?
+			reflectionCoefficient = calculateFresnelReflectionCoefficient(ray, normal, m.indexOfRefraction, 1.0f);
+			eta = m.indexOfRefraction / 1.0f; //this could be backwards for all i know
+		}
+		float refractionCoefficient = 1.0f - reflectionCoefficient;
+
+		float rand = u01(rng);
+		if (rand <= reflectionCoefficient) {
+			// it reflects
+			ray.origin = intersect + normal * EPSILON;
+			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
+			color *= specularColor * (1.0f / refractionCoefficient);
+		}
+		else {
+			// it refracts
+			// origin or direction or a mix of both? no idea
+			// night need to play with epsilon
+			ray.origin = intersect + normal * EPSILON; // minus normal?
+			ray.direction = glm::refract(ray.origin, normal, eta);
+			color *= specularColor * (1.0f / reflectionCoefficient);
+		}
 	}
 	else if (m.hasReflective) {
 		//First must determine if this is perfectly specular or not
 		// is this only when there's an exponent? or when the diffuse is zero?
 		// for now i will go with the exponent being non zero
-		glm::vec3 specularColor = m.specular.color;
 		float specularExponent = m.specular.exponent;
 		if (specularExponent != 0) {
-			thrust::uniform_real_distribution<float> u01(0, 1);
 			// non perfect
 			/*
 			 * This implementation is not working
