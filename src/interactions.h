@@ -91,23 +91,41 @@ void scatterRay(
 			direction.x = glm::cos(phiS) * glm::sin(thetaS);
 			direction.y = glm::sin(phiS) * glm::sin(thetaS);
 			direction.z = glm::cos(thetaS);
+
+			// this direction isn't in the correct coordinate system..
+			// need to go from tangent to world and specular to gangent?
 			
 			ray.origin = intersect + normal * EPSILON;
-			ray.direction = glm::normalize(direction); //do i need to normalize this?
+			//ray.direction = glm::normalize(direction); //do i need to normalize this?
+			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
 
-			// now color
 			// Calculate intensity values
-			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;
-			float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
+			//float specularIntensity = glm::pow((specularColor.x + specularColor.y + specularColor.z) / 3.0f, specularExponent);
+			//float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
+			float specularProbability = specularExponent / (1.0f + specularExponent);
+			float diffuseProbability = 1.0f / (1.0f + specularExponent);
 
-			float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
-			float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
+			//float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
+			//float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
 
+			/*
 			if (specularProbability >= diffuseProbability) {
 				color *= specularColor * (1.0f / specularProbability);
 			}
 			else {
 				//diffuse won
+				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+				color *= diffuseColor * (1.0f / diffuseProbability);
+			}
+			*/
+			float randColor = u01(rng);
+			if (randColor <= specularProbability) {
+				//spec
+				color *= specularColor * (1.0f / specularProbability);
+			}
+			else {
+				//diffuse
+				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
 				color *= diffuseColor * (1.0f / diffuseProbability);
 			}
 		}
