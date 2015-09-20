@@ -141,7 +141,7 @@ __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 		float jitteredX, jitteredY;
 
 		// Compute point on image plane, then plane at focal distance
-		horizontal = glm::cross(cam.view, cam.up) * glm::sin(cam.fov.x);
+		horizontal = glm::cross(cam.view, cam.up) * glm::sin(-cam.fov.x);
 		vertical = glm::cross(glm::cross(cam.view, cam.up), cam.view) * glm::sin(-cam.fov.y);
 		middle = cam.position + cam.view;
 

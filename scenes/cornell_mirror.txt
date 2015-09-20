@@ -58,7 +58,7 @@ FILE        cornell
 EYE         0.0 5 10.5
 VIEW        0 0 -1
 UP          0 1 0
-DOF         0 // Is DOF active
+DOF         1 // Is DOF active
 FD          9.5 // Focal distance
 AR          0.2 // Aperture radius
 
