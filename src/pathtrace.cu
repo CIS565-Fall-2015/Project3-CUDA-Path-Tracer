@@ -32,7 +32,8 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 }
 
 __host__ __device__ thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth) {
-    return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+	int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
+	return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -68,7 +69,9 @@ static Geom *dev_geoms = NULL;
 static int* dev_geoms_count = NULL;
 static Material *dev_materials = NULL;
 static RenderState *dev_state = NULL;
-
+static RayState *dev_rays_begin = NULL;
+static RayState *dev_rays_end = NULL;
+static int *dev_light_indices = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -104,6 +107,13 @@ void pathtraceInit(Scene *scene) {
     cudaMalloc((void**)&dev_state, sizeof(RenderState));
     cudaMemcpy(dev_state, &hst_scene->state, sizeof(RenderState), cudaMemcpyHostToDevice);
 
+    //Allocate memory for rays
+    cudaMalloc((void**)&dev_rays_begin, pixelcount * sizeof(RayState));
+
+    //Copy Light Indices
+    cudaMalloc((void**)&dev_light_indices, hst_scene->state.lightIndices.size() * sizeof(int));
+    cudaMemcpy(dev_light_indices, hst_scene->state.lightIndices.data(), hst_scene->state.lightIndices.size() * sizeof(int), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -117,6 +127,8 @@ void pathtraceFree() {
     cudaFree(dev_materials);
     cudaFree(dev_state);
     cudaFree(dev_geoms_count);
+    cudaFree(dev_rays_begin);
+    cudaFree(dev_light_indices);
 
     checkCUDAError("pathtraceFree");
 }
@@ -164,7 +176,7 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 		float sx = float(x) / ((float) (camera->resolution.x) - 1.0f);
 		float sy = float(y) / ((float) (camera->resolution.y) - 1.0f);
 
-		glm::vec3 rayDir = (camera->M + (2.0f*sx - 1.0f + u01(rng)) * camera->H - (2.0f*sy - 1.0f + u01(rng)) * camera->V);
+		glm::vec3 rayDir = (camera->M - (2.0f*sx - 1.0f + u01(rng)) * camera->H - (2.0f*sy - 1.0f + u01(rng)) * camera->V);
 		rayDir -= camera->position;
 		rayDir = glm::normalize(rayDir);
 
@@ -179,7 +191,7 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 }
 
 //Kernel function that performs one iteration of tracing the path.
-__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, glm::vec3* image)
+__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, glm::vec3* image, int iter, int currDepth)
 {
 	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -188,49 +200,124 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 	 {
 		 int index = x + (y * camera->resolution.x);
 
-		 glm::vec3 intersectionPoint, normal;
-		 float min_t = FLT_MAX, t;
-		 RayState r = ray[index];
-		 int nearestIndex = -1;
-		 glm::vec3 nearestIntersectionPoint, nearestNormal;
-
-		 //Find geometry intersection
-		 for(int i=0; i<(*geomCount); ++i)
+		 if(ray[index].isAlive)
 		 {
-			 if(geoms[i].type == CUBE)
+			 glm::vec3 intersectionPoint = glm::vec3(0), normal = glm::vec3(0);
+			 float min_t = FLT_MAX, t;
+			 RayState &r = ray[index];
+			 int nearestIndex = -1;
+			 glm::vec3 nearestIntersectionPoint = glm::vec3(0), nearestNormal = glm::vec3(0);
+			 bool outside = false;
+
+			 //Find geometry intersection
+			 for(int i=0; i<(*geomCount); ++i)
 			 {
-				 t = boxIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);
+				 if(geoms[i].type == CUBE)
+				 {
+					 t = boxIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+				 }
+
+				 else if(geoms[i].type == SPHERE)
+				 {
+					 t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+				 }
+
+				 if(t < min_t && t > 0)//&& !outside)
+				 {
+					 min_t = t;
+					 nearestIntersectionPoint = intersectionPoint;
+					 nearestIndex = i;
+					 nearestNormal = normal;
+				 }
 			 }
 
-			 else if(geoms[i].type == SPHERE)
+			 //If the nearest index remains unchanged, means no intersection and we can kill the ray.
+			 if(nearestIndex == -1)
 			 {
-				 t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);
+				 r.isAlive = false;
 			 }
 
-			 if(t < min_t && t > 0)
+			 //else find the material color
+			 else
 			 {
-				 min_t = t;
-				 nearestIntersectionPoint = intersectionPoint;
-				 nearestIndex = i;
-				 nearestNormal = normal;
+				 if(materials[geoms[nearestIndex].materialid].emittance > 0)
+				 {
+					 //Light source, end ray here
+					 r.isAlive = false;
+					 image[r.pixelIndex] += (r.rayColor * materials[geoms[nearestIndex].materialid].emittance);
+				 }
+
+				 else
+				 {
+					 thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, currDepth);
+
+					 scatterRay(r,
+						 nearestIntersectionPoint,
+						 nearestNormal,
+						 materials[geoms[nearestIndex].materialid],
+						 rng);
+				 }
 			 }
-		 }
-
-		 //If the nearest index remains unchanged, means no intersection and we can kill the ray.
-		 if(nearestIndex == -1)
-		 {
-			 ray->isAlive = false;
-			 image[r.pixelIndex] += glm::vec3(0);
-		 }
-
-		 //else find the material color
-		 else
-		 {
-
-			 image[r.pixelIndex] += glm::vec3(1);
 		 }
     }
 }
+
+__global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms, int * lightIndices, Material* materials, glm::vec3* image, int iter, int currDepth)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < camera->resolution.x && y < camera->resolution.y)
+	{
+		int index = x + (y * camera->resolution.x);
+
+		if(ray[index].isAlive)
+		{
+			glm::vec3 intersectionPoint, normal;
+			float t;
+
+			RayState &r = ray[index];
+			int i = lightIndices[0];
+			bool outside = false;
+
+			thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, currDepth);
+//			thrust::uniform_real_distribution<float> u01(0, lightIndices.size());
+//
+//			float r = u01(rng);
+
+			r.ray.direction = glm::normalize(getRandomPointOnSphereLight(geoms[i], rng) - r.ray.origin);
+			t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+
+			if(t > 0)
+			{
+				//Intersection with light, write the color
+				image[r.pixelIndex] += (r.rayColor);// * materials[geoms[i].materialid].emittance);
+			}
+		}
+	}
+}
+
+__global__ void kernWriteToImage(Camera *camera, RayState * r, glm::vec3* image)
+{
+	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	 if (x < camera->resolution.x && y < camera->resolution.y)
+	 {
+		 int index = x + (y * camera->resolution.x);
+
+		 image[r[index].pixelIndex] += r[index].rayColor;
+	 }
+}
+
+struct isDead
+{
+	__host__ __device__ bool  operator()(const RayState r)
+	{
+		return (!r.isAlive);
+	}
+};
+
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -243,8 +330,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
     const int blockSideLength = 8;
-    const dim3 blockSize(blockSideLength, blockSideLength);
-    const dim3 blocksPerGrid(
+    dim3 blockSize(blockSideLength, blockSideLength);
+    dim3 blocksPerGrid(
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
 
@@ -267,26 +354,32 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    RayState* dev_rays = NULL;
-
-    cudaMalloc((void**)&dev_rays, pixelcount * sizeof(RayState));
-
     //Setup initial rays
-    kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, iter);
+    kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, iter);
+    dev_rays_end = dev_rays_begin + pixelcount;
+    int rayCount = pixelcount;
+    glm::ivec3 newRes;
 
-    for(int i=0; i<traceDepth; ++i)
+    //&& (dev_rays_end - dev_rays_begin > 0)
+    for(int i=0; (i<traceDepth); ++i)
     {
     	//Take one step, should make dead rays as false
-    	kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays, dev_geoms, dev_geoms_count, dev_materials, dev_image);
+    	kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_materials, dev_image, iter, i);
 
-    	//Compact rays
-    	thrust::remove_if(thrust::)
+    	//Compact rays, dev_rays_end points to the new end
+//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+
+//    	rayCount = dev_rays_begin - dev_rays_end;
+//    	newRes.x = sqrt(rayCount) + 1;
+//    	newRes.y = newRes.x;
+//
+//    	blocksPerGrid.x = (newRes.x + blockSize.x - 1)/ blockSize.x;
+//    	blocksPerGrid.y = (newRes.y + blockSize.y - 1)/ blockSize.y;
+
     }
 
-
-//        generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
-
-    ///////////////////////////////////////////////////////////////////////////
+    //Direct Illumination
+    kernDirectLightPath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_materials, dev_image, iter, traceDepth);
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
@@ -294,8 +387,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
-
-    cudaFree(dev_rays);
 
     checkCUDAError("pathtrace");
 }

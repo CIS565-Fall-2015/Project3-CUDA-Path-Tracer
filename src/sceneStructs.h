@@ -63,5 +63,6 @@ struct RenderState {
     int traceDepth;
     std::vector<glm::vec3> image;
     std::string imageName;
+    std::vector<int> lightIndices;
 };
 

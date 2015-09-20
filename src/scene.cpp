@@ -30,6 +30,8 @@ Scene::Scene(string filename) {
             }
         }
     }
+
+    findLights();
 }
 
 int Scene::loadGeom(string objectid) {
@@ -202,10 +204,21 @@ void Scene::configureCamera()
 
 	float l = glm::length(camera.view);
 
-	camera.H = glm::normalize(A) * (l) * tan(float(camera.fov.x));
-	camera.V = glm::normalize(B) * (l) * tan(float(camera.fov.y));
+	camera.H = glm::normalize(A) * (l) * atan(glm::radians(camera.fov.x));
+	camera.V = glm::normalize(B) * (l) * atan(glm::radians(camera.fov.y));
 
-	utilityCore::printVec3(camera.M);
-	utilityCore::printVec3(camera.H);
-	utilityCore::printVec3(camera.V);
+	//utilityCore::printVec3(camera.M);
+	//utilityCore::printVec3(camera.H);
+	//utilityCore::printVec3(camera.V);
+}
+
+void Scene::findLights()
+{
+	RenderState &state = this->state;
+
+	for(int i=0; i<geoms.size(); ++i)
+	{
+		if(materials[geoms[i].materialid].emittance > 0)
+			state.lightIndices.push_back(i);
+	}
 }

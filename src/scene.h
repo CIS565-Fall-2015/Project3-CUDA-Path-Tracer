@@ -26,4 +26,5 @@ public:
     RenderState state;
 
     void configureCamera();
+    void findLights();
 };
