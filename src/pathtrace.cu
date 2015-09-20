@@ -115,7 +115,7 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		int index = x + (y * cam.resolution.x);
 		glm::vec3 left = glm::cross(cam.up, cam.view);
 
-		thrust::default_random_engine rng = random_engine(iter, index, 0);
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
 
 		float res2x = cam.resolution.x / 2.0;
@@ -133,12 +133,15 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 	}
 }
 
-__global__ void intersect(Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
+__global__ void intersect(int iter, Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
+
 	if (x < cam.resolution.x && y < cam.resolution.y){
 		int index = x + (y * cam.resolution.x);
+
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 
 		Ray ray = rays[index];
 
@@ -171,7 +174,7 @@ __global__ void intersect(Camera cam, Ray* rays, glm::vec3* colors, int numObjec
 		if (obj_index >= 0){
 			//Material c = materials[index];
 			//Geom g = geoms[index];
-			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[obj_index].color, materials[obj_index], thrust::default_random_engine());
+			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
 			//colors[index] = glm::vec3(0.0,1.0,0.0);
 		}
 		else{
@@ -262,7 +265,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
 	//cudaDeviceSynchronize();
 
-	intersect << <blocksPerGrid, blockSize >> >(cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+	intersect << <blocksPerGrid, blockSize >> >(iter, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 
 	//cudaDeviceSynchronize();
 

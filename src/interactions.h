@@ -76,13 +76,18 @@ void scatterRay(
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
 
-	// Assume perfect reflection
-	if (m.hasReflective){
+	thrust::uniform_real_distribution<float> u01(0, 1);
+	float randNum = u01(rng);
+
+	// Specular
+	if (randNum > 0.5){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
+		color = color * m.specular.color;
 	}
+	// Diffuse
 	else{
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		color = color * m.color;
 	}
 	ray.origin = intersect;
-	color = color * emittedColor;
 }
