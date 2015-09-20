@@ -182,6 +182,8 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 		glm::vec3 Dir_ = Pw - cam.position;
 
 		rays[index].direction = glm::normalize(Dir_);
+		rays[index].lastObjIdx = -1;
+		rays[index].origMatIdx = -1;
 	}
 }
 
@@ -221,7 +223,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		glm::vec3 intrNormal;
 		float intrT = -1;
 		int intrMatIdx;
-		int intrObjIdx;
+		int intrObjIdx=-1;
 
 		for (int i = 0; i<geoNum; i++)
 		{
