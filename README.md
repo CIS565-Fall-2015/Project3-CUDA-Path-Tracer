@@ -30,6 +30,11 @@ base code is meant to serve as a strong starting point for a CUDA path tracer,
 you are not required to use it if you don't want to. You may also change any
 part of the base code as you please. **This is YOUR project.**
 
+**Recommendation:** Every image you save should automatically get a different
+filename. Don't delete all of them! For the benefit of your README, keep a
+bunch of them around so you can pick a few to document your progress at the
+end.
+
 ### Contents
 
 * `src/` C++/CUDA source files.
@@ -74,11 +79,17 @@ You will need to implement the following features:
   * Implement antialiasing (by jittering rays within each pixel)
 * Diffuse surfaces
 * Perfectly specular-reflective (mirrored) surfaces
-* Stream compaction optimization
+  * See notes on diffuse/specular in `scatterRay` and on specular below
+* Stream compaction optimization. You may use any of:
+  * Your global-memory work-efficient stream compaction implementation.
+  * A shared-memory work-efficient stream compaction (see below).
+  * `thrust::remove_if` or any of the other Thrust stream compaction functions.
 
 You are also required to implement at least 2 of the following features.
 Please ask if you need good references (they will be added to this README
-later on). If you find good references, share them.
+later on). If you find good references, share them! **Extra credit**: implement
+more features on top of the 2 required ones, with point value up to +20/100 at
+the grader's discretion (based on difficulty and coolness).
 
 * Work-efficient stream compaction using shared memory across multiple blocks
   (See *GPU Gems 3* Chapter 39).
@@ -86,6 +97,7 @@ later on). If you find good references, share them.
   * Refraction (e.g. glass/water) with Frensel effects using Schlick's
     approximation or more accurate methods
   * Physically-based depth-of-field (by jittering rays within an aperture)
+  * Recommended but not required: non-perfect specular surfaces
 * Texture mapping
 * Bump mapping
 * Direct lighting (by taking a final ray directly to a random point on an
@@ -96,6 +108,7 @@ later on). If you find good references, share them.
   online or export them from your favorite 3D modeling application.
   With approval, you may use a third-party OBJ loading code to bring the data
   into C++.
+  * You can use the triangle intersection function `glm::intersectRayTriangle`.
 
 This 'extra features' list is not comprehensive. If you have a particular idea
 you would like to implement (e.g. acceleration structures, etc.), please
@@ -122,8 +135,8 @@ search for `CHECKITOUT`. You'll have to implement parts labeled with `TODO`.
     scene data (e.g. geometry, materials) from `Scene`.
   * `pathtraceFree` frees memory allocated by `pathtraceInit`
   * `pathtrace` performs one iteration of the rendering - it handles kernel
-    launches, memory copies, transferring some data, etc. See comments for
-    a low-level overview.
+    launches, memory copies, transferring some data, etc.
+    * See comments for a low-level path tracing recap.
 * `src/intersections.h`: ray intersection functions
   * `boxIntersectionTest` and `sphereIntersectionTest`, which take in a ray and
     a geometry object and return various properties of the intersection.
@@ -150,11 +163,26 @@ combination of index, iteration, and depth as the seed:
 thrust::default_random_engine rng = random_engine(iter, index, depth);
 ```
 
+### Specular Lighting
+
+In path tracing, like diffuse materials, specular materials are
+simulated using a probability distribution instead computing the
+strength of a ray bounce based on angles.
+
+Equations 7, 8, and 9 of
+[GPU Gems 3 chapter 20](http://http.developer.nvidia.com/GPUGems3/gpugems3_ch20.html)
+give the formulas for generating a random specular ray. (Note that
+there is a typographical error: χ in the text = ξ in the formulas.)
+
+Also see the notes in `scatterRay` for probability splits between
+diffuse/specular/other material types.
+
+
 ### Notes on GLM
 
 This project uses GLM for linear algebra.
 
-On NVIDIA cards pre-Fermi (pre-DX12), you may have issues with mat4
+On NVIDIA cards pre-Fermi (pre-DX12), you may have issues with mat4-vec4
 multiplication. If you have one of these cards, be careful! If you have issues,
 you might need to grab `cudamat4` and `multiplyMV` from the
 [Fall 2014 project](https://github.com/CIS565-Fall-2014/Project3-Pathtracer).
@@ -176,9 +204,6 @@ Materials are defined in the following fashion:
 * REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
 * REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
 * REFRIOR (float ior) //index of refraction for Fresnel effects
-* SCATTER (float scatter) //scatter flag, 0 for no, 1 for yes
-* ABSCOEFF (float r) (float b) (float g) //absorption coefficient for scattering
-* RSCTCOEFF (float rsctcoeff) //reduced scattering coefficient
 * EMITTANCE (float emittance) //the emittance of the material. Anything >0
   makes the material a light source.
 
@@ -190,8 +215,8 @@ Cameras are defined in the following fashion:
 * ITERATIONS (float interations) //how many iterations to refine the image,
   only relevant for supersampled antialiasing, depth of field, area lights, and
   other distributed raytracing applications
+* DEPTH (int depth) //maximum depth (number of times the path will bounce)
 * FILE (string filename) //file to output render to upon completion
-* frame (frame number) //start of a frame
 * EYE (float x) (float y) (float z) //camera's position in worldspace
 * VIEW (float x) (float y) (float z) //camera's view direction
 * UP (float x) (float y) (float z) //camera's up vector
@@ -203,7 +228,6 @@ Objects are defined in the following fashion:
   "mesh". Note that cubes and spheres are unit sized and centered at the
   origin.
 * material (material ID) //material to assign this object
-* frame (frame number) //start of a frame
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
@@ -229,10 +253,12 @@ the middle.
 
 Please see: [**TIPS FOR WRITING AN AWESOME README**](https://github.com/pjcozzi/Articles/blob/master/CIS565/GitHubRepo/README.md)
 
-* Sell your project
+* Sell your project.
 * Assume the reader has a little knowledge of path tracing - don't go into
   detail explaining what it is. Focus on your project.
-* Use this to document what you've done
+* Don't talk about it like it's an assignment - don't say what is and isn't
+  "extra" or "extra credit." Talk about what you accomplished.
+* Use this to document what you've done.
 * *DO NOT* leave the README to the last minute! It is a crucial part of the
   project, and we will not be able to grade you without a good README.
 
@@ -240,7 +266,7 @@ In addition:
 
 * This is a renderer, so include images that you've made!
 * Be sure to back your claims for optimization with numbers and comparisons.
-* If you reference any other material, please provide a link to it
+* If you reference any other material, please provide a link to it.
 * You wil not be graded on how fast your path tracer runs, but getting close to
   real-time is always nice!
 * If you have a fast GPU renderer, it is very good to show case this with a
@@ -267,8 +293,8 @@ list of `SOURCE_FILES`), you must test that your project can build in Moore
 1. Open a GitHub pull request so that we can see that you have finished.
    The title should be "Submission: YOUR NAME".
 2. Send an email to the TA (gmail: kainino1+cis565@) with:
-   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`
-   * Direct link to your pull request on GitHub
+   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
+   * Direct link to your pull request on GitHub.
    * Estimate the amount of time you spent on the project.
    * If there were any outstanding problems, or if you did any extra
      work, *briefly* explain.

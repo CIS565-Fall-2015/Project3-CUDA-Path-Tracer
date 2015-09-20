@@ -30,9 +30,10 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     exit(EXIT_FAILURE);
 }
 
-__host__ __device__ thrust::default_random_engine random_engine(
-        int iter, int index = 0, int depth = 0) {
-    return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+__host__ __device__
+thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth) {
+    int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
+    return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -96,7 +97,7 @@ void pathtraceInit(Scene *scene) {
 }
 
 void pathtraceFree() {
-    cudaFree(dev_image);
+    cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 	cudaFree(dev_rays);
 	cudaFree(dev_colors);
@@ -149,13 +150,14 @@ __global__ void intersect(Camera cam, Ray* rays, glm::vec3* colors, int numObjec
 		glm::vec3 minIntersectionPoint;
 		float minDist = INFINITY;
 		int obj_index = -1;
+		bool outside = true;
 
 		for (int i = 0; i < numObjects; i++){
 			if (geoms[i].type == SPHERE){
-				isIntersection = sphereIntersectionTest(geoms[i], ray, intersectionPoint, normal);
+				isIntersection = sphereIntersectionTest(geoms[i], ray, intersectionPoint, normal, outside);
 			}
 			else {
-				isIntersection = boxIntersectionTest(geoms[i], ray, intersectionPoint, normal);
+				isIntersection = boxIntersectionTest(geoms[i], ray, intersectionPoint, normal, outside);
 			}
 
 			if (isIntersection > 0 && minDist > glm::distance(ray.origin, intersectionPoint)){
@@ -193,14 +195,14 @@ __global__ void updatePixels(Camera cam, glm::vec3* colors, glm::vec3* image){
  * Example function to generate static and test the CUDA-GL interop.
  * Delete this once you're done looking at it!
  */
-__global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
+__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
         thrust::uniform_real_distribution<float> u01(0, 1);
 
         // CHECKITOUT: Note that on every iteration, noise gets added onto
@@ -234,13 +236,22 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // Recap:
     // * Initialize array of path rays (using rays that come out of the camera)
     //   * You can pass the Camera object to that kernel.
+    //   * Each path ray is a (ray, color) pair, where color starts as the
+    //     multiplicative identity, white = (1, 1, 1).
+    //   * For debugging, you can output your ray directions as colors.
     // * For each depth:
-    //   * Compute one ray along each path - many will terminate.
-    //     You'll have to decide how to represent your path rays and how
-    //     you'll mark terminated rays.
+    //   * Compute one new (ray, color) pair along each path (using scatterRay).
+    //     Note that many rays will terminate by hitting a light or hitting
+    //     nothing at all. You'll have to decide how to represent your path rays
+    //     and how you'll mark terminated rays.
+    //     * Color is attenuated (multiplied) by reflections off of any object
+    //       surface.
+    //     * You can debug your ray-scene intersections by displaying various
+    //       values as colors, e.g., the first surface normal, the first bounced
+    //       ray direction, the first unlit material color, etc.
     //   * Add all of the terminated rays' results into the appropriate pixels.
     //   * Stream compact away all of the terminated paths.
-    //     You may use your implementation or `thrust::remove_if` or its
+    //     You may use either your implementation or `thrust::remove_if` or its
     //     cousins.
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
