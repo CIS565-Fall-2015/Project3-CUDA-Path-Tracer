@@ -72,15 +72,18 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
+	glm::vec3 diffuseColor = m.color;
 	if (m.hasReflective) {
 		//First must determine if this is perfectly specular or not
 		// is this only when there's an exponent? or when the diffuse is zero?
 		// for now i will go with the exponent being non zero
 		glm::vec3 specularColor = m.specular.color;
-		glm::vec3 diffuseColor = m.color;
 		float specularExponent = m.specular.exponent;
 		if (specularExponent != 0) {
+			thrust::uniform_real_distribution<float> u01(0, 1);
 			// non perfect
+			/*
+			 * This implementation is not working
 			float thetaS, phiS;
 			thrust::uniform_real_distribution<float> u01(0, 1);
 			float xi1 = u01(rng), xi2 = u01(rng); //random values between 0 and 1
@@ -94,33 +97,23 @@ void scatterRay(
 
 			// this direction isn't in the correct coordinate system..
 			// need to go from tangent to world and specular to gangent?
-			
 			ray.origin = intersect + normal * EPSILON;
-			//ray.direction = glm::normalize(direction); //do i need to normalize this?
-			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
-
-			// Calculate intensity values
-			//float specularIntensity = glm::pow((specularColor.x + specularColor.y + specularColor.z) / 3.0f, specularExponent);
-			//float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
-			float specularProbability = specularExponent / (1.0f + specularExponent);
-			float diffuseProbability = 1.0f / (1.0f + specularExponent);
-
-			//float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
-			//float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
-
-			/*
-			if (specularProbability >= diffuseProbability) {
-				color *= specularColor * (1.0f / specularProbability);
-			}
-			else {
-				//diffuse won
-				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-				color *= diffuseColor * (1.0f / diffuseProbability);
-			}
+			ray.direction = glm::normalize(direction);
 			*/
+
+			ray.origin = intersect + normal * EPSILON;
+			
+			// Calculate intensity values
+			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;
+			float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
+
+			float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
+			float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
+
 			float randColor = u01(rng);
 			if (randColor <= specularProbability) {
 				//spec
+				ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
 				color *= specularColor * (1.0f / specularProbability);
 			}
 			else {
@@ -140,7 +133,7 @@ void scatterRay(
 		// diffuse only
 		ray.origin = intersect + normal * EPSILON;
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color *= m.color;
+		color *= diffuseColor;
 	}
 
 	// TODO: Add refraction. Can something be diffuse, refractive, and reflective? (glass). how to do...
