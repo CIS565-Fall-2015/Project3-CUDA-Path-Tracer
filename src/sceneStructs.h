@@ -15,10 +15,11 @@ struct Ray {
     glm::vec3 direction;
 };
 
-struct pathRay {
+struct PathRay {
 	Ray ray;
 	glm::vec3 color;
 	int depth;
+	int pixelIndex;
 };
 
 struct Geom {

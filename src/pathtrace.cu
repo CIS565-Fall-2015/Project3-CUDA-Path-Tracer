@@ -66,8 +66,8 @@ static glm::vec3 *dev_image = NULL;
 static int hst_geomCount; // number of geometries to check against
 static Geom *dev_geoms; // pointer to geometries in global memory
 static Material *dev_mats; // pointer to materials in global memory
-static pathRay *dev_firstBounce; // cache of the first raycast of any iteration
-static pathRay *dev_rayPool; // pool of rays "in flight"
+static PathRay *dev_firstBounce; // cache of the first raycast of any iteration
+static PathRay *dev_rayPool; // pool of rays "in flight"
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -93,8 +93,8 @@ void pathtraceInit(Scene *scene) {
 	// we'll be casting a ray from every pixel
 	int numPixels = scene->state.camera.resolution.x;
 	numPixels *= scene->state.camera.resolution.y;
-	cudaMalloc(&dev_firstBounce, numPixels * sizeof(pathRay));
-	cudaMalloc(&dev_rayPool, numPixels * sizeof(pathRay));
+	cudaMalloc(&dev_firstBounce, numPixels * sizeof(PathRay));
+	cudaMalloc(&dev_rayPool, numPixels * sizeof(PathRay));
 
     checkCUDAError("pathtraceInit");
 }
@@ -138,28 +138,37 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 __global__ void singleBounce(int iter, int geomCount) {
 	// what information do we need for a single ray given index by block/grid thing?
 	// we need:
-	// 1) pointer to the sample that will have color updated OR color storage
-	// 2) access to the "current rays" ray pool
+	// - pointer to the sample that will have color updated OR color storage
+	// - access to the "current rays" ray pool
 	//		-is it better to read and write to the same place?
 	//		-or have two buffers and flip them?
 	//			-"next rays" memory should have same allocated size as current rays
 	//			-should start off allocated full of "terminated" rays
 	//			-terminated rays have ray length of much less than 1.
 	//			-alternatively, terminated rays are "dark"
-	// 3) count of ray depth
-	// - so I've added a pathRay struct that contains color and depth
+	// - count of ray depth
+	// - so I've added a PathRay struct that contains color and depth
 
+	// 1) grab the ray
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// 2) check what it intersects with
+	// 3) attenuate color appropriately
+	// 4) update the ray in this slot
 }
 
 // generates the initial raycasts
-__global__ void rayCast(Camera cam, pathRay* dev_rayPool, glm::vec3 *image) {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+__global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	
+	// compute x and y screen coordinates by reversing int index = x + (y * resolution.x);
+	int y = index / (int)cam.resolution.x;
+	int x = index - y * cam.resolution.x;
 
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
 
-		// generate a pathRay to cast
+		// generate a PathRay to cast
 		glm::vec3 ref = cam.position + cam.view;
 		glm::vec3 R = glm::cross(cam.view, cam.up);
 		glm::vec3 V = cam.up * glm::tan(cam.fov.y * 0.01745329251f);
@@ -172,6 +181,7 @@ __global__ void rayCast(Camera cam, pathRay* dev_rayPool, glm::vec3 *image) {
 		dev_rayPool[index].ray.origin = cam.position;
 		dev_rayPool[index].color = glm::vec3(1.0f);
 		dev_rayPool[index].depth = 0;
+		dev_rayPool[index].pixelIndex = index;
 
 		//glm::vec3 debug = glm::normalize(p - cam.position);
 		//debug.x = abs(debug.x);
@@ -225,7 +235,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
-	rayCast <<<blocksPerGrid, blockSize >>>(cam, dev_rayPool, dev_image);
+	dim3 iterBlockSize(blockSideLength * blockSideLength);
+	dim3 iterBlocksPerGrid(
+		(cam.resolution.x * cam.resolution.y + blockSize.x - 1) / blockSize.x);
+
+	rayCast << <iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
 
     ///////////////////////////////////////////////////////////////////////////
 
