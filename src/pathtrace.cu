@@ -14,6 +14,8 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define MAX_THREADS 1024
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
@@ -125,35 +127,49 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		float magy = (res2y - y + u01(rng))*sin(cam.fov.y) / res2y;
 
 		glm::vec3 direction = cam.view + magx*left + magy*cam.up;
+		glm::normalize(direction);
 
 		rays[index].origin = cam.position;
 		rays[index].direction = direction;
+		rays[index].color = glm::vec3(1.0);
+		rays[index].isAlive = true;
 		colors[index] = glm::vec3(1.0, 1.0, 1.0);
-
 	}
 }
 
-__global__ void intersect(int iter, Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
+__global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
+	//int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	glm::vec3 normal;
+	glm::vec3 intersectionPoint;
+	float isIntersection;
+	bool outside;
+	
+	glm::vec3 minNormal;
+	glm::vec3 minIntersectionPoint;
+
+	float minDist = INFINITY;
+	int obj_index = -1;
 
 	if (x < cam.resolution.x && y < cam.resolution.y){
 		int index = x + (y * cam.resolution.x);
 
-		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+		if (!rays[index].isAlive){
+			return;
+		}
 
+		if (depth == traceDepth - 1 && rays[index].isAlive){
+			colors[index] = glm::vec3(0.0);
+			rays[index].isAlive = false;
+			return;
+		}
+
+	//if (index < n){
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, depth);
 		Ray ray = rays[index];
-
-		glm::vec3 normal;
-		glm::vec3 intersectionPoint;
-		float isIntersection;
-
-		glm::vec3 minNormal;
-		glm::vec3 minIntersectionPoint;
-		float minDist = INFINITY;
-		int obj_index = -1;
-		bool outside = true;
 
 		for (int i = 0; i < numObjects; i++){
 			if (geoms[i].type == SPHERE){
@@ -172,13 +188,11 @@ __global__ void intersect(int iter, Camera cam, Ray* rays, glm::vec3* colors, in
 		}
 
 		if (obj_index >= 0){
-			//Material c = materials[index];
-			//Geom g = geoms[index];
 			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
-			//colors[index] = glm::vec3(0.0,1.0,0.0);
 		}
 		else{
 			colors[index] = glm::vec3(0.0);
+			rays[index].isAlive = false;
 		}
 		//image[index] = minDist == INFINITY ? glm::vec3(1.0,1.0,1.0) : glm::vec3(1.0,255.0,1.0);
 	}
@@ -190,33 +204,9 @@ __global__ void updatePixels(Camera cam, glm::vec3* colors, glm::vec3* image){
 
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
+
 		image[index] += colors[index];
 	}
-}
-
-/**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
- */
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
-    }
 }
 
 /**
@@ -265,9 +255,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
 	//cudaDeviceSynchronize();
 
-	intersect << <blocksPerGrid, blockSize >> >(iter, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+	int numBlocks = pixelcount / MAX_THREADS + 1;
 
-	//cudaDeviceSynchronize();
+	for (int d = 0; d < traceDepth; d++){
+		intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		cudaDeviceSynchronize();
+	}
+	//intersect<<<numBlocks, MAX_THREADS>>>(iter, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+	//intersect << <blocksPerGrid, blockSize >> >(iter, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+	//cudaDeviceSynchronize();w
 
 	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
     //generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);

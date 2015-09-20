@@ -13,6 +13,8 @@ enum GeomType {
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
+	bool isAlive;
+	glm::vec3 color;
 };
 
 struct BounceRay {
