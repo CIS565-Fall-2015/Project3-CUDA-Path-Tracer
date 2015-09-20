@@ -3,6 +3,7 @@
 #include <cmath>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
+#include <thrust/device_vector.h>
 #include <thrust/remove.h>
 
 #include "sceneStructs.h"
@@ -60,6 +61,11 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
+static glm::vec3 *cameraRay=NULL;
+static glm::vec3 *dev_cam;//only used for test
+static Geom *geom,*dev_geom;
+static Material *material,*dev_material;
+
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -71,8 +77,25 @@ void pathtraceInit(Scene *scene) {
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
-
+	initRay(cam);
+	initGeom();
+	initMaterial();
+	camSetup(pixelcount);
     checkCUDAError("pathtraceInit");
+}
+
+void initGeom(){
+	geom=new Geom[hst_scene->geoms.size()];
+	for(int i=0;i<hst_scene->geoms.size();++i) geom[i]=hst_scene->geoms[i];
+	cudaMalloc(&dev_geom, hst_scene->geoms.size()*sizeof(Geom));
+	cudaMemcpy(dev_geom, geom, hst_scene->geoms.size()*sizeof(Geom), cudaMemcpyHostToDevice);
+}
+
+void initMaterial(){
+	material=new Material[hst_scene->materials.size()];
+	for(int i=0;i<hst_scene->materials.size();++i) material[i]=hst_scene->materials[i];
+	cudaMalloc(&dev_material, hst_scene->materials.size()*sizeof(Material));
+	cudaMemcpy(dev_material, material, hst_scene->materials.size()*sizeof(Material), cudaMemcpyHostToDevice);
 }
 
 void pathtraceFree() {
@@ -105,6 +128,187 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
         // smoother.
         image[index] += glm::vec3(u01(rng));
     }
+}
+
+__device__ float findIntersection(Ray r, Geom *geom, int geomNum,int& interId,glm::vec3& interPos,glm::vec3& normal){
+	float t=-1;
+	for(int i=0;i<geomNum;++i){
+		glm::vec3 tmpPos,tmpNormal;
+		float tmp=-1;
+		if(geom[i].type==CUBE){
+			tmp=boxIntersectionTest(geom[i],r,tmpPos,tmpNormal);
+		}
+		else if(geom[i].type==SPHERE){
+			tmp=sphereIntersectionTest(geom[i],r,tmpPos,tmpNormal);
+		}
+		else{
+			tmp=boxIntersectionTest(geom[i],r,tmpPos,tmpNormal);
+		}
+		if(tmp!=-1&&(tmp<t||t==-1)){
+			t=tmp;
+			interPos=tmpPos;
+			normal=tmpNormal;
+			interId=i;
+		}
+	}
+	return t;
+}
+
+__device__ float getRandomNum(int iter,int index,int depth){
+	thrust::uniform_real_distribution<float> u01(0, 1);
+	thrust::default_random_engine rng = random_engine(iter, index, depth);
+	return u01(rng);
+}
+
+__device__ void reflectRay(Ray& r,glm::vec3 normal,glm::vec3 interPos){
+	r.direction=r.direction-2.0f*normal*glm::dot(r.direction,normal);
+	glm::normalize(r.direction);
+	r.origin=interPos+0.001f*r.direction;
+}
+
+__device__ void refractRay(Ray& r,glm::vec3 normal,glm::vec3 interPos,float ref,float angle){
+	glm::vec3 T=(-ref*glm::dot(normal,r.direction)-sqrt(angle))*normal+r.direction*ref;
+	T=glm::normalize(T);
+	r.direction=T;
+	r.direction=glm::normalize(r.direction);
+	r.origin=interPos+0.001f*r.direction;
+}
+
+__device__ void diffuseRay(Ray& r,glm::vec3 normal,glm::vec3 interPos,int iter,int index,int depth){
+	thrust::default_random_engine rng = random_engine(iter, index, depth);
+	r.direction=calculateRandomDirectionInHemisphere(normal,rng);
+	r.direction=glm::normalize(r.direction);
+	r.origin=interPos+0.001f*r.direction;
+}
+
+__device__ void specularRay(Ray& r,glm::vec3 normal,glm::vec3 interPos,float exponent,int iter,int index,int depth){
+	thrust::default_random_engine rng = random_engine(iter, index, depth);
+	r.direction=calculateRandomDirectionInHemisphereSpecular(normal,rng,exponent);
+	r.direction=glm::normalize(r.direction);
+	r.origin=interPos+0.001f*r.direction;
+}
+
+__device__ float getSchlickProb(float indexOfRefraction,glm::vec3 normal,glm::vec3 direction){
+	float r0=pow((1.0f-indexOfRefraction)/(1.0f+indexOfRefraction),2);
+	float th=glm::dot(normal,-direction);
+	float refProb=r0+(1-r0)*pow(1-th,5);
+	return refProb;
+}
+
+__device__ bool pathTraceThread(Ray& r,glm::vec3& color, Geom *geom, int geomNum, Material *material,int iter,int index,int depth,bool& inside){
+	glm::vec3 interPos,normal;
+	float t=INT_MAX;
+	int interId=0;
+	t=findIntersection(r,geom,geomNum,interId,interPos,normal);
+	if(t>0){
+		Material m=material[geom[interId].materialid];
+		if(m.emittance>0){
+			color=m.color*m.emittance;
+			return true;
+		}
+		if(m.hasReflective){
+			reflectRay(r,normal,interPos);
+			return false;
+		}
+		else if(m.hasRefractive){//using fresenl's law, schlick's approach
+			float refProb=getSchlickProb(m.indexOfRefraction,normal,r.direction);
+			float ran=getRandomNum(iter,index+1,depth);
+			if(ran<1.0f-refProb){
+				float ref=m.indexOfRefraction;
+				if(!inside) ref=1.0f/m.indexOfRefraction;
+				float angle=1-ref*ref*(1-pow(glm::dot(normal,r.direction),2));
+				if(angle<0){
+					reflectRay(r,normal,interPos);
+					return false;
+				}
+				else{
+					inside=!inside;
+					refractRay(r,normal,interPos,ref,angle);
+					return false;
+				}
+			}
+			else{
+				reflectRay(r,normal,interPos);
+				return false;
+			}
+		}
+		else{
+			float ran=getRandomNum(iter,index+1,depth);
+			if(ran<0.5||m.specular.exponent==0){
+				color=m.color;
+				diffuseRay(r,normal,interPos,iter,index,depth);
+				return false;
+			}
+			else{
+				color=m.specular.color;
+				specularRay(r,normal,interPos,m.specular.exponent,iter,index,depth);
+				return false;
+			}
+		}
+	}
+	else{ 
+		color=glm::vec3(0,0,0);
+		return true;
+	}
+}
+
+__global__ void pathTraceKernel(Camera cam,glm::vec3 *dev_cam,glm::vec3 *image,Geom *geom,int geomNum,Material *material,int depth,int iter){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+		Ray r;r.direction=dev_cam[index];r.origin=cam.position;
+		glm::vec3 result(1);
+		bool inside=false;
+		for(int i=0;i<=depth;++i){
+			if(i==depth) result=glm::vec3(0,0,0);
+			else{
+				glm::vec3 color(1);
+				bool end=pathTraceThread(r,color,geom,geomNum,material,iter,index,i,inside);
+				result=result*color;
+				if(end) break;
+			}
+		}
+		image[index]+=result;
+	}
+}
+
+__global__ void testCamSetupKernel(Camera cam, glm::vec3 *dev_cam, glm::vec3 *image){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+		image[index].x+=abs(dev_cam[index].x);
+		image[index].y+=abs(dev_cam[index].y);
+		image[index].z+=abs(dev_cam[index].z);
+	}
+}
+
+void initRay(const Camera &cam){
+	//course note from cis560
+	glm::vec3 A,B,M,H,V;
+	cameraRay=new glm::vec3[cam.resolution.x*cam.resolution.y];
+	A=glm::cross(cam.view,cam.up);
+	B=glm::cross(A,cam.view);
+	M=cam.position+cam.view;
+	H=tan(1.0f*cam.fov.x/180.0f)*glm::length(cam.view)*glm::normalize(A);
+	V=tan(1.0f*cam.fov.y/180.0f)*glm::length(cam.view)*glm::normalize(B);
+	for(int i=0;i<cam.resolution.y;++i){
+		for(int j=0;j<cam.resolution.x;++j){
+			float sx,sy;
+			sx=(1.0*j)/cam.resolution.x;
+			sy=(1.0*i)/cam.resolution.y;
+			glm::vec3 R=M+(1-2*sx)*H+(1-2*sy)*V;
+			cameraRay[i*cam.resolution.x+j]=glm::normalize(R-cam.position);
+		}
+	}
+}
+
+void camSetup(int imageCount){
+	cudaMalloc(&dev_cam, imageCount*sizeof(glm::vec3));
+	cudaMemcpy(dev_cam, cameraRay, imageCount* sizeof(glm::vec3), cudaMemcpyHostToDevice);
 }
 
 /**
@@ -149,9 +353,13 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
-
+    //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	//testCamSetupKernel<<<blocksPerGrid,blockSize>>>(cam,dev_cam,dev_image);
     ///////////////////////////////////////////////////////////////////////////
+	int geomNum=hst_scene->geoms.size();
+	int matNum=hst_scene->materials.size();
+	int depth=hst_scene->state.traceDepth;
+	pathTraceKernel<<<blocksPerGrid, blockSize>>>(cam, dev_cam, dev_image, dev_geom, geomNum, dev_material,depth,iter);
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
@@ -159,6 +367,5 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
-
     checkCUDAError("pathtrace");
 }
