@@ -173,7 +173,7 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 
 		//??? antialising
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		thrust::default_random_engine rng = random_engine(iter, index, 1);
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
 		//thrust::default_random_engine rng_y = random_engine(iter, index, 2);
 
 		float Sx = ((float)x + u01(rng) - 0.5) / (cam.resolution.x - 1);
@@ -246,7 +246,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		}
 		if (intrT > 0)//intersect with obj, update ray
 		{
-			thrust::default_random_engine rr = random_engine(iter, index, depth);
+			thrust::default_random_engine rr = makeSeededRandomEngine(iter, index, depth);
 			scatterRay(rays[index], intrObjIdx, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
 			rays[index].origMatIdx = intrMatIdx;
 			rays[index].lastObjIdx = intrObjIdx;
@@ -289,7 +289,7 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 		// curently, only one box light source
 		// !!!later : a.multiply lights; b.sphere light
 		glm::vec4 pointOnLight(0,0,0,1);
-		thrust::default_random_engine rng = random_engine(iter, index, 1);
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		pointOnLight.x = u01(rng)-0.5;
 		pointOnLight.y = u01(rng)-0.5;
