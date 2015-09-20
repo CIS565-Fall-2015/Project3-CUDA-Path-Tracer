@@ -109,6 +109,7 @@ void pathtraceFree() {
 	cudaFree(dev_colors);
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
+	cudaFree(dev_brays);
     checkCUDAError("pathtraceFree");
 
 }
@@ -138,6 +139,7 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		rays[index].color = glm::vec3(1.0);
 		rays[index].isAlive = true;
 		colors[index] = glm::vec3(1.0, 1.0, 1.0);
+
 	}
 }
 
@@ -257,12 +259,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//Ray* rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
 	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
+	checkCUDAError("initRays");
+
 	//cudaDeviceSynchronize();
 
 	int numBlocks = pixelcount / MAX_THREADS + 1;
 
 	for (int d = 0; d < traceDepth; d++){
 		intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		checkCUDAError("intersect");
+
 		cudaDeviceSynchronize();
 	}
 	//intersect<<<numBlocks, MAX_THREADS>>>(iter, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
