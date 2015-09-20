@@ -221,33 +221,39 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		glm::vec3 intrNormal;
 		float intrT = -1;
 		int intrMatIdx;
+		int intrObjIdx;
+
 		for (int i = 0; i<geoNum; i++)
 		{
 			glm::vec3 temp_intrPoint;
 			glm::vec3 temp_intrNormal;
 			float temp_T;
 			int temp_MatIdx;
-			temp_T = rayIntersection(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal, temp_MatIdx);
 
+			temp_T = rayIntersection(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal, temp_MatIdx);
 			if (temp_T < 0) continue;
+
 			if (intrT < 0 || temp_T < intrT && temp_T >0)
 			{
 				intrT = temp_T;
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
 				intrMatIdx = temp_MatIdx;
+				intrObjIdx = i;
 			}
 		}
 		if (intrT > 0)//intersect with obj, update ray
 		{
 			thrust::default_random_engine rr = random_engine(iter, index, depth);
-			scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
+			scatterRay(rays[index], intrObjIdx, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
 			rays[index].origMatIdx = intrMatIdx;
+			rays[index].lastObjIdx = intrObjIdx;
 		}
 		else
 		{
 			rays[index].terminated = true;
 			rays[index].carry = glm::vec3(0,0,0);// later background color
+			rays[index].lastObjIdx = -1;
 		}
 
 	}
@@ -321,7 +327,7 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 			//!!! later : reduce bounce
 			glm::vec3 color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
 			color *= rays[index].carry;
-			scatterRay(rays[index], intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
+			scatterRay(rays[index],-1, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
 			color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
 			image[rays[index].imageIndex] += color;
 			rays[index].terminated = true;
@@ -334,10 +340,8 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 	}
 }
 
-/**
-* Test
-* 1. Camera Generate Rays
-*/
+
+/*
 __global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat, int geoNum, int iter, glm::vec3 *image) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -348,15 +352,15 @@ __global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat,
 		thrust::default_random_engine rng = random_engine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		Ray crntRay = rays[index];// GenerateRayFromCam(cam, x, y);
-		/*
+	
 		//Ray Cast Direction test
-		glm::vec3 DirColor = crntRay.direction;
-		DirColor.x = DirColor.x < 0 ? (-DirColor.x) : DirColor.x;
-		DirColor.y = DirColor.y < 0 ? (-DirColor.y) : DirColor.y;
-		DirColor.z = DirColor.z < 0 ? (-DirColor.z) : DirColor.z;
-		*/	
+		//glm::vec3 DirColor = crntRay.direction;
+		//DirColor.x = DirColor.x < 0 ? (-DirColor.x) : DirColor.x;
+		//DirColor.y = DirColor.y < 0 ? (-DirColor.y) : DirColor.y;
+		//DirColor.z = DirColor.z < 0 ? (-DirColor.z) : DirColor.z;
+		
 		glm::vec3 pixelColor(0, 0, 0);
-
+		int intrObjIdx;
 		glm::vec3 intrPoint;
 		glm::vec3 intrNormal;	
 		float intrT = -1 ;
@@ -369,16 +373,19 @@ __global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat,
 			glm::vec3 temp_intrNormal;	
 			float temp_T;
 			glm::vec3 temp_color;
-				
+			int temp_objIdx;
+
 			switch (dev_geo[i].type)
 			{
 			case SPHERE:
 				temp_T = sphereIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
 				temp_color = dev_mat[dev_geo[i].materialid].color;
+				temp_objIdx = i;
 				break;
 			case CUBE:
 				temp_T = boxIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
 				temp_color = dev_mat[dev_geo[i].materialid].color;// glm::vec3(0, 1, 0);
+				temp_objIdx = i;
 				break;
 			default:
 				break;
@@ -390,19 +397,24 @@ __global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat,
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
 				pixelColor = temp_color;
+				intrObjIdx = temp_objIdx;
 			}
 		}
 		
-		if (intrT>0)
+		if (intrT > 0)
+		{
 			image[index] += pixelColor;
+		}
 	}
-}
+}*/
 
 
 /**
  * Example function to generate static and test the CUDA-GL interop.
  * Delete this once you're done looking at it!
  */
+
+/*
 __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -422,7 +434,7 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
         // smoother.
         image[index] += glm::vec3(u01(rng));
     }
-}
+}*/
 
 struct is_terminated
 {

@@ -56,6 +56,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 __host__ __device__
 glm::vec3 scatterRay(
         Ray &ray,
+		int intrObjIdx,
         float intrT,
         glm::vec3 intersect,
         glm::vec3 normal,
@@ -91,21 +92,41 @@ glm::vec3 scatterRay(
 		}
 		else if (m.bssrdf>0) //try brute-force bssrdf
 		{
+			//http://noobody.org/bachelor-thesis.pdf
 			//(1) incident or exitant or currently inside obj ?
 			//	if incident:
-			if (incident)
+			if (ray.lastObjIdx!=intrObjIdx)
 			{
 				glm::vec3 refraDir = -glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
 				ray.direction = refraDir;
 				ray.carry *= m.color;
-				//!!! calculate s0
+				ray.origin = getPointOnRay(ray, intrT + .0002f);
+				//mark obj/material id
 			}
-			else if (inside)
+			else if (ray.lastObjIdx == intrObjIdx)//inside
 			{
-				//compare si=|xo-ray.orig| with s0
-			}
-			else if (exitant){}
-			
+				//compute random so	
+				//compare si=|xo-ray.orig| with so
+				thrust::uniform_real_distribution<float> u01(0, 1);
+				//Sigma_a: Absorption coefficient
+				//Sigma_s: Scattering coefficient
+				// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
+				float Sigma_t = 0.001;
+				float so = -log(u01(rrr)) / Sigma_t;
+				float si = glm::length(intersect - ray.origin);
+				if (si <= so) //turns into exitant, go out of the object
+				{
+					ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
+					ray.carry *= m.color;
+					ray.origin = getPointOnRay(ray, intrT + .0002f);
+				}
+				else //stays in the obj, pick new direction and scatter distance
+				{
+					ray.direction = -glm::normalize(calculateRandomDirectionInHemisphere(ray.direction, rrr));
+					ray.carry *= m.color;
+					ray.origin = intersect;
+				}
+			}			
 		}
 		else // diffuse / specular
 		{

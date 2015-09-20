@@ -18,6 +18,7 @@ struct Ray {
 	bool terminated = false;
 	glm::vec3 carry = glm::vec3(1, 1, 1);
 	int origMatIdx = -1;
+	int lastObjIdx = -1;
 };
 
 struct Geom {
