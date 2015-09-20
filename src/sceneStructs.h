@@ -16,6 +16,7 @@ struct Ray {
 	glm::vec3 color;
 	int pixel_index; // the index of the pixel in the array
 	bool alive; //whether or not hte thread is still running
+	bool inside; // whether the ray is inside an object or not (changes ior)
 };
 
 struct Geom {
@@ -38,7 +39,7 @@ struct Material {
     float hasReflective;
     float hasRefractive;
     float indexOfRefraction;
-    float emittance; //is emittance needed? maybe for light?
+    float emittance;
 };
 
 struct Camera {

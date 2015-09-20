@@ -176,6 +176,7 @@ __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 	rays[index].color = glm::vec3(1.0f);
 	rays[index].pixel_index = index;
 	rays[index].alive = true;
+	rays[index].inside = false;
 }
 
 /**
@@ -187,7 +188,6 @@ __global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, R
 	int pixelIndex = rays[index].pixel_index, minGeomIndex = -1;
 	float t = -1.0f, minT = FLT_MAX;
 	glm::vec3 minNormal, minIntersectionPoint;
-	thrust::default_random_engine rng = random_engine(iter, pixelIndex, depth);
 
 	for (int i = 0; i < numberOfObjects; i++) {
 		glm::vec3 normal, intersectionPoint;
@@ -225,6 +225,7 @@ __global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, R
 			image[pixelIndex] += rays[index].color * materials[materialIndex].color * materials[materialIndex].emittance;
 		}
 		else {
+			thrust::default_random_engine rng = random_engine(iter, pixelIndex, depth);
 			scatterRay(rays[index], rays[index].color, minIntersectionPoint, minNormal, materials[materialIndex], rng);
 		}
 	}

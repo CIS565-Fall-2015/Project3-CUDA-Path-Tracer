@@ -47,14 +47,28 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 * http://www.scratchapixel.com/old/lessons/3d-basic-lessons/lesson-14-interaction-light-matter/optics-reflection-and-refraction/
 */
 __host__ __device__
-float calculateFresnelReflectionCoefficient(Ray ray, glm::vec3 normal, float intersectIOR, float transmittedIOR) {
-	float r0 = glm::pow((intersectIOR - transmittedIOR) / (intersectIOR + transmittedIOR), 2);
+float calculateRefractionCoefficient(glm::vec3 direction, glm::vec3 normal, float indexOfRefraction) {
+	//TODO: GLM pow instead?
+	float r0 = glm::pow((1.0f - indexOfRefraction) / (1.0f + indexOfRefraction), 2);
+	return r0 + (1.0f - r0) * glm::pow(1.0f - glm::dot(normal, -direction), 5);
+}
 
-	// curious if this is between the direction of the ray or the intersection point, little confused
-	// shouldn't need to modify the ray so not passing the address
-	// starting to this this is wrong and should be the incident. will have to test
-	return r0 + (1.0f - r0) * glm::pow(1 - glm::dot(normal, ray.direction), 5);
-	//TRIPPLE CHECK THIS
+/**
+* Computes a reflection vector off a specular or refractive surface.
+* Used for specular and refracted lighting.
+*/
+__host__ __device__
+glm::vec3 calculateReflectionDirection(glm::vec3 direction, glm::vec3 normal) {
+	return direction + 2.0f * glm::dot(-direction, normal) * normal;
+}
+
+/**
+* Computes a refraction vector off a refractive surface.
+* Used for refracted lighting.
+*/
+__host__ __device__
+glm::vec3 calculateRefractionDirection(glm::vec3 direction, glm::vec3 normal, float angle, float eta) {
+	return (-eta * glm::dot(normal, direction) - glm::sqrt(angle)) * normal + direction * eta;
 }
 
 /**
@@ -92,39 +106,33 @@ void scatterRay(
 	glm::vec3 specularColor = m.specular.color;
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
-	if (m.hasReflective && m.hasRefractive) {
-		//both refractive and reflective
-
-		// first need to calculate reflective coefficient using schlick;s
-		// wait how do i know if i am in the air or not?
-		float reflectionCoefficient, eta;
-		if (glm::dot(ray.direction, normal) < 0.0f) {
-			// The ray is outside the object
-			reflectionCoefficient = calculateFresnelReflectionCoefficient(ray, normal, 1.0f, m.indexOfRefraction);
-			eta = 1.0f / m.indexOfRefraction;
-		}
-		else {
-			// The ray is inside the object
-			// TODO/NOTE MAYBE THE NORMAL SHOULD BE INVERTED HERE?
-			reflectionCoefficient = calculateFresnelReflectionCoefficient(ray, normal, m.indexOfRefraction, 1.0f);
-			eta = m.indexOfRefraction / 1.0f; //this could be backwards for all i know
-		}
+	if (m.hasRefractive) {
+		float reflectionCoefficient = calculateRefractionCoefficient(ray.direction, normal, m.indexOfRefraction);
 		float refractionCoefficient = 1.0f - reflectionCoefficient;
 
-		float rand = u01(rng);
-		if (rand <= reflectionCoefficient) {
-			// it reflects
-			ray.origin = intersect + normal * EPSILON;
-			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
-			color *= specularColor * (1.0f / refractionCoefficient);
+		if (u01(rng) < refractionCoefficient) {
+			float eta = 0.0f;
+			if (!ray.inside) {
+				eta = 1.0f / m.indexOfRefraction; // Coming from the air
+			}
+			float angle = 1.0f - glm::pow(eta, 2) * (1.0f - glm::pow(glm::dot(normal, ray.direction), 2));
+			if (angle < 0.0f) {
+				// Angle less than zero, so we reflect
+				ray.direction = calculateReflectionDirection(ray.direction, normal);
+				ray.origin = intersect + ray.direction * EPSILON;
+				ray.inside = false;
+			}
+			else {
+				// Here we do a refraction
+				ray.direction = calculateRefractionDirection(ray.direction, normal, angle, eta);
+				ray.origin = intersect + ray.direction * 0.001f; // For some reason epsilon is too small and gives bad results. Need to use larger one
+				ray.inside = true;
+			}
 		}
 		else {
-			// it refracts
-			// origin or direction or a mix of both? no idea
-			// night need to play with epsilon
-			ray.origin = intersect + normal * EPSILON; // minus normal?
-			ray.direction = glm::refract(ray.origin, normal, eta);
-			color *= specularColor * (1.0f / reflectionCoefficient);
+			ray.direction = calculateReflectionDirection(ray.direction, normal);
+			ray.origin = intersect + ray.direction * EPSILON;
+			ray.inside = false;
 		}
 	}
 	else if (m.hasReflective) {
@@ -152,8 +160,6 @@ void scatterRay(
 			ray.origin = intersect + normal * EPSILON;
 			ray.direction = glm::normalize(direction);
 			*/
-
-			ray.origin = intersect + normal * EPSILON;
 			
 			// Calculate intensity values
 			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;
@@ -165,31 +171,32 @@ void scatterRay(
 			float randColor = u01(rng);
 			if (randColor <= specularProbability) {
 				//spec
-				ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
+				ray.origin = intersect + normal * EPSILON;
+				ray.direction = calculateReflectionDirection(ray.direction, normal);
 				color *= specularColor * (1.0f / specularProbability);
+				ray.inside = false;
 			}
 			else {
 				//diffuse
+				ray.origin = intersect + normal * EPSILON;
 				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
 				color *= diffuseColor * (1.0f / diffuseProbability);
+				ray.inside = false;
 			}
 		}
 		else {
 			// perfect mirror
 			ray.origin = intersect + normal * EPSILON;
-			ray.direction = ray.direction + 2.0f * glm::dot(-ray.direction, normal) * normal;
+			ray.direction = calculateReflectionDirection(ray.direction, normal);
 			color *= specularColor;
+			ray.inside = false;
 		}
-	}
-	else if (m.hasRefractive) {
-		//refractive only
 	}
 	else {
 		// diffuse only
 		ray.origin = intersect + normal * EPSILON;
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
 		color *= diffuseColor;
+		ray.inside = false;
 	}
-
-	// TODO: Add refraction. Can something be diffuse, refractive, and reflective? (glass). how to do...
 }
