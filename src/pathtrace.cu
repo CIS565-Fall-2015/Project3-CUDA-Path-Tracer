@@ -68,11 +68,12 @@ static Geom *dev_geoms; // pointer to geometries in global memory
 static Material *dev_mats; // pointer to materials in global memory
 static PathRay *dev_firstBounce; // cache of the first raycast of any iteration
 static PathRay *dev_rayPool; // pool of rays "in flight"
+static int pixelcount;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
-    const int pixelcount = cam.resolution.x * cam.resolution.y;
+    pixelcount = cam.resolution.x * cam.resolution.y;
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
@@ -135,7 +136,8 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
-__global__ void singleBounce(int iter, int geomCount) {
+__global__ void singleBounce(int pixelCount, int geomCount, Geom* dev_geoms,
+	PathRay* dev_rayPool, glm::vec3 *image) {
 	// what information do we need for a single ray given index by block/grid thing?
 	// we need:
 	// - pointer to the sample that will have color updated OR color storage
@@ -149,12 +151,46 @@ __global__ void singleBounce(int iter, int geomCount) {
 	// - count of ray depth
 	// - so I've added a PathRay struct that contains color and depth
 
-	// 1) grab the ray
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	// 1) grab the index of the ray
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < pixelCount) {
+		// 2) check what it intersects with
+		Geom nearestGeom;
+		glm::vec3 isx_point;
+		glm::vec3 isx_norm;
+		float t = INFINITY;
+		for (int i = 0; i < geomCount; i++) {
+			float candidate_t = -1.0f;
+			glm::vec3 candidate_isx_point;
+			glm::vec3 candidate_isx_norm;
+			if (dev_geoms[i].type == CUBE) {
+				candidate_t = boxIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
+					candidate_isx_point, candidate_isx_norm);
+			}
+			else if (dev_geoms[i].type == SPHERE) {
+				candidate_t = sphereIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
+					candidate_isx_point, candidate_isx_norm);
+			}
+			if (candidate_t > 0.0f && candidate_t < t) {
+				t = candidate_t;
+				isx_point = candidate_isx_point;
+				isx_norm = candidate_isx_norm;
+				nearestGeom = dev_geoms[i];
+			}
+		}
+		// debug: intersection check.
+		image[index] += isx_norm;
 
-	// 2) check what it intersects with
-	// 3) attenuate color appropriately
-	// 4) update the ray in this slot
+		glm::vec3 debug = dev_rayPool[index].ray.direction;
+		debug.x = abs(debug.x);
+		debug.y = abs(debug.y);
+		debug.z = abs(debug.z);
+		
+		image[index] += debug;
+
+		// 3) attenuate color appropriately
+		// 4) update the ray in this slot
+	}
 }
 
 // generates the initial raycasts
@@ -174,9 +210,9 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
 		glm::vec3 V = cam.up * glm::tan(cam.fov.y * 0.01745329251f);
 		glm::vec3 H = R * glm::tan(cam.fov.x * 0.01745329251f);
 		// sx = ((2.0f * x) / cam.resolution.x) - 1.0f
-		// sy = ((2.0f * y) / cam.resolution.y) - 1.0f
+		// sy = 1.0f - ((2.0f * y) / cam.resolution.y)
 		glm::vec3 p = H * (((2.0f * x) / cam.resolution.x) - 1.0f) +
-			V * (((2.0f * y) / cam.resolution.y) - 1.0f) + ref;
+			V * (1.0f - ((2.0f * y) / cam.resolution.y)) + ref;
 		dev_rayPool[index].ray.direction = glm::normalize(p - cam.position);
 		dev_rayPool[index].ray.origin = cam.position;
 		dev_rayPool[index].color = glm::vec3(1.0f);
@@ -237,9 +273,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 	dim3 iterBlockSize(blockSideLength * blockSideLength);
 	dim3 iterBlocksPerGrid(
-		(cam.resolution.x * cam.resolution.y + blockSize.x - 1) / blockSize.x);
+		(cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) / iterBlockSize.x);
 
 	rayCast << <iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
+	singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(pixelcount, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
