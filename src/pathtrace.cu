@@ -63,6 +63,12 @@ static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
+static int hst_geomCount; // number of geometries to check against
+static Geom *dev_geoms; // pointer to geometries in global memory
+static Material *dev_mats; // pointer to materials in global memory
+static pathRay *dev_firstBounce; // cache of the first raycast of any iteration
+static pathRay *dev_rayPool; // pool of rays "in flight"
+
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
@@ -71,6 +77,24 @@ void pathtraceInit(Scene *scene) {
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
+	// set up the geometries
+	hst_geomCount = scene->geoms.size();
+	cudaMalloc(&dev_geoms, hst_geomCount * sizeof(Geom));
+	cudaMemcpy(dev_geoms, scene->geoms.data(), sizeof(Geom) * hst_geomCount,
+		cudaMemcpyHostToDevice);
+
+	// set up the materials
+	int hst_matCount = scene->materials.size();
+	cudaMalloc(&dev_mats, hst_matCount * sizeof(Material));
+	cudaMemcpy(dev_mats, scene->materials.data(),
+		sizeof(Material) * hst_matCount, cudaMemcpyHostToDevice);
+
+	// set up space for the first cast
+	// we'll be casting a ray from every pixel
+	int numPixels = scene->state.camera.resolution.x;
+	numPixels *= scene->state.camera.resolution.y;
+	cudaMalloc(&dev_firstBounce, numPixels * sizeof(pathRay));
+	cudaMalloc(&dev_rayPool, numPixels * sizeof(pathRay));
 
     checkCUDAError("pathtraceInit");
 }
@@ -78,6 +102,10 @@ void pathtraceInit(Scene *scene) {
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
+	cudaFree(dev_geoms);
+	cudaFree(dev_mats);
+	cudaFree(dev_firstBounce);
+	cudaFree(dev_rayPool);
 
     checkCUDAError("pathtraceFree");
 }
@@ -105,6 +133,53 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
         // smoother.
         image[index] += glm::vec3(u01(rng));
     }
+}
+
+__global__ void singleBounce(int iter, int geomCount) {
+	// what information do we need for a single ray given index by block/grid thing?
+	// we need:
+	// 1) pointer to the sample that will have color updated OR color storage
+	// 2) access to the "current rays" ray pool
+	//		-is it better to read and write to the same place?
+	//		-or have two buffers and flip them?
+	//			-"next rays" memory should have same allocated size as current rays
+	//			-should start off allocated full of "terminated" rays
+	//			-terminated rays have ray length of much less than 1.
+	//			-alternatively, terminated rays are "dark"
+	// 3) count of ray depth
+	// - so I've added a pathRay struct that contains color and depth
+
+}
+
+// generates the initial raycasts
+__global__ void rayCast(Camera cam, pathRay* dev_rayPool, glm::vec3 *image) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+
+		// generate a pathRay to cast
+		glm::vec3 ref = cam.position + cam.view;
+		glm::vec3 R = glm::cross(cam.view, cam.up);
+		glm::vec3 V = cam.up * glm::tan(cam.fov.y * 0.01745329251f);
+		glm::vec3 H = R * glm::tan(cam.fov.x * 0.01745329251f);
+		// sx = ((2.0f * x) / cam.resolution.x) - 1.0f
+		// sy = ((2.0f * y) / cam.resolution.y) - 1.0f
+		glm::vec3 p = H * (((2.0f * x) / cam.resolution.x) - 1.0f) +
+			V * (((2.0f * y) / cam.resolution.y) - 1.0f) + ref;
+		dev_rayPool[index].ray.direction = glm::normalize(p - cam.position);
+		dev_rayPool[index].ray.origin = cam.position;
+		dev_rayPool[index].color = glm::vec3(1.0f);
+		dev_rayPool[index].depth = 0;
+
+		//glm::vec3 debug = glm::normalize(p - cam.position);
+		//debug.x = abs(debug.x);
+		//debug.y = abs(debug.y);
+		//debug.z = abs(debug.z);
+		//
+		//image[index] += debug;
+	}
 }
 
 /**
@@ -149,7 +224,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+    //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	rayCast <<<blocksPerGrid, blockSize >>>(cam, dev_rayPool, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
