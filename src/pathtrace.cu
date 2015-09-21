@@ -18,6 +18,7 @@
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+//#define FILENAME "/d/Documents/cis565/hw3/test.txt"
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #if ERRORCHECK
@@ -72,7 +73,7 @@ static Geom* dev_geoms;
 static Material* dev_materials;
 static glm::vec3* dev_colors;
 
-static BounceRay* dev_brays;
+//static BounceRay* dev_brays;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -91,7 +92,7 @@ void pathtraceInit(Scene *scene) {
 	const int numObjects = hst_scene->geoms.size();
 	cudaMalloc((void**)&dev_rays, pixelcount*sizeof(Ray));
 	cudaMalloc((void**)&dev_colors, pixelcount*sizeof(glm::vec3));
-	cudaMalloc((void**)&dev_brays, pixelcount*sizeof(BounceRay));
+	//cudaMalloc((void**)&dev_brays, pixelcount*sizeof(BounceRay));
 
 	cudaMalloc((void**)&dev_geoms, numObjects*sizeof(Geom));
 	cudaMalloc((void**)&dev_materials, numObjects*sizeof(Material));
@@ -109,7 +110,7 @@ void pathtraceFree() {
 	cudaFree(dev_colors);
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
-	cudaFree(dev_brays);
+	//cudaFree(dev_brays);
     checkCUDAError("pathtraceFree");
 
 }
@@ -122,8 +123,8 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		int index = x + (y * cam.resolution.x);
 		glm::vec3 left = glm::cross(cam.up, cam.view);
 
-		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-		thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
+		thrust::default_random_engine rng;// = makeSeededRandomEngine(iter, index, 0);
+		thrust::uniform_real_distribution<float> u01(-1, 1);
 
 		float res2x = cam.resolution.x / 2.0;
 		float res2y = cam.resolution.y / 2.0;
@@ -132,7 +133,7 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		float magy = (res2y - y + u01(rng))*sin(cam.fov.y) / res2y;
 
 		glm::vec3 direction = cam.view + magx*left + magy*cam.up;
-		glm::normalize(direction);
+		direction = glm::normalize(direction);
 
 		rays[index].origin = cam.position;
 		rays[index].direction = direction;
@@ -200,7 +201,6 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 			colors[index] = glm::vec3(0.0);
 			rays[index].isAlive = false;
 		}
-		//image[index] = minDist == INFINITY ? glm::vec3(1.0,1.0,1.0) : glm::vec3(1.0,255.0,1.0);
 	}
 }
 
@@ -268,7 +268,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	for (int d = 0; d < traceDepth; d++){
 		intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 		checkCUDAError("intersect");
-
 		cudaDeviceSynchronize();
 	}
 	//intersect<<<numBlocks, MAX_THREADS>>>(iter, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);

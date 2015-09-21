@@ -78,19 +78,20 @@ void scatterRay(
 	thrust::uniform_real_distribution<float> u01(0, 1);
 	float randNum = u01(rng);
 
-	//color = color * m.color;
-
 	// Light
 	if (m.emittance > 0.0f){
 		color = color * m.emittance;
-		//ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		//ray.origin = intersect;
 		ray.isAlive = false;
 		return;
 	}
 
+	float specProb = m.specular.color.r + m.specular.color.g + m.specular.color.b;
+	float diffuseProb = m.color.r + m.color.g + m.color.b;
+	float total = specProb + diffuseProb;
+	specProb = specProb / total;
+
 	// Specular
-	if (randNum > 0.5){
+	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
 		color = color * m.specular.color * 2.0f;
 	}
