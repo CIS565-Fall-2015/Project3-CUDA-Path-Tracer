@@ -62,6 +62,9 @@ void scatterRay(
         const Material &m,
         thrust::default_random_engine &rng) {
     color *= m.color;
+    if (m.emittance > 0) {
+        color *= m.emittance;
+    }
 
     ray.origin = intersect;
     ray.direction = calculateRandomDirectionInHemisphere(normal, rng);

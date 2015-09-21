@@ -33,7 +33,9 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 __host__ __device__ thrust::default_random_engine random_engine(
         int iter, int index = 0, int depth = 0) {
     //return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
-    return thrust::default_random_engine(utilhash((index + 1)) ^ utilhash(iter) ^ utilhash(depth));
+    //return thrust::default_random_engine(utilhash(index ^ iter ^ depth));
+    //return thrust::default_random_engine(utilhash(index + iter + depth));
+    return thrust::default_random_engine(utilhash(index) ^ utilhash(iter) ^ utilhash(depth));
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -173,13 +175,16 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
 
             if (t > 0) {
                 Material m = mats[nearest.materialid];
+                thrust::default_random_engine rng = random_engine(iter, index, depth);
+                scatterRay(pixels[index].ray, pixels[index].color,
+                        intersection, normal, m, rng);
+
                 if (m.emittance > 0) {
                     pixels[index].terminated = true;
-                } else {
-                    thrust::default_random_engine rng = random_engine(iter, index, depth);
-                    scatterRay(pixels[index].ray, pixels[index].color,
-                            intersection, normal, m, rng);
                 }
+                //pixels[index].color = glm::abs(intersection/5.f);
+                //pixels[index].color = pixels[index].ray.direction;
+                //pixels[index].terminated = true;
             } else {
                 pixels[index].color = glm::vec3(0, 0, 0);
                 pixels[index].terminated = true;
@@ -199,7 +204,22 @@ __global__ void debugCameraRays(Camera cam, glm::vec3 *image, Pixel *pixels) {
     }
 }
 
-__global__ void debugIntersectionColors(Camera cam, glm::vec3 *image, Pixel *pixels) {
+__global__ void killNonterminatedRays(Camera cam, Pixel *pixels) {
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+
+        Pixel px = pixels[index];
+        if (px.terminated == false) {
+            pixels[index].terminated = true;
+            pixels[index].color = glm::vec3(0, 0, 0);
+        }
+    }
+}
+
+__global__ void outputPixelColors(Camera cam, glm::vec3 *image, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -256,14 +276,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < traceDepth; i++) {
         intersect<<<blocksPerGrid, blockSize>>>(
                 cam, dev_image, dev_pixels,
                 iter, i,
                 dev_geom, hst_scene->geoms.size(), dev_mats);
     }
 
-    debugIntersectionColors<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
+    killNonterminatedRays<<<blocksPerGrid, blockSize>>>(cam, dev_pixels);
+
+    outputPixelColors<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
     ///////////////////////////////////////////////////////////////////////////
 
