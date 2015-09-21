@@ -36,11 +36,9 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
     exit(EXIT_FAILURE);
-#endif ERRORCHECK
 }
 
-__host__ __device__ thrust::default_random_engine random_engine(
-        int iter, int index = 0, int depth = 0) {
+__host__ __device__ thrust::default_random_engine random_engine(int iter, int index = 0, int depth = 0) {
     int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
 	return thrust::default_random_engine(h);
 }
@@ -481,10 +479,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //     multiplicative identity, white = (1, 1, 1).
     //   * For debugging, you can output your ray directions as colors.
     // * For each depth:
-	//   * Compute one new (ray, color) pair along each path (using scatterRay).
-	//     Note that many rays will terminate by hitting a light or hitting
-	//     nothing at all. You'll have to decide how to represent your path rays
-	//     and how you'll mark terminated rays.
+    //   * Compute one new (ray, color) pair along each path (using scatterRay).
+    //     Note that many rays will terminate by hitting a light or hitting
+    //     nothing at all. You'll have to decide how to represent your path rays
+    //     and how you'll mark terminated rays.
     //     * Color is attenuated (multiplied) by reflections off of any object
     //       surface.
     //     * You can debug your ray-scene intersections by displaying various
