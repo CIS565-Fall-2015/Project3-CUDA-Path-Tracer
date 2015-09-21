@@ -266,7 +266,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 	//Ray* rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
-	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
+	initRays<<<blocksPerGrid2d, blockSize2d>>>(iter, cam, dev_rays, dev_colors);
 	checkCUDAError("initRays");
 
 	//cudaDeviceSynchronize();
@@ -276,7 +276,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//Ray* hst_rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
 	for (int d = 0; d < traceDepth; d++){
-		intersect<<<blocksPerGrid, blockSize>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		intersect<<<blocksPerGrid2d, blockSize2d>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 		//intersect << <numBlocks, MAX_THREADS >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 		checkCUDAError("intersect");
 		cudaDeviceSynchronize();
@@ -291,7 +291,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//cudaDeviceSynchronize();
 
 	//updatePixels << <blocksPerGrid, blockSize >> >(cam, dev_rays, dev_image);
-	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
+	updatePixels<<<blocksPerGrid2d, blockSize2d>>>(cam, dev_colors, dev_image);
     //generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
