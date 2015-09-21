@@ -69,6 +69,7 @@ static Material *dev_mats; // pointer to materials in global memory
 static PathRay *dev_firstBounce; // cache of the first raycast of any iteration
 static PathRay *dev_rayPool; // pool of rays "in flight"
 static int pixelcount;
+static glm::vec3 *dev_sample = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -97,6 +98,10 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_firstBounce, numPixels * sizeof(PathRay));
 	cudaMalloc(&dev_rayPool, numPixels * sizeof(PathRay));
 
+	// allocate space for a "sample"
+	cudaMalloc(&dev_sample, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_sample, 0, pixelcount * sizeof(glm::vec3));
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -107,6 +112,7 @@ void pathtraceFree() {
 	cudaFree(dev_mats);
 	cudaFree(dev_firstBounce);
 	cudaFree(dev_rayPool);
+	cudaFree(dev_sample);
 
     checkCUDAError("pathtraceFree");
 }
@@ -137,7 +143,7 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 }
 
 __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
-	int geomCount, Geom* dev_geoms, PathRay* dev_rayPool, glm::vec3 *image) {
+	int geomCount, Geom* dev_geoms, PathRay* dev_rayPool) {
 	// what information do we need for a single ray given index by block/grid thing?
 	// we need:
 	// - pointer to the sample that will have color updated OR color storage
@@ -236,9 +242,15 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
 }
 
 // transfers colors from thread pool to the image
-__global__ void poolToImage(PathRay* dev_rayPool, glm::vec3 *image) {
+__global__ void poolToImage(PathRay* dev_rayPool, glm::vec3 *sample) {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	image[dev_rayPool[index].pixelIndex] += dev_rayPool[index].color;
+	sample[dev_rayPool[index].pixelIndex] = dev_rayPool[index].color;
+}
+
+// transfers colors from thread pool to the image
+__global__ void mergeSample(glm::vec3 *sample, glm::vec3 *image) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	image[index] += sample[index];
 }
 
 /**
@@ -246,6 +258,9 @@ __global__ void poolToImage(PathRay* dev_rayPool, glm::vec3 *image) {
  * of memory management
  */
 void pathtrace(uchar4 *pbo, int frame, int iter) {
+	// wipe the sample buffer
+	cudaMemset(dev_sample, 0, pixelcount * sizeof(glm::vec3));
+
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -298,8 +313,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			iterBlockSize.x;
 
 		singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(iter, pixelcount,
-			dev_mats, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
+			dev_mats, hst_geomCount, dev_geoms, dev_rayPool);
 
+		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
+		
 		unfinishedRays = cullRays(unfinishedRays);
 		//printf("unfinished rays: %i\n", unfinishedRays);
 	}
@@ -308,7 +325,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	iterBlocksPerGrid.x = (cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) /
 		iterBlockSize.x;
 
-	poolToImage <<<iterBlocksPerGrid, iterBlockSize >>>(dev_rayPool, dev_image);
+	mergeSample << <iterBlocksPerGrid, iterBlockSize >> >(dev_sample, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
