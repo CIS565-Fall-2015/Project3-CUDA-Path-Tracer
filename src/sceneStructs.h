@@ -58,10 +58,13 @@ struct RenderState {
 
 struct PathRay {
 	glm::vec3 color;
+	glm::vec3 intersect;
+	glm::vec3 normal;
 	Ray ray;
 	int index;
 	bool terminate;
 	int matId;
+	bool hasIntersect;
 };
 
 struct is_terminated{

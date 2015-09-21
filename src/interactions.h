@@ -41,6 +41,22 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__
+glm::vec3 calculateRandomDirectionInQuadsphere(glm::vec3 offNormal, glm::vec3 surfaceNormal, thrust::default_random_engine &rng) {
+	thrust::uniform_real_distribution<float> u01(0, 1);
+
+	glm::vec3 offDirection = calculateRandomDirectionInHemisphere(offNormal, rng);
+	if (dot(offDirection, surfaceNormal) < 0){
+		return offNormal;
+	}
+	return offDirection;
+}
+
+__host__ __device__
+glm::vec3 calculatePerfectSpecDirection(glm::vec3 inDirection, glm::vec3 normal) {
+	return inDirection - 2.0f * glm::dot(inDirection, normal) * normal;
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -65,12 +81,40 @@ __host__ __device__
 void scatterRay(
         Ray &ray,
         glm::vec3 &color,
+		glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
-	ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-	color = glm::vec3(color.x * m.color.x, color.y * m.color.y, color.z * m.color.z);
+	glm::vec3 diffuseDirection = calculateRandomDirectionInHemisphere(normal, rng);
+	glm::vec3 diffuseColor = color * m.color;
+	float diffuseIntensity = glm::length(diffuseColor);
+
+	glm::vec3 specDirection = calculatePerfectSpecDirection(ray.direction, normal);
+	glm::vec3 specColor = color * m.specular.color * m.specular.exponent;
+	float specIntensity = glm::length(specColor);
+
+	glm::vec3 glossDirection = calculateRandomDirectionInQuadsphere(specDirection, normal, rng);
+
+	float split = diffuseIntensity / (diffuseIntensity + specIntensity);
+	thrust::uniform_real_distribution<float> range(0, 1);
+	float pick = range(rng);
+
+	if (pick <= split){
+		color = diffuseColor / split;
+		ray.direction = diffuseDirection;
+	}
+	else {
+		color = specColor / (1 - split);
+		if (m.hasReflective){
+			ray.direction = specDirection;
+		}
+		else {
+			ray.direction = glossDirection;
+		}
+	}
+
+	ray.origin = intersect;
 }

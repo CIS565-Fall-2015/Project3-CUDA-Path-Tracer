@@ -107,12 +107,13 @@ __global__ void initRayGrid(PathRay *oGrid, Camera cam){
 
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
-		PathRay ray;
-		ray.index = index;
-		ray.color = glm::vec3(1, 1, 1);
+		PathRay pr;
+		pr.index = index;
+		pr.color = glm::vec3(1.0f);
 
-		ray.ray.origin = cam.position;
-		ray.terminate = false;
+		pr.ray.origin = cam.position;
+		pr.terminate = false;
+		pr.matId = -1;
 
 		// Grid center to pixel
 		float pX = x - cam.resolution.x / 2;
@@ -121,9 +122,9 @@ __global__ void initRayGrid(PathRay *oGrid, Camera cam){
 		// Vector: grid center to pixel
 		glm::vec3 o2px = glm::vec3(cam.right.x*pX + cam.up.x*pY, cam.right.y*pX + cam.up.y*pY, cam.right.z*pX + cam.up.z*pY);
 		// Ray vector
-		ray.ray.direction = glm::vec3(cam.toGrid.x + o2px.x, cam.toGrid.y + o2px.y, cam.toGrid.z + o2px.z);
+		pr.ray.direction = glm::vec3(cam.toGrid.x + o2px.x, cam.toGrid.y + o2px.y, cam.toGrid.z + o2px.z);
 
-		oGrid[index] = ray;
+		oGrid[index] = pr;
 
 		// Ray direction debug
 		//float l = glm::length(ray.ray.direction);
@@ -132,50 +133,47 @@ __global__ void initRayGrid(PathRay *oGrid, Camera cam){
 }
 
 
-__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount){
+__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount, glm::vec3 *image){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
 	int index = x + (y * cam.resolution.x);
 
-	int blockFlatIdx = threadIdx.x + (threadIdx.y * 8);
-
-	__shared__ PathRay pr[64];
-	__shared__ glm::vec3 iPoint[64];
-	__shared__ glm::vec3 iNormal[64];
-	extern __shared__ Geom g[];
+	// Memory access 2GB+
+	// __shared__ memory variables can reduce by ~300MB
+	// Dynamic blocksPerGrid can further reduce by ~700MB
+	// Weird memory access violations and arbitrary incorrect materialid
 
 	if (index < grid_size) {
 		// Intersection test
-		pr[blockFlatIdx] = grid[index];
-		iPoint[blockFlatIdx] = glm::vec3(0.0f);
-		iNormal[blockFlatIdx] = glm::vec3(0.0f);
-		float rayLength;
-		int matId = -1;
-		
-		if (blockFlatIdx < geomcount){
-			g[blockFlatIdx] = iGeoms[blockFlatIdx];
-		}
+		PathRay pr = grid[index];
+		pr.hasIntersect = false;
 
-		__syncthreads();
-
-		for (int i = 0; i < geomcount; i++){
-			if (g[i].type == SPHERE){
-				rayLength = sphereIntersectionTest(g[i], pr[blockFlatIdx].ray, iPoint[blockFlatIdx], iNormal[blockFlatIdx]);
+		float oldLength = -1.0f;
+		for (int i = 0; i < geomcount; ++i){
+			float rayLength = 0.0f;
+			glm::vec3 iPoint(0.0f);
+			glm::vec3 iNormal(0.0f);
+			bool outside = false;
+			Geom g = iGeoms[i];
+			if (g.type == SPHERE){
+				rayLength = sphereIntersectionTest(g, pr.ray, iPoint, iNormal, outside);
+			} else {
+				rayLength = boxIntersectionTest(g, pr.ray, iPoint, iNormal, outside);
 			}
-			else {
-				rayLength = boxIntersectionTest(g[i], pr[blockFlatIdx].ray, iPoint[blockFlatIdx], iNormal[blockFlatIdx]);
-			}
-			if (rayLength != -1){
-				matId = g[i].materialid;
-				break;
+			// Find the nearest intersection
+			if (rayLength != -1.0f){
+				pr.hasIntersect = true;
+				if (oldLength == -1.0f || rayLength < oldLength){
+					oldLength = rayLength;
+					pr.intersect = iPoint;
+					pr.normal = iNormal;
+					pr.matId = g.materialid;
+				}
 			}
 		}
-		pr[blockFlatIdx].ray.origin = iPoint[blockFlatIdx];
-		pr[blockFlatIdx].ray.direction = iNormal[blockFlatIdx];
-		pr[blockFlatIdx].matId = matId;
-		grid[index] = pr[blockFlatIdx];
+		grid[index] = pr;
 	}
 };
 
@@ -189,8 +187,7 @@ __global__ void scatter(PathRay *grid, Material *iMaterials, Camera cam, const i
 	if (index < grid_size) {
 		PathRay pr = grid[index];
 		Material m = iMaterials[pr.matId];
-		glm::vec3 iNormal = pr.ray.direction;
-		scatterRay(pr.ray, pr.color, iNormal, m, random_engine(iter, index, depth));
+		scatterRay(pr.ray, pr.color, pr.intersect, pr.normal, m, random_engine(iter, index, depth));
 		grid[index] = pr;
 	}
 };
@@ -204,12 +201,12 @@ __global__ void terminatePath(PathRay *grid, Material *iMaterials, Camera cam, c
 
 	if (index < grid_size) {
 		PathRay pr = grid[index];
-		if (pr.matId != -1){
+		if (pr.hasIntersect){
 			Material m = iMaterials[pr.matId];
 			if (m.emittance > 0.0f){
 				// Add to pixel
 				pr.terminate = true;
-				pr.color = glm::vec3(pr.color.x * m.color.x * m.emittance, pr.color.y * m.color.y * m.emittance, pr.color.z * m.color.z * m.emittance);
+				pr.color = pr.color * m.color * m.emittance;
 			}
 		}
 		else {
@@ -244,8 +241,7 @@ __global__ void killPath(PathRay *grid, glm::vec3 *image, Camera cam, const int 
 
 	if (index < grid_size) {
 		PathRay pr = grid[index];
-		pr.color = pr.color * glm::vec3(0.0f);
-		image[pr.index] += pr.color;
+		image[pr.index] += glm::vec3(0.0f);
 	}
 }
 
@@ -301,24 +297,28 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	// For each traceDepth
 	for (int d = 0; d < traceDepth; d++){
 		// Intersection test
-		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
+		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount, dev_image);
 		checkCUDAError("intersect");
+
 		// Mark all terminated paths
 		terminatePath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size);
 		checkCUDAError("terminatePath");
+
 		// Paint image
 		fillPixel << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_image, cam, grid_size);
 		checkCUDAError("fillPixel");
+
 		// Stream compaction
 		thrust::detail::normal_iterator<thrust::device_ptr<PathRay>> newGridEnd = thrust::remove_if(dev_grid.begin(), dev_grid.end(), is_terminated());
 		checkCUDAError("compact");
 		dev_grid.erase(newGridEnd, dev_grid.end());
 		grid_size = dev_grid.size();
+
 		// Scatter
 		scatter << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size, iter, d);
 		checkCUDAError("scatter");
 	}
-	// Collect unterminated paths
+	// Kill unterminated paths
 	killPath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_image, cam, grid_size);
 	checkCUDAError("killPath");
 
