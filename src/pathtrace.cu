@@ -14,7 +14,7 @@
 #include "intersections.h"
 #include "interactions.h"
 
-#define MAX_THREADS 1024
+#define MAX_THREADS 512
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -115,12 +115,18 @@ void pathtraceFree() {
 
 }
 
-__global__ void initRays(int iter, Camera cam, Ray* rays){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+__global__ void initRays(int n, int iter, Camera cam, Ray* rays){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	if (x < cam.resolution.x && y < cam.resolution.y){
-		int index = x + (y * cam.resolution.x);
+	//if (x < cam.resolution.x && y < cam.resolution.y){
+		//int index = x + (y * cam.resolution.x);
+	if (index < n){
+		//int x = index/cam.resolution.y;
+		//int y = index % cam.resolution.y;
+		int x = index % cam.resolution.x;
+		int y = index / cam.resolution.x;
 		glm::vec3 left = glm::cross(cam.up, cam.view);
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
@@ -145,10 +151,10 @@ __global__ void initRays(int iter, Camera cam, Ray* rays){
 }
 
 __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam, Ray* rays, int numObjects, const Geom* geoms, const Material* materials){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	//int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	glm::vec3 normal;
 	glm::vec3 intersectionPoint;
@@ -161,9 +167,9 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 	float minDist = INFINITY;
 	int obj_index = -1;
 
-	if (x < cam.resolution.x && y < cam.resolution.y){
-		int index = x + (y * cam.resolution.x);
-	//if (index < n){
+	//if (x < cam.resolution.x && y < cam.resolution.y){
+		//int index = x + (y * cam.resolution.x);
+	if (index < n){
 
 		if (!rays[index].isAlive){
 			return;
@@ -174,7 +180,6 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 			rays[index].isAlive = false;
 			return;
 		}
-
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, depth);
 		Ray ray = rays[index];
@@ -196,7 +201,11 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 		}
 
 		if (obj_index >= 0){
+			//minNormal = glm::vec3(0.0,1.0,0.0);
+			//minIntersectionPoint = glm::vec3(0.0, 1.0, 0.0);
 			scatterRay(rays[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
+			//rays[index].color = rays[index].color * materials[geoms[obj_index].materialid].color;
+			//rays[index].origin = minNormal;
 		}
 		else{
 			rays[index].color = glm::vec3(0.0);
@@ -205,13 +214,14 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 	}
 }
 
-__global__ void updatePixels(Camera cam, Ray* ray, glm::vec3* image){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+__global__ void updatePixels(int n, Camera cam, Ray* ray, glm::vec3* image){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	if (x < cam.resolution.x && y < cam.resolution.y) {
-		int index = x + (y * cam.resolution.x);
-
+	//if (x < cam.resolution.x && y < cam.resolution.y) {
+		//int index = x + (y * cam.resolution.x);
+	if (index < n){
 		image[index] += ray[index].color;
 	}
 }
@@ -257,26 +267,29 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   (Easy way is to make them black or background-colored.)
 
     // TODO: perform one iteration of path tracing
-	//Ray* rays = (Ray*)malloc(pixelcount*sizeof(Ray));
+	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
-	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays);
+	printf("Pixels: %d\n", pixelcount);
+	printf("Blocks: %d\n", numBlocks);
+	printf("Threads: %d\n", MAX_THREADS);
+	//initRays<<<blocksPerGrid, blockSize>>>(pixelcount, iter, cam, dev_rays);
+	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays);
+
 	checkCUDAError("initRays");
 
 	//cudaDeviceSynchronize();
 
-	int numBlocks = pixelcount / MAX_THREADS + 1;
-
 	//Ray* hst_rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
 	for (int d = 0; d < traceDepth; d++){
-		intersect<<<blocksPerGrid, blockSize>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
-		//intersect << <numBlocks, MAX_THREADS >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		intersect<<<numBlocks, MAX_THREADS>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
+		//intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
 		checkCUDAError("intersect");
 		cudaDeviceSynchronize();
 	}
 
-	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
-
+	//updatePixels<<<blocksPerGrid, blockSize>>>(pixelcount, cam, dev_rays, dev_image);
+	updatePixels << <numBlocks, MAX_THREADS >> >(pixelcount, cam, dev_rays, dev_image);
     ///////////////////////////////////////////////////////////////////////////
 
     // Send results to OpenGL buffer for rendering
