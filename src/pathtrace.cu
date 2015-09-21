@@ -136,8 +136,8 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
-__global__ void singleBounce(int pixelCount, int geomCount, Geom* dev_geoms,
-	PathRay* dev_rayPool, glm::vec3 *image) {
+__global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
+	int geomCount, Geom* dev_geoms, PathRay* dev_rayPool, glm::vec3 *image) {
 	// what information do we need for a single ray given index by block/grid thing?
 	// we need:
 	// - pointer to the sample that will have color updated OR color storage
@@ -146,16 +146,15 @@ __global__ void singleBounce(int pixelCount, int geomCount, Geom* dev_geoms,
 	//		-or have two buffers and flip them?
 	//			-"next rays" memory should have same allocated size as current rays
 	//			-should start off allocated full of "terminated" rays
-	//			-terminated rays have ray length of much less than 1.
-	//			-alternatively, terminated rays are "dark"
+	//			-terminated rays have depth of over MAX_DEPTH
 	// - count of ray depth
-	// - so I've added a PathRay struct that contains color and depth
+	// - so I've added a PathRay struct that contains color and trace depth
 
 	// 1) grab the index of the ray
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < pixelCount) {
 		// 2) check what it intersects with
-		Geom nearestGeom;
+		Geom *nearestGeom = NULL;
 		glm::vec3 isx_point;
 		glm::vec3 isx_norm;
 		float t = INFINITY;
@@ -175,21 +174,29 @@ __global__ void singleBounce(int pixelCount, int geomCount, Geom* dev_geoms,
 				t = candidate_t;
 				isx_point = candidate_isx_point;
 				isx_norm = candidate_isx_norm;
-				nearestGeom = dev_geoms[i];
+				nearestGeom = &dev_geoms[i];
 			}
 		}
+
+		// 3) update the ray in its slot
+		if (nearestGeom) {
+			thrust::default_random_engine rng = random_engine(iter, index, 0);
+			scatterRay(dev_rayPool[index], isx_point, isx_norm,
+				dev_mats[nearestGeom->materialid], rng);
+			dev_rayPool[index].depth++;
+		}
+		else {
+			dev_rayPool[index].depth = MAX_DEPTH;
+			dev_rayPool[index].color = glm::vec3(0, 0, 0);
+		}
+
 		// debug: intersection check.
-		image[index] += isx_norm;
+		// image[index] += isx_norm;
 
-		glm::vec3 debug = dev_rayPool[index].ray.direction;
-		debug.x = abs(debug.x);
-		debug.y = abs(debug.y);
-		debug.z = abs(debug.z);
-		
-		image[index] += debug;
-
-		// 3) attenuate color appropriately
-		// 4) update the ray in this slot
+		// debug: flat color
+		//if (nearestGeom) {
+		//	image[index] += dev_mats[nearestGeom->materialid].color;
+		//}
 	}
 }
 
@@ -271,12 +278,17 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+
+	// while there are still unfinished rays in the scene, trace.
 	dim3 iterBlockSize(blockSideLength * blockSideLength);
-	dim3 iterBlocksPerGrid(
-		(cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) / iterBlockSize.x);
+	dim3 iterBlocksPerGrid((cam.resolution.x * cam.resolution.y
+		+ iterBlockSize.x - 1) / iterBlockSize.x);
 
 	rayCast << <iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
-	singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(pixelcount, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
+	singleBounce <<<iterBlocksPerGrid, iterBlockSize >> >(iter, pixelcount,
+		dev_mats, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
+
+
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -288,4 +300,18 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     checkCUDAError("pathtrace");
+}
+
+struct bottomed_out
+{
+	__host__ __device__
+	bool operator()(const PathRay pathray)
+	{
+		return pathray.depth >= MAX_DEPTH;
+	}
+};
+
+// culls rays using stream compaction.
+int cullRays(int numRays) {
+
 }

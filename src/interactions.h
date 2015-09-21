@@ -1,6 +1,7 @@
 #pragma once
 
 #include "intersections.h"
+#include "sceneStructs.h"
 
 // CHECKITOUT
 /**
@@ -63,8 +64,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  */
 __host__ __device__
 void scatterRay(
-        Ray &ray,
-        glm::vec3 &color,
+PathRay &rayStep,
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
@@ -72,4 +72,21 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
+	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.
+	// premultiply color.
+	if (m.emittance > 0.0f) { // hitting a light
+		rayStep.color *= m.color * m.emittance;
+		rayStep.depth = MAX_DEPTH;
+	}
+	else if (rayStep.depth >= MAX_DEPTH){ // bottoming out
+		rayStep.color = glm::vec3(0, 0, 0);
+	}
+	else // hitting just a normal thing
+	{
+		rayStep.ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		rayStep.ray.origin = intersect;
+		rayStep.color *= m.color;
+	}
+	//float absorbance = 1.0f - glm::max(m.color.r, glm::max(m.color.g, m.color.b));
 }
