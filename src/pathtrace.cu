@@ -72,8 +72,6 @@ bool doStreamCompact = false;
 Ray * dev_rays;
 int ligntObjIdx = 0;
 
-// TODO: static variables for device memory, scene/camera info, etc
-// ...
 
 void pathtraceInit(Scene *scene,bool strCmpt) {
     hst_scene = scene;
@@ -120,8 +118,6 @@ void pathtraceFree() {
 	cudaFree(dev_mats);
     cudaFree(dev_image);// no-op if dev_image is null
 
-    // TODO: clean up the above static variables
-
     checkCUDAError("pathtraceFree");
 }
 
@@ -148,8 +144,6 @@ __device__ Ray GenerateRayFromCam(Camera cam, int x, int y)
 
 	ray_xy.direction = glm::normalize(Dir_);
 
-	//??? something goes wrong with camera control left/right
-	///!!!later:antialising
 	return ray_xy;
 }
 
@@ -177,10 +171,8 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 		glm::vec3 V_ = glm::normalize(B_)*glm::length(C_)*tanPhi;
 		glm::vec3 H_ = glm::normalize(A_)*glm::length(C_)*tanTheta;
 
-		//??? antialising
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
-		//thrust::default_random_engine rng_y = random_engine(iter, index, 2);
 
 		float Sx = ((float)x + u01(rng) - 0.5) / (cam.resolution.x - 1);
 		float Sy = ((float)y + u01(rng) - 0.5) / (cam.resolution.y - 1);
@@ -196,14 +188,15 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 __device__ float rayIntersection(Geom geometry, Ray r,glm::vec3& intersectionPoint, glm::vec3& normal, int &materIdx)
 {
 	float temp_T = -1;
+	bool outside = true;//???????
 	switch (geometry.type)
 	{
 	case SPHERE:
-		temp_T = sphereIntersectionTest(geometry, r, intersectionPoint, normal);
+		temp_T = sphereIntersectionTest(geometry, r, intersectionPoint, normal,outside);
 		materIdx = geometry.materialid;
 		break;
 	case CUBE:
-		temp_T = boxIntersectionTest(geometry, r, intersectionPoint, normal);
+		temp_T = boxIntersectionTest(geometry, r, intersectionPoint, normal, outside);
 		materIdx = geometry.materialid;// glm::vec3(0, 1, 0);
 		break;
 	default:
@@ -222,7 +215,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 	{	
 		if (rays[index].terminated)
 		{
-			return;//!!! later compact
+			return;
 		}
 		// intersection with objects
 		glm::vec3 intrPoint;
@@ -348,101 +341,10 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 	}
 }
 
-
-/*
-__global__ void Test(Camera cam, Ray * rays, Geom * dev_geo, Material * dev_mat, int geoNum, int iter, glm::vec3 *image) {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	if (x < cam.resolution.x && y < cam.resolution.y) {
-		int index = x + (y * cam.resolution.x);
-
-		thrust::default_random_engine rng = random_engine(iter, index, 0);
-		thrust::uniform_real_distribution<float> u01(0, 1);
-		Ray crntRay = rays[index];// GenerateRayFromCam(cam, x, y);
-	
-		//Ray Cast Direction test
-		//glm::vec3 DirColor = crntRay.direction;
-		//DirColor.x = DirColor.x < 0 ? (-DirColor.x) : DirColor.x;
-		//DirColor.y = DirColor.y < 0 ? (-DirColor.y) : DirColor.y;
-		//DirColor.z = DirColor.z < 0 ? (-DirColor.z) : DirColor.z;
-		
-		glm::vec3 pixelColor(0, 0, 0);
-		int intrObjIdx;
-		glm::vec3 intrPoint;
-		glm::vec3 intrNormal;	
-		float intrT = -1 ;
-
-		// Intersection with objects/geoms
-		//??? slow...
-		for (int i = 0; i<geoNum; i++)
-		{
-			glm::vec3 temp_intrPoint;
-			glm::vec3 temp_intrNormal;	
-			float temp_T;
-			glm::vec3 temp_color;
-			int temp_objIdx;
-
-			switch (dev_geo[i].type)
-			{
-			case SPHERE:
-				temp_T = sphereIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
-				temp_color = dev_mat[dev_geo[i].materialid].color;
-				temp_objIdx = i;
-				break;
-			case CUBE:
-				temp_T = boxIntersectionTest(dev_geo[i], crntRay, temp_intrPoint, temp_intrNormal);
-				temp_color = dev_mat[dev_geo[i].materialid].color;// glm::vec3(0, 1, 0);
-				temp_objIdx = i;
-				break;
-			default:
-				break;
-			}
-			if (temp_T < 0) continue;
-			if (intrT < 0 || temp_T < intrT)
-			{ 
-				intrT = temp_T; 
-				intrPoint = temp_intrPoint;
-				intrNormal = temp_intrNormal;
-				pixelColor = temp_color;
-				intrObjIdx = temp_objIdx;
-			}
-		}
-		
-		if (intrT > 0)
-		{
-			image[index] += pixelColor;
-		}
-	}
-}*/
-
-
 /**
  * Example function to generate static and test the CUDA-GL interop.
  * Delete this once you're done looking at it!
  */
-
-/*
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
-    }
-}*/
 
 struct is_terminated
 {
@@ -468,33 +370,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
 
-    ///////////////////////////////////////////////////////////////////////////
-
-    // Recap:
-    // * Initialize array of path rays (using rays that come out of the camera)
-    //   * You can pass the Camera object to that kernel.
-    //   * Each path ray is a (ray, color) pair, where color starts as the
-    //     multiplicative identity, white = (1, 1, 1).
-    //   * For debugging, you can output your ray directions as colors.
-    // * For each depth:
-    //   * Compute one new (ray, color) pair along each path (using scatterRay).
-    //     Note that many rays will terminate by hitting a light or hitting
-    //     nothing at all. You'll have to decide how to represent your path rays
-    //     and how you'll mark terminated rays.
-    //     * Color is attenuated (multiplied) by reflections off of any object
-    //       surface.
-    //     * You can debug your ray-scene intersections by displaying various
-    //       values as colors, e.g., the first surface normal, the first bounced
-    //       ray direction, the first unlit material color, etc.
-    //   * Add all of the terminated rays' results into the appropriate pixels.
-    //   * Stream compact away all of the terminated paths.
-    //     You may use either your implementation or `thrust::remove_if` or its
-    //     cousins.
-    // * Finally, handle all of the paths that still haven't terminated.
-    //   (Easy way is to make them black or background-colored.)
-
-    // TODO: perform one iteration of path tracing
-
 	//(1) Initialize array of path rays
 	kernInitPathRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays,iter);
 
@@ -518,15 +393,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
 			totalRays = (int)(newRayEnd - RayStart);
 		}
-
 	}
 	//(3) Handle all not terminated
 	int bSize = blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);//??? block size
-	//Test <<<blocksPerGrid, blockSize >>>(cam,dev_rays, dev_geoms, dev_mats, geoNum, iter, dev_image);
-
-    ///////////////////////////////////////////////////////////////////////////
+	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);

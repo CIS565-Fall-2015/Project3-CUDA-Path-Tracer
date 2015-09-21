@@ -138,3 +138,11 @@ material 4
 TRANS       -2 7 1
 ROTAT       0 0 0
 SCALE       2.5 2.5 2.5
+
+// sphere
+OBJECT 8
+cube
+material 4
+TRANS       0 4 0
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5

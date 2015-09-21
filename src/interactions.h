@@ -40,6 +40,48 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + cos(around) * over * perpendicularDirection1
         + sin(around) * over * perpendicularDirection2;
 }
+//http://www.igorsklyar.com/system/documents/papers/4/fiscourse.comp.pdf
+__host__ __device__
+glm::vec3 calculateRandomSpecularDirection(
+glm::vec3 specDir,float specExp, thrust::default_random_engine &rng) {
+	thrust::uniform_real_distribution<float> u01(0, 1);
+	float X1 = u01(rng);
+	float X2 = u01(rng);
+	float n = specExp;
+
+	float thi = acos(pow(X1, 1 / (n+1)));
+	float phi = TWO_PI*X2;
+
+	float z = cos(thi);
+	float x = cos(phi)*sin(thi);
+	float y = sin(phi)*sin(thi);
+
+	// Find a direction that is not the normal based off of whether or not the
+	// normal's components are all equal to sqrt(1/3) or whether or not at
+	// least one component is less than sqrt(1/3). Learned this trick from
+	// Peter Kutz.
+
+	glm::vec3 directionNotNormal;
+	if (abs(specDir.x) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(1, 0, 0);
+	}
+	else if (abs(specDir.y) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(0, 1, 0);
+	}
+	else {
+		directionNotNormal = glm::vec3(0, 0, 1);
+	}
+
+	// Use not-normal direction to generate two perpendicular directions
+	glm::vec3 perpendicularDirection1 =
+		glm::normalize(glm::cross(specDir, directionNotNormal));
+	glm::vec3 perpendicularDirection2 =
+		glm::normalize(glm::cross(specDir, perpendicularDirection1));
+
+	return z * specDir
+		+ x * perpendicularDirection1
+		+ y * perpendicularDirection2;
+}
 
 /**
  * Scatter a ray with some probabilities according to the material properties.
@@ -83,7 +125,7 @@ thrust::default_random_engine &rrr) {
 
 	if (m.emittance > 0)
 	{
-		ray.carry *= m.emittance*m.color;//???? is this right....?
+		ray.carry *= m.emittance*m.color;
 		ray.terminated = true;
 	}
 	// Shading 
@@ -105,7 +147,7 @@ thrust::default_random_engine &rrr) {
 		//later fresnel
 
 	}
-	else if (m.bssrdf > 0) //try brute-force bssrdf
+	else if (m.bssrdf > 0) //subsurface scattering : try brute-force bssrdf
 	{
 		//http://noobody.org/bachelor-thesis.pdf
 		//(1) incident or exitant or currently inside obj ?
@@ -130,7 +172,6 @@ thrust::default_random_engine &rrr) {
 			// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
 			float Sigma_t =1.5;
 			float so = -log(u01(rrr)) / Sigma_t;
-			//so = 10000;
 			float si = glm::length(getPointOnRay(ray, intrT) - ray.origin);
 			if (si <= so) //turns into exitant, go out of the object
 			//if (true)
@@ -150,18 +191,31 @@ thrust::default_random_engine &rrr) {
 		//!!! later : specular
 		//http://www.tomdalling.com/blog/modern-opengl/07-more-lighting-ambient-specular-attenuation-gamma/
 
-		glm::vec3 newDir = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
-		float specCoeff = 0;
 		if (m.specular.exponent > 0)
 		{
-			glm::vec3 refl = glm::reflect(-newDir, normal);
-			float cosAngle = max(0.0f, glm::dot(-ray.direction, refl));
-			specCoeff = pow(cosAngle, m.specular.exponent);
-			//specComp = specCoeff*intrMat.specular.color;
+			thrust::uniform_real_distribution<float> u01(0, 1);
+			ray.origin = getPointOnRay(ray, intrT);
+			float specProb = glm::length(m.specular.color);
+			specProb = specProb / (specProb + glm::length(m.color));
+			if (u01(rrr) < specProb) //spec ray
+			{
+				glm::vec3 specDir = glm::reflect(ray.direction, normal);
+				ray.direction = glm::normalize(calculateRandomSpecularDirection(specDir, m.specular.exponent, rrr));
+				ray.carry *= m.specular.color *(1.f / specProb);
+			}
+			else//diffuse ray
+			{
+				ray.carry *= m.color*(1.f / (1 - specProb));
+				ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
+			}
 		}
-		ray.origin = getPointOnRay(ray, intrT);
-		ray.carry *= (m.color*(1 - specCoeff) + m.specular.color*specCoeff);
-		ray.direction = newDir;
+		else 
+		{
+			ray.origin = getPointOnRay(ray, intrT);
+			ray.carry *= m.color;
+			ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
+		}
+
 	}
 	return ray.carry;
 
