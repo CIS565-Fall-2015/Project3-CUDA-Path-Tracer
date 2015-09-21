@@ -235,6 +235,12 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
 	}
 }
 
+// transfers colors from thread pool to the image
+__global__ void poolToImage(PathRay* dev_rayPool, glm::vec3 *image) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	image[dev_rayPool[index].pixelIndex] += dev_rayPool[index].color;
+}
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -280,15 +286,29 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 
 	// while there are still unfinished rays in the scene, trace.
+	int unfinishedRays = cam.resolution.x * cam.resolution.y;
 	dim3 iterBlockSize(blockSideLength * blockSideLength);
-	dim3 iterBlocksPerGrid((cam.resolution.x * cam.resolution.y
-		+ iterBlockSize.x - 1) / iterBlockSize.x);
+	dim3 iterBlocksPerGrid((unfinishedRays + iterBlockSize.x - 1) /
+		iterBlockSize.x);
 
-	rayCast << <iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
-	singleBounce <<<iterBlocksPerGrid, iterBlockSize >> >(iter, pixelcount,
-		dev_mats, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
+	rayCast <<<iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
+	
+	while (unfinishedRays > 0) {
+		iterBlocksPerGrid.x = (unfinishedRays + iterBlockSize.x - 1) /
+			iterBlockSize.x;
 
+		singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(iter, pixelcount,
+			dev_mats, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
 
+		unfinishedRays = cullRays(unfinishedRays);
+		//printf("unfinished rays: %i\n", unfinishedRays);
+	}
+
+	// transfer results over to the image
+	iterBlocksPerGrid.x = (cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) /
+		iterBlockSize.x;
+
+	poolToImage <<<iterBlocksPerGrid, iterBlockSize >>>(dev_rayPool, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -311,7 +331,16 @@ struct bottomed_out
 	}
 };
 
-// culls rays using stream compaction.
+// culls rays using stream compaction. for now, just uses thrust.
 int cullRays(int numRays) {
-
+	PathRay *newEnd = thrust::remove_if(thrust::device, dev_rayPool, dev_rayPool + numRays, bottomed_out());
+	// get the index of newEnd
+	int newNumRays = 0;
+	for (int i = 0; i < numRays; i++) {
+		if (&dev_rayPool[i] == newEnd) {
+			newNumRays = i;
+			break;
+		}
+	}
+	return newNumRays;
 }
