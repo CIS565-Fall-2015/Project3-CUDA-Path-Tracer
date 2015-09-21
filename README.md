@@ -47,8 +47,8 @@ end.
 ### Running the code
 
 The main function requires a scene description file. Call the program with
-one as an argument: `cis565_path_tracer scene/sphere.txt`.
-(In Visual Studio, `../scene/sphere.txt`.)
+one as an argument: `cis565_path_tracer scenes/sphere.txt`.
+(In Visual Studio, `../scenes/sphere.txt`.)
 
 If you are using Visual Studio, you can set this in the Debugging > Command
 Arguments section in the Project properties. Make sure you get the path right -
@@ -177,6 +177,11 @@ there is a typographical error: χ in the text = ξ in the formulas.)
 Also see the notes in `scatterRay` for probability splits between
 diffuse/specular/other material types.
 
+### Handling Long-Running CUDA Threads
+
+By default, your GPU driver will probably kill a CUDA kernel if it runs for more than 5 seconds. There's a way to disable this timeout. Just beware of infinite loops - they may lock up your computer.
+
+> The easiest way to disable TDR for Cuda programming, assuming you have the NVIDIA Nsight tools installed, is to open the Nsight Monitor, click on "Nsight Monitor options", and under "General" set "WDDM TDR enabled" to false. This will change the registry setting for you. Close and reboot. Any change to the TDR registry setting won't take effect until you reboot. [Stack Overflow](http://stackoverflow.com/questions/497685/cuda-apps-time-out-fail-after-several-seconds-how-to-work-around-this)
 
 ### Notes on GLM
 

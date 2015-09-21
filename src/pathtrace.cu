@@ -33,8 +33,11 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
         fprintf(stderr, " (%s:%d)", file, line);
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+#  ifdef _WIN32
+    getchar();
+#  endif
     exit(EXIT_FAILURE);
-#endif ERRORCHECK
+#endif
 }
 
 __host__ __device__
@@ -229,11 +232,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	const int numObjects = hst_scene->geoms.size();
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    const int blockSideLength = 8;
-    const dim3 blockSize(blockSideLength, blockSideLength);
-    const dim3 blocksPerGrid(
-            (cam.resolution.x + blockSize.x - 1) / blockSize.x,
-            (cam.resolution.y + blockSize.y - 1) / blockSize.y);
+    const dim3 blockSize2d(8, 8);
+    const dim3 blocksPerGrid2d(
+            (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
+            (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
     ///////////////////////////////////////////////////////////////////////////
     // Recap:
@@ -256,6 +258,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   * Stream compact away all of the terminated paths.
     //     You may use either your implementation or `thrust::remove_if` or its
     //     cousins.
+    //     * Note that you can't really use a 2D kernel launch any more - switch
+    //       to 1D.
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
@@ -284,7 +288,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	}
 	//intersect<<<numBlocks, MAX_THREADS>>>(iter, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 	//intersect << <blocksPerGrid, blockSize >> >(iter, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
-	//cudaDeviceSynchronize();w
+	//cudaDeviceSynchronize();
 
 	//updatePixels << <blocksPerGrid, blockSize >> >(cam, dev_rays, dev_image);
 	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
@@ -293,7 +297,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     ///////////////////////////////////////////////////////////////////////////
 
     // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
 
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
