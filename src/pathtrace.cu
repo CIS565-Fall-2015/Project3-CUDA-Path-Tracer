@@ -17,9 +17,14 @@
 #include "intersections.h"
 #include "interactions.h"
 
+
+#define ERRORCHECK 1
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+#if ERRORCHECK
+    cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;
@@ -31,11 +36,13 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
     exit(EXIT_FAILURE);
+#endif ERRORCHECK
 }
 
 __host__ __device__ thrust::default_random_engine random_engine(
         int iter, int index = 0, int depth = 0) {
-    return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+    int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
+	return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -82,6 +89,12 @@ static Geom * dev_geom;
 static Material * dev_material;
 
 
+static Node * dev_node;		//kd tree node
+
+
+
+
+
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
@@ -103,15 +116,13 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_material,scene->geoms.size() * sizeof(Material));
 	cudaMemcpy(dev_material,scene->materials.data() , scene->materials.size() * sizeof (Material), cudaMemcpyHostToDevice);
 
-	//Geom * d = dev_geom;
-	//for (std::vector<Geom>::iterator it = scene->geoms.begin() ; it != scene->geoms.end(); ++it) {
-	//	int *src = &((*it)[0]);
-	//	size_t sz = sizeof (Geom);
 
-	//	cudaMemcpy(d, src, sizeof(int)*sz, cudaMemcpyHostToDevice);
-	//	d += sz;
-	//}
+
+	//KD-tree
 	
+
+	cudaMalloc(&dev_node, (scene->kdtree.last_idx) * sizeof(Node) );
+	cudaMemcpy(dev_node, scene->kdtree.hst_node.data(),(scene->kdtree.last_idx) * sizeof(Node),cudaMemcpyHostToDevice);
 
 
     checkCUDAError("pathtraceInit");
@@ -121,6 +132,8 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
+	cudaFree(dev_node);
+	
 	cudaFree(dev_path);
 
 	cudaFree(dev_geom);
@@ -128,33 +141,6 @@ void pathtraceFree() {
 
     checkCUDAError("pathtraceFree");
 }
-
-/**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
- */
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
-    }
-}
-
-
 
 
 __host__ __device__ void getCemeraRayAtPixel(Path & path,const Camera &c, int x, int y,int iter,int index)
@@ -193,17 +179,174 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
 		Path & path = paths[index];
 		getCemeraRayAtPixel(path,cam,x,y,iter,index);
 
-		//TODO: k-d tree accleration goes here?
-
-       
     }
 }
+
+
+
+//__device__ void hitTestGeomsNaive(int geoms_size,Path & path,Geom * geoms,glm::vec3 & intersect_point, glm::vec3 & normal,int & hit_geom_index)
+//{
+//	float t;
+//	float t_min = FLT_MAX;
+//	for(int i = 0; i < geoms_size; i++)
+//	{
+//		//Geom & geom = static_cast<Geom>(*it);
+//		glm::vec3 tmp_intersect;
+//		glm::vec3 tmp_normal;
+//		Geom geom = geoms[i];
+//		if( geom.type == CUBE)
+//		{
+//			t = boxIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
+//		}
+//		else if( geom.type == SPHERE)
+//		{
+//			t = sphereIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
+//		}
+//		else
+//		{
+//			//TODO: triangle
+//			printf("ERROR: geom type error at %d\n",i);
+//		}
+//
+//		if(t > 0 && t_min > t)
+//		{
+//			t_min = t;
+//			hit_geom_index = i;
+//			intersect_point = tmp_intersect;
+//			normal = tmp_normal;
+//		}
+//	}
+//}
+
+
+__device__ int kd_search_leaf(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin, float& tmax, float global_tmax
+							  ,glm::vec3 & intersect, glm::vec3 & normal)
+{
+	Node & n = nodes[cur_idx];
+	float t;
+	Geom & geom = geoms[n.geom_index];
+	if( geom.type == CUBE)
+	{
+		t = boxIntersectionTest(geom,ray,intersect,normal);
+	}
+	else if( geom.type == SPHERE)
+	{
+		t = sphereIntersectionTest(geom,ray,intersect,normal);
+	}
+	else
+	{
+		//TODO: triangle
+	}
+
+	if(t > 0 && t < global_tmax )
+	{
+		//hit
+
+		return n.geom_index;
+	}
+	else
+	{
+		//continue search
+		if(fabs(tmax - global_tmax) < EPSILON)
+		{
+			//fail, no collision
+			return -1;
+		}
+		else
+		{
+			float tmp_tmin = tmax,tmp_tmax = global_tmax;
+
+			//backtrack
+			bool tmp_hit = AABBIntersect(n.aabb,ray,tmp_tmin,tmp_tmax);
+			int backtrack_idx = cur_idx;
+			while(!tmp_hit)
+			{
+				tmp_tmin = tmax;
+				tmp_tmax = global_tmax;
+				backtrack_idx = nodes[backtrack_idx].parent_idx;
+				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,tmp_tmin,tmp_tmax);
+			}
+			
+			//has intersection
+			cur_idx = backtrack_idx;
+			tmin = tmp_tmin;
+			tmax = tmp_tmax;
+			
+			return -2;
+		}
+	}
+}
+
+
+__device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmin, float& tmax)
+{
+	float thit = (n.split.pos - ray.origin[n.split.axis]) / ray.direction[n.split.axis];
+	int first,second;
+	if(ray.direction[n.split.axis] > 0.0f)
+	{
+		first = n.left_idx;
+		second = n.right_idx;
+	}
+	else
+	{
+		first = n.right_idx;
+		second = n.left_idx;
+	}
+
+	if(thit >= tmax || thit < 0)
+	{
+		cur_idx = first;
+	}
+	else if( thit <= tmin)
+	{
+		cur_idx = second;
+	}
+	else
+	{
+		cur_idx = first;
+		tmax = thit;
+	}
+
+
+	return -2;
+}
+
+
+//return:
+//-1 end, no collision
+//-2 continue
+//>=0 hit_geom_id
+__device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin,float& tmax, float global_tmax
+							  ,glm::vec3 & intersect, glm::vec3 & normal)
+{
+	if(nodes[cur_idx].geom_index == -1)
+	{
+		//internal node
+		return kd_search_split(cur_idx,nodes[cur_idx],ray, tmin, tmax);
+		
+	}
+	else
+	{
+		//leaf node
+		return kd_search_leaf(cur_idx,nodes,geoms,ray,tmin,tmax,global_tmax
+							  ,intersect, normal);
+	}
+}
+
+//__device__ void kd_search_init(int root_idx,Node * nodes,const Ray & ray)
+//{
+//	float tmin,tmax;
+//	AABBIntersect(nodes[root_idx].aabb,ray,tmin,tmax);
+//	kd_serach_node(root_idx,nodes,ray,tmin,tmax);
+//}
+
 
 
 
 __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 * image
 										,Path * paths
 										,Geom * geoms, int geoms_size,Material * materials, int materials_size
+										,Node * nodes
 										//,const thrust::device_vector<Geom> & geoms , const thrust::device_vector<Material> & materials
 										)
 {
@@ -213,15 +356,19 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 	
 	if(path_index < num_paths)
 	{
-		Path & path = paths[path_index];
+		Path & path = paths[path_index];	//TODO: reconsider the speed for the memory access here
+		//Path & path = paths[path_index];
 		//calculate intersection
 		float t;
 		glm::vec3 intersect_point;
 		glm::vec3 normal;
-		//naive parse through global geoms
-		//for ( thrust::device_vector<Geom>::iterator it = geoms.begin(); it != geoms.end(); ++it)
 		float t_min = FLT_MAX;
 		int hit_geom_index = -1;
+
+
+
+		//naive parse through global geoms
+
 		for(int i = 0; i < geoms_size; i++)
 		{
 			//Geom & geom = static_cast<Geom>(*it);
@@ -250,6 +397,25 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 				normal = tmp_normal;
 			}
 		}
+
+		///////////////////////////////
+
+
+		//TODO:k-d tree traverse approach
+		//int state = -2;
+		//int cur_idx = 0;		//tmp, root node always 0....
+		//float global_tmin,global_tmax;
+		//AABBIntersect(nodes[cur_idx].aabb,path.ray,global_tmin,global_tmax);
+		//while(state == -2 )
+		//{
+		//	float tmin,tmax;
+		//	AABBIntersect(nodes[cur_idx].aabb,path.ray,tmin,tmax);
+		//	state = kd_serach_node(cur_idx,nodes,geoms,path.ray,tmin,tmax,global_tmax
+		//		,intersect_point,normal);
+		//	
+		//}
+		//hit_geom_index = state;
+		////////////////////////////
 
 
 		if(hit_geom_index == -1)
@@ -349,7 +515,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		int num_path = dev_path_end - dev_path;
 		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
-			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size());
+			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size()
+			, dev_node);
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 		depth ++;

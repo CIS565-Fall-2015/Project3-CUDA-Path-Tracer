@@ -142,3 +142,51 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+
+
+
+__host__ __device__ bool AABBIntersect(const AABB aabb,const Ray ray, float & tmin, float & tmax)
+{
+	//be sure the aabb is not empty
+	glm::vec3 inv_dir(1.0 / ray.direction.x, 1.0 / ray.direction.y, 1.0 / ray.direction.z);
+	
+	float tx1 = (aabb.min_pos.x - ray.origin.x)*inv_dir.x;
+	float tx2 = (aabb.max_pos.x - ray.origin.x)*inv_dir.x;
+
+	//float tmin = min(tx1, tx2);
+	//float tmax = max(tx1, tx2);
+	tmin = min(tx1, tx2);
+	tmax = max(tx1, tx2);
+
+	float ty1 = (aabb.min_pos.y - ray.origin.y) * inv_dir.y;
+	float ty2 = (aabb.max_pos.y - ray.origin.y) * inv_dir.y;
+
+	tmin = max(tmin, min(ty1, ty2));
+	tmax = min(tmax, max(ty1, ty2));
+
+
+	if (tmax >= tmin)
+	{
+		float tz1 = (aabb.min_pos.z - ray.origin.z) * inv_dir.z;
+		float tz2 = (aabb.max_pos.z - ray.origin.z) * inv_dir.z;
+
+		tmin = max(tmin, min(tz1, tz2));
+		tmax = min(tmax, max(tz1, tz2));
+
+
+		//To confirm?? tmax>0
+		if(tmax >= tmin && tmax > 0)
+		{
+			//the line of ray will intersect
+			//but maybe the t < 0
+
+			
+
+			return true;
+		}
+	}
+
+
+	return false;
+}

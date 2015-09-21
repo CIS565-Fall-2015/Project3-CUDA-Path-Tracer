@@ -5,14 +5,14 @@
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
 
-
+using namespace std;
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 //#define MAX_RAY_TRACE_DEPTH (5)
 
 enum GeomType {
     SPHERE,
     CUBE,
-	//TRIANGLE
+	TRIANGLE
 };
 
 struct Ray {
@@ -75,3 +75,24 @@ struct Path
 	int image_index;
 	bool terminated;
 };
+
+
+
+enum AXIS { AXIS_X = 0, AXIS_Y, AXIS_Z};
+
+struct AAPlane
+{	
+	AXIS axis;
+	float pos;
+};
+
+struct AABB
+{
+	glm::vec3 min_pos;
+	glm::vec3 max_pos;
+};
+
+
+
+
+

@@ -20,13 +20,13 @@ int height;
 
 int main(int argc, char** argv) {
 
-	//std::cout<<sizeof(char)<<std::endl;
-	//std::cout<<sizeof(int)<<std::endl;
-	//std::cout<<sizeof(glm::vec3)<<std::endl;
-	//std::cout<<sizeof(Ray)<<std::endl;
-	//std::cout<<sizeof(Path)<<std::endl;
-	//std::cout<<sizeof(Geom)<<std::endl;
-	//std::cout<<sizeof(Material)<<std::endl;
+	std::cout<<sizeof(char)<<std::endl;
+	std::cout<<sizeof(int)<<std::endl;
+	std::cout<<sizeof(glm::vec3)<<std::endl;
+	std::cout<<sizeof(Ray)<<std::endl;
+	std::cout<<sizeof(Path)<<std::endl;
+	std::cout<<sizeof(Geom)<<std::endl;
+	std::cout<<sizeof(Material)<<std::endl;
 
 
 
@@ -54,6 +54,8 @@ int main(int argc, char** argv) {
     // GLFW main loop
     mainLoop();
 
+	delete scene;
+
     return 0;
 }
 
@@ -80,6 +82,17 @@ void saveImage() {
     //img.saveHDR(filename);  // Save a Radiance HDR file
 }
 
+//MY
+void sceneInitKDTree()
+{
+	scene->kdtree.init(*scene);
+
+	std::cout<<sizeof(Node)<<std::endl;
+	std::cout<<(scene->kdtree.last_idx)<<std::endl;
+	std::cout<<scene->kdtree.hst_node.size()<<std::endl;
+}
+
+
 void runCuda() {
     if (camchanged) {
         iteration = 0;
@@ -101,6 +114,8 @@ void runCuda() {
 
     if (iteration == 0) {
         pathtraceFree();
+
+		sceneInitKDTree();
         pathtraceInit(scene);
     }
 
