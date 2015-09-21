@@ -15,6 +15,7 @@ struct Ray {
     glm::vec3 direction;
 	bool isAlive;
 	glm::vec3 color;
+	int index;
 };
 
 struct BounceRay {

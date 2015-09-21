@@ -93,12 +93,12 @@ void scatterRay(
 	// Specular
 	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
-		color = color * m.specular.color * 2.0f;
+		color = color * m.specular.color * (1.0f/specProb);
 	}
 	// Diffuse
 	else{
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color = color * m.color * 2.0f;
+		color = color * m.color * (1.0f/(1.0f-specProb));
 	}
 	ray.origin = intersect;
 }
