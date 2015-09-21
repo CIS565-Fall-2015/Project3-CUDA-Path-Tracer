@@ -14,9 +14,12 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define ERRORCHECK 1
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+#if ERRORCHECK
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;
@@ -28,6 +31,7 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
     exit(EXIT_FAILURE);
+#endif //ERRORCHECK
 }
 
 __host__ __device__ thrust::default_random_engine random_engine(
@@ -35,7 +39,9 @@ __host__ __device__ thrust::default_random_engine random_engine(
     //return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
     //return thrust::default_random_engine(utilhash(index ^ iter ^ depth));
     //return thrust::default_random_engine(utilhash(index + iter + depth));
-    return thrust::default_random_engine(utilhash(index) ^ utilhash(iter) ^ utilhash(depth));
+//    return thrust::default_random_engine(utilhash(index) ^ utilhash(iter) ^ utilhash(depth));
+    int h = utilhash((1 << 31) | ((depth + 5) << 22) | iter) ^ utilhash(index);
+    return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -160,11 +166,11 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
         int depth, int iter,
         Geom *geoms, int geomCount, Material *mats) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-        Pixel px = pixels[index];
+    if (x < (cam.resolution.x * cam.resolution.y)) {
+        Pixel px = pixels[x];
+        int index = px.index;
+
         if (px.terminated == false) {
             Ray r = px.ray;
 
@@ -183,7 +189,9 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
                     pixels[index].terminated = true;
                 }
                 //pixels[index].color = glm::abs(intersection/5.f);
-                //pixels[index].color = pixels[index].ray.direction;
+                //pixels[index].color = glm::vec3(index, index, index);
+
+                //pixels[index].color = glm::abs(pixels[index].ray.direction);
                 //pixels[index].terminated = true;
             } else {
                 pixels[index].color = glm::vec3(0, 0, 0);
@@ -221,13 +229,13 @@ __global__ void killNonterminatedRays(Camera cam, Pixel *pixels) {
 
 __global__ void outputPixelColors(Camera cam, glm::vec3 *image, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-        Pixel px = pixels[index];
-
-        image[index] += px.color;
+    if (x < (cam.resolution.x * cam.resolution.y)) {
+        Pixel px = pixels[x];
+        int index = px.index;
+        if (px.terminated == true) {
+            image[index] += px.color;
+        }
     }
 }
 
@@ -276,16 +284,20 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
+    int dBlockSize = 128;
+    int dGridSize = (pixelcount + blockSideLength - 1) / dBlockSize;
+
     for (int i = 0; i < traceDepth; i++) {
-        intersect<<<blocksPerGrid, blockSize>>>(
+        intersect<<<dGridSize, dBlockSize>>>(
                 cam, dev_image, dev_pixels,
                 iter, i,
                 dev_geom, hst_scene->geoms.size(), dev_mats);
+
+        //outputPixelColors<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
     }
 
     killNonterminatedRays<<<blocksPerGrid, blockSize>>>(cam, dev_pixels);
-
-    outputPixelColors<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
+    outputPixelColors<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
 
     ///////////////////////////////////////////////////////////////////////////
 
