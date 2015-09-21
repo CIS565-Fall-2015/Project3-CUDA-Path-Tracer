@@ -52,7 +52,7 @@ EMITTANCE   0
 CAMERA
 RES         400 400
 FOVY        45
-ITERATIONS  10
+ITERATIONS  100
 DEPTH       8
 FILE        cornell
 EYE         0.0 5 10.5

@@ -36,6 +36,7 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
     exit(EXIT_FAILURE);
+#endif
 }
 
 __host__ __device__ thrust::default_random_engine random_engine(int iter, int index = 0, int depth = 0) {
@@ -218,18 +219,18 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
 
 
 __device__ int kd_search_leaf(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin, float& tmax, float global_tmax
-							  ,glm::vec3 & intersect, glm::vec3 & normal)
+							  ,glm::vec3 & intersect, glm::vec3 & normal, bool & outside)
 {
 	Node & n = nodes[cur_idx];
 	float t;
 	Geom & geom = geoms[n.geom_index];
 	if( geom.type == CUBE)
 	{
-		t = boxIntersectionTest(geom,ray,intersect,normal);
+		t = boxIntersectionTest(geom, ray, intersect, normal, outside);
 	}
 	else if( geom.type == SPHERE)
 	{
-		t = sphereIntersectionTest(geom,ray,intersect,normal);
+		t = sphereIntersectionTest(geom, ray, intersect, normal, outside);
 	}
 	else
 	{
@@ -253,16 +254,20 @@ __device__ int kd_search_leaf(int & cur_idx,Node * nodes,Geom* geoms,const Ray &
 		else
 		{
 			float tmp_tmin = tmax,tmp_tmax = global_tmax;
-
+			float t0, t1;
 			//backtrack
 			bool tmp_hit = AABBIntersect(n.aabb,ray,tmp_tmin,tmp_tmax);
 			int backtrack_idx = cur_idx;
 			while(!tmp_hit)
 			{
-				tmp_tmin = tmax;
-				tmp_tmax = global_tmax;
+				//tmp_tmin = tmax;
+				//tmp_tmax = global_tmax;
 				backtrack_idx = nodes[backtrack_idx].parent_idx;
-				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,tmp_tmin,tmp_tmax);
+				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,t0,t1);
+				if (! (t0 >= tmp_tmin && t1 <= tmp_tmax ) )
+				{
+					tmp_hit = false;
+				}
 			}
 			
 			//has intersection
@@ -315,7 +320,7 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 //-2 continue
 //>=0 hit_geom_id
 __device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin,float& tmax, float global_tmax
-							  ,glm::vec3 & intersect, glm::vec3 & normal)
+							  ,glm::vec3 & intersect, glm::vec3 & normal, bool & outside)
 {
 	if(nodes[cur_idx].geom_index == -1)
 	{
@@ -327,7 +332,7 @@ __device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray &
 	{
 		//leaf node
 		return kd_search_leaf(cur_idx,nodes,geoms,ray,tmin,tmax,global_tmax
-							  ,intersect, normal);
+			, intersect, normal, outside);
 	}
 }
 
@@ -362,57 +367,59 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		glm::vec3 normal;
 		float t_min = FLT_MAX;
 		int hit_geom_index = -1;
-
+		bool outside = true;
 
 
 		//naive parse through global geoms
 
-		for(int i = 0; i < geoms_size; i++)
-		{
-			//Geom & geom = static_cast<Geom>(*it);
-			glm::vec3 tmp_intersect;
-			glm::vec3 tmp_normal;
-			Geom & geom = geoms[i];
-			if( geom.type == CUBE)
-			{
-				t = boxIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
-			}
-			else if( geom.type == SPHERE)
-			{
-				t = sphereIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
-			}
-			else
-			{
-				//TODO: triangle
-				printf("ERROR: geom type error at %d\n",i);
-			}
+		//for(int i = 0; i < geoms_size; i++)
+		//{
+		//	//Geom & geom = static_cast<Geom>(*it);
+		//	glm::vec3 tmp_intersect;
+		//	glm::vec3 tmp_normal;
+		//	Geom & geom = geoms[i];
+		//	if( geom.type == CUBE)
+		//	{
+		//		t = boxIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
+		//	}
+		//	else if( geom.type == SPHERE)
+		//	{
+		//		t = sphereIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
+		//	}
+		//	else
+		//	{
+		//		//TODO: triangle
+		//		printf("ERROR: geom type error at %d\n",i);
+		//	}
 
-			if(t > 0 && t_min > t)
-			{
-				t_min = t;
-				hit_geom_index = i;
-				intersect_point = tmp_intersect;
-				normal = tmp_normal;
-			}
-		}
+		//	if(t > 0 && t_min > t)
+		//	{
+		//		t_min = t;
+		//		hit_geom_index = i;
+		//		intersect_point = tmp_intersect;
+		//		normal = tmp_normal;
+		//	}
+		//}
 
 		///////////////////////////////
 
 
 		//TODO:k-d tree traverse approach
-		//int state = -2;
-		//int cur_idx = 0;		//tmp, root node always 0....
-		//float global_tmin,global_tmax;
-		//AABBIntersect(nodes[cur_idx].aabb,path.ray,global_tmin,global_tmax);
-		//while(state == -2 )
-		//{
-		//	float tmin,tmax;
-		//	AABBIntersect(nodes[cur_idx].aabb,path.ray,tmin,tmax);
-		//	state = kd_serach_node(cur_idx,nodes,geoms,path.ray,tmin,tmax,global_tmax
-		//		,intersect_point,normal);
-		//	
-		//}
-		//hit_geom_index = state;
+
+		int state = -2;
+		int cur_idx = 0;		//tmp, root node always 0....
+		float global_tmin,global_tmax;
+		AABBIntersect(nodes[cur_idx].aabb,path.ray,global_tmin,global_tmax);
+		while(state == -2 )
+		{
+			float tmin,tmax;
+			AABBIntersect(nodes[cur_idx].aabb,path.ray,tmin,tmax);
+			state = kd_serach_node(cur_idx,nodes,geoms,path.ray,tmin,tmax,global_tmax
+				,intersect_point,normal,outside);
+			
+		}
+		hit_geom_index = state;
+
 		////////////////////////////
 
 
