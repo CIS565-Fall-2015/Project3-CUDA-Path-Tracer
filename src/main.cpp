@@ -6,6 +6,9 @@ static std::string startTimeString;
 static bool camchanged = false;
 static float theta = 0, phi = 0;
 static glm::vec3 cammove;
+static bool dof;
+static float focalDistance;
+static float apertureRadius;
 
 Scene *scene;
 RenderState *renderState;
@@ -82,6 +85,11 @@ void runCuda() {
         cam.position += cammove.x * r + cammove.y * u + cammove.z * v;
         theta = phi = 0;
         cammove = glm::vec3();
+		cam.dof = dof;
+		cam.focalDistance += focalDistance;
+		focalDistance = 0.0f;
+		cam.apertureRadius += apertureRadius;
+		apertureRadius = 0.0f;
         camchanged = false;
     }
 
@@ -132,6 +140,13 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         case GLFW_KEY_S:     camchanged = true; cammove -= glm::vec3(0, 0, .1f); break;
         case GLFW_KEY_R:     camchanged = true; cammove += glm::vec3(0, .1f, 0); break;
         case GLFW_KEY_F:     camchanged = true; cammove -= glm::vec3(0, .1f, 0); break;
+
+		// Depth of field controls
+		case GLFW_KEY_0:     camchanged = true; dof = !dof; break;
+		case GLFW_KEY_1:     camchanged = true; focalDistance = -0.1; break;
+		case GLFW_KEY_2:     camchanged = true; focalDistance = +0.1; break;
+		case GLFW_KEY_3:     camchanged = true; apertureRadius = -0.01; break;
+		case GLFW_KEY_4:     camchanged = true; apertureRadius = +0.01; break;
         }
     }
 }
