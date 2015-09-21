@@ -6,6 +6,7 @@ static std::string startTimeString;
 static bool camchanged = false;
 static float theta = 0, phi = 0;
 static glm::vec3 cammove;
+static bool blur;
 static bool dof;
 static float focalDistance;
 static float apertureRadius;
@@ -39,6 +40,9 @@ int main(int argc, char** argv) {
     renderState = &scene->state;
     width = renderState->camera.resolution.x;
     height = renderState->camera.resolution.y;
+
+	blur = renderState->camera.blur;
+	dof = renderState->camera.dof;
 
     // Initialize CUDA and GL components
     init();
@@ -85,6 +89,7 @@ void runCuda() {
         cam.position += cammove.x * r + cammove.y * u + cammove.z * v;
         theta = phi = 0;
         cammove = glm::vec3();
+		cam.blur = blur;
 		cam.dof = dof;
 		cam.focalDistance += focalDistance;
 		focalDistance = 0.0f;
@@ -147,6 +152,10 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 		case GLFW_KEY_2:     camchanged = true; focalDistance = +0.1; break;
 		case GLFW_KEY_3:     camchanged = true; apertureRadius = -0.01; break;
 		case GLFW_KEY_4:     camchanged = true; apertureRadius = +0.01; break;
+
+		// Motion blur
+		// Note: Can only activate and deactivate blur. Requires object parameters to support blur in config files
+		case GLFW_KEY_B:     camchanged = true; blur = !blur; break;
         }
     }
 }

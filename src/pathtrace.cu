@@ -273,16 +273,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 	// * Finally, handle all of the paths that still haven't terminated.
 	//   (Easy way is to make them black or background-colored.)
 
+	if (iter == 1) {
+		// If the scene has reset, then reset objects in motion to original positions
+		for (int i = 0; i < numberOfObjects; i++) {
+			hst_mgeoms[i].translations[0] = hst_mgeoms[i].translations[2];
+		}
+	}
+
 	// Motion blur
 	Geom *geoms;
 	if (cam.blur) {
-		if (iter == 1) {
-			// If the scene has reset, then reset objects in motion to original positions
-			for (int i = 0; i < numberOfObjects; i++) {
-				hst_mgeoms[i].translations[0] = hst_mgeoms[i].translations[2];
-			}
-		}
-
 		geoms = LoadGeoms(hst_mgeoms, frame, numberOfObjects);
 
 		for (int i = 0; i < numberOfObjects; i++) {
@@ -292,7 +292,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 		}
 	}
 	else {
-		geoms = LoadGeoms(hst_mgeoms, frame, numberOfObjects);
+		geoms = LoadGeoms(hst_mgeoms, 2, numberOfObjects);
 	}
 
 	InitializeRays<<<blocksPerGrid, blockSize>>>(cam, iter, dev_rays);
