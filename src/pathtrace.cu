@@ -4,6 +4,9 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/copy.h>
+#include <thrust/count.h>
+#include <thrust/device_vector.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -16,7 +19,10 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+#define ERRORCHECK 1
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+#if ERRORCHECK
+	+ cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;
@@ -27,7 +33,8 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
         fprintf(stderr, " (%s:%d)", file, line);
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
-    exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE);
+#endif ERRORCHECK
 }
 
 __host__ __device__ thrust::default_random_engine random_engine(
@@ -59,9 +66,10 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 }
 
 static Scene *hst_scene = NULL;
-static glm::vec3 *dev_image = NULL;
-// TODO: static variables for device memory, scene/camera info, etc
-// ...
+__constant__ static glm::vec3 *dev_image = NULL;
+__constant__ static Geom* dev_geoms = NULL;
+__constant__ static Material* dev_materials = NULL;
+static int geomcount = 0;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -70,41 +78,175 @@ void pathtraceInit(Scene *scene) {
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
-    // TODO: initialize the above static variables added above
+
+	Geom* hst_geoms = hst_scene->geoms.data();
+	Material* hst_materials = hst_scene->materials.data();
+
+	geomcount = hst_scene->geoms.size();
+
+	cudaMalloc((void**)&dev_geoms, hst_scene->geoms.size()*sizeof(Geom));
+	cudaMalloc((void**)&dev_materials, hst_scene->materials.size()*sizeof(Material));
+	cudaMemcpy(dev_geoms, hst_geoms, hst_scene->geoms.size()*sizeof(Geom), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_materials, hst_materials, hst_scene->materials.size()*sizeof(Material), cudaMemcpyHostToDevice);
 
     checkCUDAError("pathtraceInit");
 }
 
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
-    // TODO: clean up the above static variables
+	cudaFree(dev_geoms);
+	cudaFree(dev_materials);
 
     checkCUDAError("pathtraceFree");
 }
 
-/**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
- */
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+__global__ void initRayGrid(PathRay *oGrid, Camera cam){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+		PathRay ray;
+		ray.index = index;
+		ray.color = glm::vec3(1, 1, 1);
 
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
+		ray.ray.origin = cam.position;
+		ray.terminate = false;
 
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
-    }
+		// Grid center to pixel
+		float pX = x - cam.resolution.x / 2;
+		float pY = cam.resolution.y / 2 - y;
+
+		// Vector: grid center to pixel
+		glm::vec3 o2px = glm::vec3(cam.right.x*pX + cam.up.x*pY, cam.right.y*pX + cam.up.y*pY, cam.right.z*pX + cam.up.z*pY);
+		// Ray vector
+		ray.ray.direction = glm::vec3(cam.toGrid.x + o2px.x, cam.toGrid.y + o2px.y, cam.toGrid.z + o2px.z);
+
+		oGrid[index] = ray;
+
+		// Ray direction debug
+		//float l = glm::length(ray.ray.direction);
+		//image[index] += glm::vec3(abs(ray.ray.direction.x / l), abs(ray.ray.direction.y / l), 0);
+	}
+}
+
+
+__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	int index = x + (y * cam.resolution.x);
+
+	int blockFlatIdx = threadIdx.x + (threadIdx.y * 8);
+
+	__shared__ PathRay pr[64];
+	__shared__ glm::vec3 iPoint[64];
+	__shared__ glm::vec3 iNormal[64];
+	extern __shared__ Geom g[];
+
+	if (index < grid_size) {
+		// Intersection test
+		pr[blockFlatIdx] = grid[index];
+		iPoint[blockFlatIdx] = glm::vec3(0.0f);
+		iNormal[blockFlatIdx] = glm::vec3(0.0f);
+		float rayLength;
+		int matId = -1;
+		
+		if (blockFlatIdx < geomcount){
+			g[blockFlatIdx] = iGeoms[blockFlatIdx];
+		}
+
+		__syncthreads();
+
+		for (int i = 0; i < geomcount; i++){
+			if (g[i].type == SPHERE){
+				rayLength = sphereIntersectionTest(g[i], pr[blockFlatIdx].ray, iPoint[blockFlatIdx], iNormal[blockFlatIdx]);
+			}
+			else {
+				rayLength = boxIntersectionTest(g[i], pr[blockFlatIdx].ray, iPoint[blockFlatIdx], iNormal[blockFlatIdx]);
+			}
+			if (rayLength != -1){
+				matId = g[i].materialid;
+				break;
+			}
+		}
+		pr[blockFlatIdx].ray.origin = iPoint[blockFlatIdx];
+		pr[blockFlatIdx].ray.direction = iNormal[blockFlatIdx];
+		pr[blockFlatIdx].matId = matId;
+		grid[index] = pr[blockFlatIdx];
+	}
+};
+
+__global__ void scatter(PathRay *grid, Material *iMaterials, Camera cam, const int grid_size, const int iter, const int depth){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	int index = x + (y * cam.resolution.x);
+
+	if (index < grid_size) {
+		PathRay pr = grid[index];
+		Material m = iMaterials[pr.matId];
+		glm::vec3 iNormal = pr.ray.direction;
+		scatterRay(pr.ray, pr.color, iNormal, m, random_engine(iter, index, depth));
+		grid[index] = pr;
+	}
+};
+
+__global__ void terminatePath(PathRay *grid, Material *iMaterials, Camera cam, const int grid_size){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	int index = x + (y * cam.resolution.x);
+
+	if (index < grid_size) {
+		PathRay pr = grid[index];
+		if (pr.matId != -1){
+			Material m = iMaterials[pr.matId];
+			if (m.emittance > 0.0f){
+				// Add to pixel
+				pr.terminate = true;
+				pr.color = glm::vec3(pr.color.x * m.color.x * m.emittance, pr.color.y * m.color.y * m.emittance, pr.color.z * m.color.z * m.emittance);
+			}
+		}
+		else {
+			pr.terminate = true;
+			pr.color = glm::vec3(0.0f);
+		}
+		grid[index] = pr;
+	}
+}
+
+__global__ void fillPixel(PathRay *grid, glm::vec3 *image, Camera cam, const int grid_size){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	int index = x + (y * cam.resolution.x);
+
+	if (index < grid_size) {
+		PathRay pr = grid[index];
+		if (pr.terminate){
+			image[pr.index] += pr.color;
+		}
+	}
+}
+
+__global__ void killPath(PathRay *grid, glm::vec3 *image, Camera cam, const int grid_size){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	int index = x + (y * cam.resolution.x);
+
+	if (index < grid_size) {
+		PathRay pr = grid[index];
+		pr.color = pr.color * glm::vec3(0.0f);
+		image[pr.index] += pr.color;
+	}
 }
 
 /**
@@ -147,9 +289,38 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    // TODO: perform one iteration of path tracing
+    // Perform one iteration of path tracing
 
-    generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	thrust::device_vector<PathRay> dev_grid(pixelcount);
+	PathRay *dev_grid_ptr = thrust::raw_pointer_cast(&dev_grid[0]);
+
+	// initRayGrid
+    initRayGrid<<<blocksPerGrid, blockSize>>>(dev_grid_ptr, cam);
+	int grid_size = dev_grid.size();
+
+	// For each traceDepth
+	for (int d = 0; d < traceDepth; d++){
+		// Intersection test
+		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
+		checkCUDAError("intersect");
+		// Mark all terminated paths
+		terminatePath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size);
+		checkCUDAError("terminatePath");
+		// Paint image
+		fillPixel << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_image, cam, grid_size);
+		checkCUDAError("fillPixel");
+		// Stream compaction
+		thrust::detail::normal_iterator<thrust::device_ptr<PathRay>> newGridEnd = thrust::remove_if(dev_grid.begin(), dev_grid.end(), is_terminated());
+		checkCUDAError("compact");
+		dev_grid.erase(newGridEnd, dev_grid.end());
+		grid_size = dev_grid.size();
+		// Scatter
+		scatter << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size, iter, d);
+		checkCUDAError("scatter");
+	}
+	// Collect unterminated paths
+	killPath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_image, cam, grid_size);
+	checkCUDAError("killPath");
 
     ///////////////////////////////////////////////////////////////////////////
 

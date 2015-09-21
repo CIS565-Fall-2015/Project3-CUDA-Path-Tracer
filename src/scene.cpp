@@ -135,6 +135,19 @@ int Scene::loadCamera() {
     float fovx = (atan(xscaled) * 180) / PI;
     camera.fov = glm::vec2(fovx, fovy);
 
+	// Camera to grid center
+	float distance = camera.resolution.x / 2 / tan(camera.fov.x / 2);
+	camera.toGrid = glm::vec3(camera.view.x*distance, camera.view.y*distance, camera.view.z*distance);
+	// Find camera right vector
+	float rAngle = -PI / 2;
+	float qx = camera.view.x * sin(rAngle / 2);
+	float qy = camera.view.y * sin(rAngle / 2);
+	float qz = camera.view.z * sin(rAngle / 2);
+	float qw = cos(rAngle / 2);
+
+	glm::quat q = glm::quat(qw, qx, qy, qz);
+	camera.right = q * camera.up;
+
     //set up render camera stuff
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);

@@ -1,6 +1,8 @@
 #include "main.h"
 #include "preview.h"
 #include <cstring>
+#include "glm/glm.hpp"
+#include "glm/gtx/norm.hpp"
 
 static std::string startTimeString;
 static bool camchanged = false;
@@ -80,6 +82,20 @@ void runCuda() {
         cam.view = glm::vec3(rotmat * glm::vec4(v, 0.f));
         cam.up = glm::vec3(rotmat * glm::vec4(u, 0.f));
         cam.position += cammove.x * r + cammove.y * u + cammove.z * v;
+
+		// Camera to grid center
+		float distance = cam.resolution.x / 2 / tan(cam.fov.x / 2);
+		cam.toGrid = glm::vec3(cam.view.x*distance, cam.view.y*distance, cam.view.z*distance);
+		// Find camera right vector
+		float rAngle = -PI / 2;
+		float qx = cam.view.x * sin(rAngle / 2);
+		float qy = cam.view.y * sin(rAngle / 2);
+		float qz = cam.view.z * sin(rAngle / 2);
+		float qw = cos(rAngle / 2);
+
+		glm::quat q = glm::quat(qw, qx, qy, qz);
+		cam.right = q * cam.up;
+
         theta = phi = 0;
         cammove = glm::vec3();
         camchanged = false;

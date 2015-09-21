@@ -44,6 +44,8 @@ struct Camera {
     glm::vec3 view;
     glm::vec3 up;
     glm::vec2 fov;
+	glm::vec3 right;
+	glm::vec3 toGrid;
 };
 
 struct RenderState {
@@ -52,4 +54,20 @@ struct RenderState {
     int traceDepth;
     std::vector<glm::vec3> image;
     std::string imageName;
+};
+
+struct PathRay {
+	glm::vec3 color;
+	Ray ray;
+	int index;
+	bool terminate;
+	int matId;
+};
+
+struct is_terminated{
+	__host__ __device__
+		bool operator()(const PathRay &p)
+	{
+		return p.terminate;
+	}
 };
