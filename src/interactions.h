@@ -67,7 +67,6 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 __device__
 void scatterRay(
         Ray &ray,
-        glm::vec3 &color,
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
@@ -80,7 +79,7 @@ void scatterRay(
 
 	// Light
 	if (m.emittance > 0.0f){
-		color = color * m.emittance;
+		ray.color = ray.color * m.emittance;
 		ray.isAlive = false;
 		return;
 	}
@@ -93,12 +92,12 @@ void scatterRay(
 	// Specular
 	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
-		color = color * m.specular.color * (1.0f/specProb);
+		ray.color = ray.color * m.specular.color * (1.0f/specProb);
 	}
 	// Diffuse
 	else{
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color = color * m.color * (1.0f/(1.0f-specProb));
+		ray.color = ray.color * m.color * (1.0f/(1.0f-specProb));
 	}
 	ray.origin = intersect;
 }

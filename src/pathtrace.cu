@@ -71,7 +71,7 @@ static glm::vec3 *dev_image;
 static Ray* dev_rays;
 static Geom* dev_geoms;
 static Material* dev_materials;
-static glm::vec3* dev_colors;
+//static glm::vec3* dev_colors;
 
 //static BounceRay* dev_brays;
 // TODO: static variables for device memory, scene/camera info, etc
@@ -91,7 +91,7 @@ void pathtraceInit(Scene *scene) {
 
 	const int numObjects = hst_scene->geoms.size();
 	cudaMalloc((void**)&dev_rays, pixelcount*sizeof(Ray));
-	cudaMalloc((void**)&dev_colors, pixelcount*sizeof(glm::vec3));
+	//cudaMalloc((void**)&dev_colors, pixelcount*sizeof(glm::vec3));
 	//cudaMalloc((void**)&dev_brays, pixelcount*sizeof(BounceRay));
 
 	cudaMalloc((void**)&dev_geoms, numObjects*sizeof(Geom));
@@ -107,7 +107,7 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 	cudaFree(dev_rays);
-	cudaFree(dev_colors);
+	//cudaFree(dev_colors);
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
 	//cudaFree(dev_brays);
@@ -115,7 +115,7 @@ void pathtraceFree() {
 
 }
 
-__global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
+__global__ void initRays(int iter, Camera cam, Ray* rays){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -140,12 +140,11 @@ __global__ void initRays(int iter, Camera cam, Ray* rays, glm::vec3* colors){
 		rays[index].color = glm::vec3(1.0);
 		rays[index].isAlive = true;
 		rays[index].index = index;
-		colors[index] = glm::vec3(1.0, 1.0, 1.0);
-
+		//colors[index] = glm::vec3(1.0, 1.0, 1.0);
 	}
 }
 
-__global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam, Ray* rays, glm::vec3* colors, int numObjects, const Geom* geoms, const Material* materials){
+__global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam, Ray* rays, int numObjects, const Geom* geoms, const Material* materials){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -171,7 +170,7 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 		}
 
 		if (depth == traceDepth - 1 && rays[index].isAlive){
-			colors[index] = glm::vec3(0.0);
+			rays[index].color = glm::vec3(0.0);
 			rays[index].isAlive = false;
 			return;
 		}
@@ -197,25 +196,23 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 		}
 
 		if (obj_index >= 0){
-			scatterRay(rays[index], colors[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
+			scatterRay(rays[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
 		}
 		else{
-			colors[index] = glm::vec3(0.0);
+			rays[index].color = glm::vec3(0.0);
 			rays[index].isAlive = false;
 		}
 	}
 }
 
-__global__ void updatePixels(Camera cam, glm::vec3* colors, glm::vec3* image){
-//__global__ void updatePixels(Camera cam, Ray* ray, glm::vec3* image){
+__global__ void updatePixels(Camera cam, Ray* ray, glm::vec3* image){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
 
-		//image[index] += ray[index].color;
-		image[index] += colors[index];
+		image[index] += ray[index].color;
 	}
 }
 
@@ -262,7 +259,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 	//Ray* rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
-	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays, dev_colors);
+	initRays<<<blocksPerGrid, blockSize>>>(iter, cam, dev_rays);
 	checkCUDAError("initRays");
 
 	//cudaDeviceSynchronize();
@@ -272,23 +269,13 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//Ray* hst_rays = (Ray*)malloc(pixelcount*sizeof(Ray));
 
 	for (int d = 0; d < traceDepth; d++){
-		intersect<<<blocksPerGrid, blockSize>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
+		intersect<<<blocksPerGrid, blockSize>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
 		//intersect << <numBlocks, MAX_THREADS >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
 		checkCUDAError("intersect");
 		cudaDeviceSynchronize();
-		//cudaMemcpy(hst_rays, dev_rays, pixelcount*sizeof(Ray),cudaMemcpyDeviceToHost);
-		//for (int i = 0; i < pixelcount; i++){
-		//	printf("(%f, %f, %f)\n",hst_rays[i].color[0],hst_rays[i].color[1],hst_rays[i].color[2]);
-		//}
-
 	}
-	//intersect<<<numBlocks, MAX_THREADS>>>(iter, pixelcount, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
-	//intersect << <blocksPerGrid, blockSize >> >(iter, cam, dev_rays, dev_colors, numObjects, dev_geoms, dev_materials);
-	//cudaDeviceSynchronize();w
 
-	//updatePixels << <blocksPerGrid, blockSize >> >(cam, dev_rays, dev_image);
-	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_colors, dev_image);
-    //generateStaticDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+	updatePixels<<<blocksPerGrid, blockSize>>>(cam, dev_rays, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 
