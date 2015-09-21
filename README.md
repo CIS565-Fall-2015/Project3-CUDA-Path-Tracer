@@ -47,8 +47,8 @@ end.
 ### Running the code
 
 The main function requires a scene description file. Call the program with
-one as an argument: `cis565_path_tracer scene/sphere.txt`.
-(In Visual Studio, `../scene/sphere.txt`.)
+one as an argument: `cis565_path_tracer scenes/sphere.txt`.
+(In Visual Studio, `../scenes/sphere.txt`.)
 
 If you are using Visual Studio, you can set this in the Debugging > Command
 Arguments section in the Project properties. Make sure you get the path right -
@@ -204,8 +204,7 @@ Materials are defined in the following fashion:
 * REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
 * REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
 * REFRIOR (float ior) //index of refraction for Fresnel effects
-* EMITTANCE (float emittance) //the emittance of the material. Anything >0
-  makes the material a light source.
+* EMITTANCE (float emittance) //the emittance strength of the material. Material is a light source iff emittance > 0.
 
 Cameras are defined in the following fashion:
 
