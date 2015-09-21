@@ -16,6 +16,10 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+
+
+
+
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
@@ -61,6 +65,10 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
+static Geom *dev_geoms = NULL;
+static Material *dev_mats = NULL;
+static Ray *dev_rayArray = NULL;
+
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 
@@ -68,9 +76,18 @@ void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+	const Geom *geoms = &(hst_scene->geoms)[0];
+	const Material *mats = &(hst_scene->materials)[0];
 
+	cudaMalloc(&dev_geoms, pixelcount * sizeof(Geom));
+	cudaMalloc(&dev_mats, pixelcount * sizeof(Material));
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMemcpy(dev_geoms, geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_mats, mats, hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
+
+
     // TODO: initialize the above static variables added above
 
     checkCUDAError("pathtraceInit");
@@ -79,7 +96,8 @@ void pathtraceInit(Scene *scene) {
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
-
+	cudaFree(dev_geoms);
+	cudaFree(dev_mats);
     checkCUDAError("pathtraceFree");
 }
 
@@ -108,6 +126,88 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
+//Create ray to be shot at a pixel in the image
+__global__ void kernRayGenerate(Camera cam, Ray* rayArray){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	//Calculate camera's world position
+
+	glm::vec3 A = glm::cross(cam.view, cam.up);
+	glm::vec3 B = glm::cross(A, cam.view);
+	glm::vec3 M = cam.position + cam.view;
+	float lenC = glm::length(cam.view);
+	float lenA = glm::length(A);
+	float lenB = glm::length(B);
+	float tantheta = cam.resolution.x;
+	tantheta /= cam.resolution.y;
+	tantheta *= tan(cam.fov[1]);
+	
+	glm::vec3 H = (A*lenC*tantheta) / lenA;
+	glm::vec3 V = (B*lenC*tan(cam.fov[1])) / lenB;
+
+	//Create ray with direction and origin
+
+	float sx = x / (cam.resolution.x - 1);
+	float sy = y / (cam.resolution.y - 1);
+	//Get world coordinates of pixel
+	glm::vec3 WC = M + (2*sx - 1)*H + (2*sy - 1)*V;
+	//Get direction of ray
+	glm::vec3 dir = glm::normalize(WC - cam.position);
+
+	rayArray[x + y*cam.resolution.x].origin = cam.position;
+	rayArray[x + y*cam.resolution.x].direction = dir;
+
+}
+
+//Helper function to find closest intersection
+__device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside, int &objIndex, const int numGeoms){
+	glm::vec3 interPoint;
+	glm::vec3 norm;
+	bool out;
+	float t = -1;
+	float dist;
+	for (int i = 0; i < numGeoms; i++) {	
+		if (geoms[i].type == CUBE) {
+			dist = boxIntersectionTest(geoms[i], ray, interPoint, norm, out);
+		}
+		else if (geoms[i].type == SPHERE) {
+			dist = sphereIntersectionTest(geoms[i], ray, interPoint, norm, out);
+		}
+		if (dist != -1 && dist < t) {
+				t = dist;
+				intersectionPoint = interPoint;
+				normal = norm;
+				outside = out;
+				objIndex = i;
+		}
+	}
+	return t;
+		
+}
+
+//Function to find next ray
+__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats){
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * cam.resolution.x);
+	
+	thrust::default_random_engine rng(hash((int)(index)));
+
+	//find closest intersection
+	glm::vec3 interPoint;
+	glm::vec3 norm;
+	bool out;
+	int objIndex;
+	float t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+
+	//get direction of next ray and compute new color
+
+	
+	
+}
+
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -116,6 +216,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+	
+	int numGeoms = hst_scene->geoms.size();
+	int numMats = hst_scene->materials.size();
+	Ray *rayArray = new Ray[pixelcount];
 
     const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
@@ -148,7 +252,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
+    cudaMalloc(&dev_rayArray, pixelcount * sizeof(Ray));
+
     // TODO: perform one iteration of path tracing
+	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray);
+
+	for (int i = 0; i < traceDepth; i++) {
+		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats);
+	}
+	
+	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
 
     generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 

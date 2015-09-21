@@ -13,6 +13,7 @@ enum GeomType {
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
+	glm::vec3 color;
 };
 
 struct Geom {
