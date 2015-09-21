@@ -20,7 +20,8 @@ public:
     Scene(string filename);
     ~Scene();
 
-    std::vector<Geom> geoms;
+    //std::vector<Geom> geoms;
+	std::vector<MovingGeom> mgeoms;
     std::vector<Material> materials;
     RenderState state;
 };

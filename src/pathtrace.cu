@@ -63,12 +63,16 @@ static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Ray* dev_rays = NULL;
 static Geom* dev_geoms = NULL;
+static MovingGeom* hst_mgeoms = NULL;
+static MovingGeom* dev_mgeoms = NULL;
 static Material* dev_materials = NULL;
 
 void pathtraceInit(Scene *scene) {
 	hst_scene = scene;
 	const Camera &cam = hst_scene->state.camera;
-	const Geom *geoms = &(hst_scene->geoms)[0];
+
+	hst_mgeoms = &(hst_scene->mgeoms)[0];
+
 	const Material *materials = &(hst_scene->materials)[0];
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
 
@@ -77,9 +81,6 @@ void pathtraceInit(Scene *scene) {
 
 	cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
 	cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
-
-	cudaMalloc(&dev_geoms, pixelcount * sizeof(Geom));
-	cudaMemcpy(dev_geoms, geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
 	cudaMalloc(&dev_materials, pixelcount * sizeof(Material));
 	cudaMemcpy(dev_materials, materials, hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
@@ -97,33 +98,32 @@ void pathtraceFree() {
 }
 
 /**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
+ * To accomodate motion blur, we have to load the MotionGeom data to the Geom data on each iteration.
+ * TODO: Make changes that avoid using this to reduce memory overhead.
  */
-__global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	if (x < cam.resolution.x && y < cam.resolution.y) {
-		int index = x + (y * cam.resolution.x);
-
-		thrust::default_random_engine rng = random_engine(iter, index, 0);
-		thrust::uniform_real_distribution<float> u01(0, 1);
-
-		// CHECKITOUT: Note that on every iteration, noise gets added onto
-		// the image (not replaced). As a result, the image smooths out over
-		// time, since the output image is the contents of this array divided
-		// by the number of iterations.
-		//
-		// Your renderer will do the same thing, and, over time, it will become
-		// smoother.
-		image[index] += glm::vec3(u01(rng));
+Geom *LoadGeoms(MovingGeom *mgeoms, int frame, int numberOfObjects) {	
+	Geom *geoms = (Geom*)malloc(numberOfObjects * sizeof(Geom));
+	for (int i = 0; i < numberOfObjects; i++) {
+		geoms[i].type = hst_mgeoms[i].type;
+		geoms[i].materialid = hst_mgeoms[i].materialid;
+		geoms[i].translation = hst_mgeoms[i].translations[frame];
+		geoms[i].rotation = hst_mgeoms[i].rotations[frame];
+		geoms[i].scale = hst_mgeoms[i].scales[frame];
+		geoms[i].transform = hst_mgeoms[i].transforms[frame];
+		geoms[i].inverseTransform = hst_mgeoms[i].inverseTransforms[frame];
+		geoms[i].invTranspose = hst_mgeoms[i].inverseTransposes[frame];
 	}
+
+	cudaMalloc((void**)&dev_geoms, numberOfObjects * sizeof(Geom));
+	cudaMemcpy(dev_geoms, geoms, numberOfObjects * sizeof(Geom), cudaMemcpyHostToDevice);
+
+	return geoms;
 }
+
 
 /**
  * Creates a ray through each pixel on the screen.
-  * Depth of Field: http://mzshehzanayub.blogspot.com/2012/10/gpu-path-tracer.html
+ * Depth of Field: http://mzshehzanayub.blogspot.com/2012/10/gpu-path-tracer.html
  */
 __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -180,9 +180,9 @@ __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 }
 
 /**
-* Traces an individual array for one bounce.
-*/
-__global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, Ray *rays, const Geom *geoms, const int numberOfObjects, const Material *materials) {
+ * Traces an individual array for one bounce.
+ */
+__global__ void TraceBounce(int iter, int depth, glm::vec3 *image, Ray *rays, const Geom *geoms, const int numberOfObjects, const Material *materials) {
 	// Thread index corresponds to the ray, pixel index is saved member of the ray
 	int index = blockIdx.x * blockDim.x * blockDim.y + threadIdx.y * blockDim.x + threadIdx.x;
 	int pixelIndex = rays[index].pixel_index, minGeomIndex = -1;
@@ -235,10 +235,10 @@ __global__ void TraceBounce(Camera cam, int iter, int depth, glm::vec3 *image, R
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4 *pbo, int frame, int iter) {
+void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 	const int traceDepth = hst_scene->state.traceDepth;
 	const Camera &cam = hst_scene->state.camera;
-	const int numberOfObjects = hst_scene->geoms.size();
+	const int numberOfObjects = hst_scene->mgeoms.size();
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
 
 	const int blockSideLength = 8;
@@ -273,6 +273,28 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	// * Finally, handle all of the paths that still haven't terminated.
 	//   (Easy way is to make them black or background-colored.)
 
+	// Motion blur
+	Geom *geoms;
+	if (cam.blur) {
+		if (iter == 1) {
+			// If the scene has reset, then reset objects in motion to original positions
+			for (int i = 0; i < numberOfObjects; i++) {
+				hst_mgeoms[i].translations[0] = hst_mgeoms[i].translations[2];
+			}
+		}
+
+		geoms = LoadGeoms(hst_mgeoms, frame, numberOfObjects);
+
+		for (int i = 0; i < numberOfObjects; i++) {
+			if (hst_mgeoms[i].motionBlur) {
+				motionBlur(hst_mgeoms, hst_mgeoms[i].id, iter, maxIter);
+			}
+		}
+	}
+	else {
+		geoms = LoadGeoms(hst_mgeoms, frame, numberOfObjects);
+	}
+
 	InitializeRays<<<blocksPerGrid, blockSize>>>(cam, iter, dev_rays);
 	checkCUDAError("InitializeRays");
 
@@ -282,7 +304,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		int threadsRemaining = dev_raysEnd - dev_rays;
 		dim3 thread_blocksPerGrid = (threadsRemaining + blockSideLengthSquare - 1) / blockSideLengthSquare;
 
-		TraceBounce<<<thread_blocksPerGrid, blockSize>>>(cam, iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
+		TraceBounce<<<thread_blocksPerGrid, blockSize>>>(iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
 		checkCUDAError("TraceBounce");
 
 		dev_raysEnd = StreamCompaction::Thrust::compact(dev_rays, dev_raysEnd);
@@ -301,4 +323,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	cudaMemcpy(hst_scene->state.image.data(), dev_image,
 		pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 	checkCUDAError("cudaMemcpy");
+
+	// Free geoms here because we are going to keep allocating it on each iteration atm
+	free(geoms);
 }

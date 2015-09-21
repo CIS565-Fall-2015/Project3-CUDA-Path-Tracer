@@ -48,7 +48,6 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 */
 __host__ __device__
 float calculateRefractionCoefficient(glm::vec3 direction, glm::vec3 normal, float indexOfRefraction) {
-	//TODO: GLM pow instead?
 	float r0 = glm::pow((1.0f - indexOfRefraction) / (1.0f + indexOfRefraction), 2);
 	return r0 + (1.0f - r0) * glm::pow(1.0f - glm::dot(normal, -direction), 5);
 }
@@ -69,6 +68,21 @@ glm::vec3 calculateReflectionDirection(glm::vec3 direction, glm::vec3 normal) {
 __host__ __device__
 glm::vec3 calculateRefractionDirection(glm::vec3 direction, glm::vec3 normal, float angle, float eta) {
 	return (-eta * glm::dot(normal, direction) - glm::sqrt(angle)) * normal + direction * eta;
+}
+
+/**
+* Updates the transformation of a geom to move over the duration of the render from configured start and end locations.
+* Right now only supports translations.
+*/
+__host__ __device__
+void motionBlur(MovingGeom *mgeoms, int id, int iter, int maxIter) {
+	if (iter <= maxIter) {
+		glm::vec3 offset = (mgeoms[id].translations[0] - mgeoms[id].translations[1]) / (float)maxIter;
+		mgeoms[id].translations[0] = mgeoms[id].translations[0] + offset;
+		mgeoms[id].transforms[0] = utilityCore::buildTransformationMatrix(mgeoms[id].translations[0],
+			mgeoms[id].rotations[0], mgeoms[id].scales[0]);
+		mgeoms[id].inverseTransforms[0] = glm::inverse(mgeoms[id].transforms[0]);
+	}
 }
 
 /**
@@ -115,6 +129,7 @@ void scatterRay(
 			if (!ray.inside) {
 				eta = 1.0f / m.indexOfRefraction; // Coming from the air
 			}
+
 			float angle = 1.0f - glm::pow(eta, 2) * (1.0f - glm::pow(glm::dot(normal, ray.direction), 2));
 			if (angle < 0.0f) {
 				// Angle less than zero, so we reflect
@@ -125,7 +140,7 @@ void scatterRay(
 			else {
 				// Here we do a refraction
 				ray.direction = calculateRefractionDirection(ray.direction, normal, angle, eta);
-				ray.origin = intersect + ray.direction * 0.001f; // For some reason epsilon is too small and gives bad results. Need to use larger one
+				ray.origin = intersect + ray.direction * 0.001f; // For some reason EPSILON is too small and gives bad results. Need to use larger one
 				ray.inside = true;
 			}
 		}
@@ -139,27 +154,9 @@ void scatterRay(
 		//First must determine if this is perfectly specular or not
 		// is this only when there's an exponent? or when the diffuse is zero?
 		// for now i will go with the exponent being non zero
-		float specularExponent = m.specular.exponent;
+		float specularExponent = m.specular.exponent; // Besides activating this, exponent does nothing. Apply to color possibly?
 		if (specularExponent != 0) {
 			// non perfect
-			/*
-			 * This implementation is not working
-			float thetaS, phiS;
-			thrust::uniform_real_distribution<float> u01(0, 1);
-			float xi1 = u01(rng), xi2 = u01(rng); //random values between 0 and 1
-			glm::vec3 direction;
-			
-			thetaS = glm::acos(1.0f / (pow(xi1, specularExponent + 1)));
-			phiS = 2.0f * PI * xi2;
-			direction.x = glm::cos(phiS) * glm::sin(thetaS);
-			direction.y = glm::sin(phiS) * glm::sin(thetaS);
-			direction.z = glm::cos(thetaS);
-
-			// this direction isn't in the correct coordinate system..
-			// need to go from tangent to world and specular to gangent?
-			ray.origin = intersect + normal * EPSILON;
-			ray.direction = glm::normalize(direction);
-			*/
 			
 			// Calculate intensity values
 			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;

@@ -36,13 +36,14 @@ Scene::Scene(string filename) {
 
 int Scene::loadGeom(string objectid) {
 	int id = atoi(objectid.c_str());
-	if (id != geoms.size()) {
+	if (id != mgeoms.size()) {
 		cout << "ERROR: OBJECT ID does not match expected number of geoms" << endl;
 		return -1;
 	}
 	else {
 		cout << "Loading Geom " << id << "..." << endl;
-		Geom newGeom;
+		MovingGeom newGeom; // Switching to a MovingGeom for motion blur
+		newGeom.id = id;
 		string line;
 
 		//load object type
@@ -67,30 +68,66 @@ int Scene::loadGeom(string objectid) {
 		}
 
 		//load transformations
+		int numFrames = 0;
 		utilityCore::safeGetline(fp_in, line);
+		vector<glm::vec3> tempTranslations, tempRotations, tempScales;
+		bool tempBlur;
 		while (!line.empty() && fp_in.good()) {
 			vector<string> tokens = utilityCore::tokenizeString(line);
 
-			//load tranformations
-			if (strcmp(tokens[0].c_str(), "TRANS") == 0) {
-				newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+			if (strcmp(tokens[0].c_str(), "blur") == 0) {
+				if (atoi(tokens[1].c_str()) == 1) {
+					tempBlur = true;
+				}
+				else {
+					tempBlur = false;
+				}
+			}
+			else if (strcmp(tokens[0].c_str(), "frame") == 0) {
+				numFrames++;
+			}
+			else if (strcmp(tokens[0].c_str(), "TRANS") == 0) {
+				tempTranslations.push_back(glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
 			}
 			else if (strcmp(tokens[0].c_str(), "ROTAT") == 0) {
-				newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+				tempRotations.push_back(glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
 			}
 			else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
-				newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+				tempScales.push_back(glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
 			}
-
+			
 			utilityCore::safeGetline(fp_in, line);
 		}
 
-		newGeom.transform = utilityCore::buildTransformationMatrix(
-			newGeom.translation, newGeom.rotation, newGeom.scale);
-		newGeom.inverseTransform = glm::inverse(newGeom.transform);
-		newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+		numFrames++; // Create extra index for storing original info when scene is reset
+		// Allocate memory for the geom arrays
+		newGeom.motionBlur = tempBlur;
+		newGeom.translations = (glm::vec3*)malloc(numFrames * sizeof(glm::vec3));
+		newGeom.rotations = (glm::vec3*)malloc(numFrames * sizeof(glm::vec3));
+		newGeom.scales = (glm::vec3*)malloc(numFrames * sizeof(glm::vec3));
+		newGeom.transforms = (glm::mat4*)malloc(numFrames * sizeof(glm::mat4));
+		newGeom.inverseTransforms = (glm::mat4*)malloc(numFrames * sizeof(glm::mat4));
+		newGeom.inverseTransposes = (glm::mat4*)malloc(numFrames * sizeof(glm::mat4));
 
-		geoms.push_back(newGeom);
+		// And finally you can fill them for each frame, and add it onto the list of objects
+		for (int i = 0; i < numFrames - 1; i++) {
+			newGeom.translations[i] = tempTranslations[i];
+			newGeom.rotations[i] = tempRotations[i];
+			newGeom.scales[i] = tempScales[i];
+			newGeom.transforms[i] = utilityCore::buildTransformationMatrix(tempTranslations[i], tempRotations[i], tempScales[i]);
+			newGeom.inverseTransforms[i] = glm::inverse(newGeom.transforms[i]);
+			newGeom.inverseTransposes[i] = glm::inverseTranspose(newGeom.transforms[i]);
+		}
+
+		// Save the original twice so we have a backup for when the scene is refreshed
+		newGeom.translations[2] = tempTranslations[0];
+		newGeom.rotations[2] = tempRotations[0];
+		newGeom.scales[2] = tempScales[0];
+		newGeom.transforms[2] = utilityCore::buildTransformationMatrix(tempTranslations[0], tempRotations[0], tempScales[0]);
+		newGeom.inverseTransforms[2] = glm::inverse(newGeom.transforms[0]);
+		newGeom.inverseTransposes[2] = glm::inverseTranspose(newGeom.transforms[0]);
+
+		mgeoms.push_back(newGeom);
 		return 1;
 	}
 }
@@ -125,6 +162,7 @@ int Scene::loadCamera() {
 	}
 
 	string line;
+	int numFrames = 0;
 	utilityCore::safeGetline(fp_in, line);
 	while (!line.empty() && fp_in.good()) {
 		vector<string> tokens = utilityCore::tokenizeString(line);
@@ -136,6 +174,14 @@ int Scene::loadCamera() {
 		}
 		else if (strcmp(tokens[0].c_str(), "UP") == 0) {
 			camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		else if (strcmp(tokens[0].c_str(), "BLUR") == 0) {
+			if (atoi(tokens[1].c_str()) == 1) {
+				camera.blur = true;
+			}
+			else {
+				camera.blur = false;
+			}
 		}
 		else if (strcmp(tokens[0].c_str(), "DOF") == 0) {
 			if (atoi(tokens[1].c_str()) == 1) {

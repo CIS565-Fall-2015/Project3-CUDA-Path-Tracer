@@ -30,6 +30,21 @@ struct Geom {
     glm::mat4 invTranspose;
 };
 
+//Need to have arrays for our moving geometry
+struct MovingGeom {
+	enum GeomType type;
+	int id;
+	int materialid;
+	bool motionBlur; // if motion blur is enabled or not
+	int frames; // the frames the geom will move over
+	glm::vec3 *translations;
+	glm::vec3 *rotations;
+	glm::vec3 *scales;
+	glm::mat4 *transforms;
+	glm::mat4 *inverseTransforms;
+	glm::mat4 *inverseTransposes; // Not sure how to use exactly
+};
+
 struct Material {
     glm::vec3 color;
     struct {
@@ -48,6 +63,7 @@ struct Camera {
     glm::vec3 view;
     glm::vec3 up;
     glm::vec2 fov;
+	bool blur;
 	bool dof;
 	float focalDistance;
 	float apertureRadius;
