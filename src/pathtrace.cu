@@ -269,12 +269,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // TODO: perform one iteration of path tracing
 	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
-	printf("Pixels: %d\n", pixelcount);
-	printf("Blocks: %d\n", numBlocks);
-	printf("Threads: %d\n", MAX_THREADS);
 	//initRays<<<blocksPerGrid, blockSize>>>(pixelcount, iter, cam, dev_rays);
 	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays);
-
 	checkCUDAError("initRays");
 
 	//cudaDeviceSynchronize();
@@ -283,9 +279,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	for (int d = 0; d < traceDepth; d++){
 		intersect<<<numBlocks, MAX_THREADS>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
+		cudaDeviceSynchronize();
 		//intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
 		checkCUDAError("intersect");
-		cudaDeviceSynchronize();
+
 	}
 
 	//updatePixels<<<blocksPerGrid, blockSize>>>(pixelcount, cam, dev_rays, dev_image);
