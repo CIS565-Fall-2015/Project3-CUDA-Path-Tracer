@@ -53,6 +53,10 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
+const float kd = 0.5f;
+const float ks = 0.4f;
+const float ka = 0.1f;
+
 __host__ __device__
 void scatterRay(
         Ray &ray,
@@ -61,7 +65,8 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
-    // TODO: implement this.
+
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
 }

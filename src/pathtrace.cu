@@ -62,6 +62,7 @@ static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
+static Camera *cam = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -107,6 +108,31 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
+__global__ void generateRay(Camera cam) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if (x < cam.resolution.x && y < cam.resolution.y) {
+        int index = x + (y * cam.resolution.x);
+
+		glm::vec3 vA = glm::cross(cam.view, cam.up);
+		glm::vec3 vB = glm::cross(vA, cam.view);
+		glm::vec3 midPoint = cam.position + cam.view;
+
+		glm::vec3 vV = vB * (glm::length(cam.view) * tanf(cam.fov.y)) / glm::length(vB);
+		glm::vec3 vH = vA * (glm::length(vV) * cam.resolution.x/cam.resolution.y) / glm::length(vA);
+
+		glm::vec3 pW = midPoint + ((2.0f * x/cam.resolution.x - 1.0f) * vH) 
+			+ (2.0f * (1.0f - y/cam.resolution.y) - 1.0f) * vV;
+	
+		pathray_rays[index] = (pW - cam.position)/glm::length(pW - cam.position);
+		pathray_colors[index] = glm::vec3(1.0f);
+	}
+}
+
+glm::vec3 *pathray_rays;
+glm::vec3 *pathray_colors;
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -129,7 +155,14 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   * You can pass the Camera object to that kernel.
     //   * Each path ray is a (ray, color) pair, where color starts as the
     //     multiplicative identity, white = (1, 1, 1).
-    //   * For debugging, you can output your ray directions as colors.
+    //   * For debugging, you can output your ray directions as colors. */
+
+	pathray_rays = new glm::vec3[pixelcount * traceDepth];
+	pathray_colors = new glm::vec3[pixelcount * traceDepth];
+
+	cudaMalloc(&pathray_rays, pixelcount * sizeof(glm::vec3));
+	cudaMalloc(&pathray_colors, pixelcount * sizeof(glm::vec3));
+
     // * For each depth:
     //   * Compute one new (ray, color) pair along each path (using scatterRay).
     //     Note that many rays will terminate by hitting a light or hitting
