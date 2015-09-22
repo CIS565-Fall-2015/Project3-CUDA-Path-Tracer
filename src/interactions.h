@@ -89,6 +89,10 @@ void scatterRay(
 	float total = specProb + diffuseProb;
 	specProb = specProb / total;
 
+	//if (specProb < 0.00001f){
+	//	specProb = 0.00001f;
+	//}
+
 	// Specular
 	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;

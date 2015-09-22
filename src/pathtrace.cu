@@ -5,6 +5,8 @@
 #include <thrust/random.h>
 #include <thrust/remove.h>
 
+//#include <stream_compaction/efficient.h">
+
 #include "sceneStructs.h"
 #include "scene.h"
 #include "glm/glm.hpp"
@@ -69,6 +71,8 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene;
 static glm::vec3 *dev_image;
 static Ray* dev_rays;
+static Ray* dev_out_rays;
+//static glm::vec3* dev_final_colors;
 static Geom* dev_geoms;
 static Material* dev_materials;
 //static glm::vec3* dev_colors;
@@ -84,16 +88,13 @@ void pathtraceInit(Scene *scene) {
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
-    // TODO: initialize the above static variables added above
 
 	const Geom* geoms = &(hst_scene->geoms)[0];
 	const Material* materials = &(hst_scene->materials)[0];
 
 	const int numObjects = hst_scene->geoms.size();
 	cudaMalloc((void**)&dev_rays, pixelcount*sizeof(Ray));
-	//cudaMalloc((void**)&dev_colors, pixelcount*sizeof(glm::vec3));
-	//cudaMalloc((void**)&dev_brays, pixelcount*sizeof(BounceRay));
-
+	cudaMalloc((void**)&dev_out_rays, pixelcount*sizeof(Ray));
 	cudaMalloc((void**)&dev_geoms, numObjects*sizeof(Geom));
 	cudaMalloc((void**)&dev_materials, numObjects*sizeof(Material));
 
@@ -105,26 +106,16 @@ void pathtraceInit(Scene *scene) {
 
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
-    // TODO: clean up the above static variables
 	cudaFree(dev_rays);
-	//cudaFree(dev_colors);
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
-	//cudaFree(dev_brays);
     checkCUDAError("pathtraceFree");
-
 }
 
 __global__ void initRays(int n, int iter, Camera cam, Ray* rays){
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	//if (x < cam.resolution.x && y < cam.resolution.y){
-		//int index = x + (y * cam.resolution.x);
 	if (index < n){
-		//int x = index/cam.resolution.y;
-		//int y = index % cam.resolution.y;
 		int x = index % cam.resolution.x;
 		int y = index / cam.resolution.x;
 		glm::vec3 left = glm::cross(cam.up, cam.view);
@@ -132,8 +123,8 @@ __global__ void initRays(int n, int iter, Camera cam, Ray* rays){
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(-0.1, 0.1);
 
-		float res2x = cam.resolution.x / 2.0;
-		float res2y = cam.resolution.y / 2.0;
+		float res2x = cam.resolution.x / 2.0f;
+		float res2y = cam.resolution.y / 2.0f;
 
 		float magx = -(res2x - x + u01(rng))*sin(cam.fov.x) / res2x;
 		float magy = (res2y - y + u01(rng))*sin(cam.fov.y) / res2y;
@@ -146,14 +137,10 @@ __global__ void initRays(int n, int iter, Camera cam, Ray* rays){
 		rays[index].color = glm::vec3(1.0);
 		rays[index].isAlive = true;
 		rays[index].index = index;
-		//colors[index] = glm::vec3(1.0, 1.0, 1.0);
 	}
 }
 
 __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam, Ray* rays, int numObjects, const Geom* geoms, const Material* materials){
-	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	glm::vec3 normal;
@@ -167,8 +154,14 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 	float minDist = INFINITY;
 	int obj_index = -1;
 
-	//if (x < cam.resolution.x && y < cam.resolution.y){
-		//int index = x + (y * cam.resolution.x);
+	//if (blockIdx.x == 2429){
+	//	printf("%d\n", blockIdx.x);
+	//}
+
+	//if (blockIdx.x == 4999){
+	//	printf("%d\n",blockIdx.x);
+	//}
+
 	if (index < n){
 
 		if (!rays[index].isAlive){
@@ -201,11 +194,7 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 		}
 
 		if (obj_index >= 0){
-			//minNormal = glm::vec3(0.0,1.0,0.0);
-			//minIntersectionPoint = glm::vec3(0.0, 1.0, 0.0);
 			scatterRay(rays[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], rng);
-			//rays[index].color = rays[index].color * materials[geoms[obj_index].materialid].color;
-			//rays[index].origin = minNormal;
 		}
 		else{
 			rays[index].color = glm::vec3(0.0);
@@ -214,17 +203,22 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 	}
 }
 
-__global__ void updatePixels(int n, Camera cam, Ray* ray, glm::vec3* image){
+__global__ void updatePixels(int n, Ray* rays, glm::vec3* image){
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	//if (x < cam.resolution.x && y < cam.resolution.y) {
-		//int index = x + (y * cam.resolution.x);
 	if (index < n){
-		image[index] += ray[index].color;
+		if (!rays[index].isAlive){
+			image[rays[index].index] += rays[index].color;
+		}
 	}
 }
+
+struct is_dead{
+	__host__ __device__
+	bool operator()(const Ray ray){
+		return !ray.isAlive;
+	}
+};
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -266,27 +260,32 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    // TODO: perform one iteration of path tracing
 	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
-	//initRays<<<blocksPerGrid, blockSize>>>(pixelcount, iter, cam, dev_rays);
 	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays);
 	checkCUDAError("initRays");
 
-	//cudaDeviceSynchronize();
-
-	//Ray* hst_rays = (Ray*)malloc(pixelcount*sizeof(Ray));
+	int numAlive = pixelcount;
+	Ray* last_ray;
 
 	for (int d = 0; d < traceDepth; d++){
-		intersect<<<numBlocks, MAX_THREADS>>>(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
-		cudaDeviceSynchronize();
-		//intersect << <blocksPerGrid, blockSize >> >(iter, d, traceDepth, pixelcount, cam, dev_rays, numObjects, dev_geoms, dev_materials);
-		checkCUDAError("intersect");
+		numBlocks = (numAlive - 1) / MAX_THREADS + 1;
+		//checkCUDAError("precheck");
+		intersect<<<numBlocks, MAX_THREADS>>>(iter, d, traceDepth, numAlive, cam, dev_rays, numObjects, dev_geoms, dev_materials);
+		//checkCUDAError("intersect");
+		//updatePixels<<<numBlocks, MAX_THREADS>>>(numAlive, dev_rays, dev_image);
 
+		//numAlive = StreamCompaction::Efficient::shared_compact(numAlive, dev_out_rays, dev_rays, is_dead());
+		//numAlive = shared_compact(numAlive, dev_out_rays, dev_rays, is_dead());
+		//cudaMemcpy(dev_rays, dev_out_rays, numAlive*sizeof(Ray), cudaMemcpyDeviceToDevice);
+
+		//last_ray = thrust::remove_if(thrust::device, dev_rays, dev_rays + numAlive, is_dead());
+		//numAlive = last_ray - dev_rays;
+		if (numAlive == 0){
+			break;
+		}
 	}
 
-	//updatePixels<<<blocksPerGrid, blockSize>>>(pixelcount, cam, dev_rays, dev_image);
-	updatePixels << <numBlocks, MAX_THREADS >> >(pixelcount, cam, dev_rays, dev_image);
     ///////////////////////////////////////////////////////////////////////////
 
     // Send results to OpenGL buffer for rendering
@@ -297,4 +296,104 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     checkCUDAError("pathtrace");
+}
+
+
+/*
+* Exclusive scan on idata, stores into odata, using shared memory
+*/
+__global__ void shared_scan(int n, int *odata, const int *idata){
+	__shared__ int* temp;
+
+	int index = (blockIdx.x * blockDim.x)+threadIdx.x;
+	int offset = 1;
+
+	temp[2 * index] = idata[2 * index];
+	temp[2 * index + 1] = idata[2 * index + 1];
+
+	for (int d = n >> 1; d > 0; d >>= 1){
+		__syncthreads();
+		if (index < d){
+			int ai = offset*(2 * index + 1) - 1;
+			int bi = offset*(2 * index + 2) - 1;
+			temp[bi] += temp[ai];
+		}
+	}
+	offset *= 2;
+	if (index == 0){
+		temp[n - 1] = 0;
+	}
+
+	for (int d = 1; d < n; d *= 2){
+		offset >>= 1;
+		__syncthreads();
+		if (index < d){
+			int ai = offset*(2 * index + 1) - 1;
+			int bi = offset*(2 * index + 2) - 1;
+			int t = temp[ai];
+			temp[ai] = temp[bi];
+			temp[bi] += t;
+		}
+	}
+	__syncthreads();
+	odata[2 * index] = temp[2 * index];
+	odata[2 * index + 1] = temp[2 * index + 1];
+}
+
+template <typename T, typename Predicate> __global__ void kernMapToBoolean(int n, int* odata, T* idata, Predicate pred){
+	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
+
+	if (index < n){
+		odata[index] = pred(idata[index]);
+	}
+}
+
+template <typename T> __global__ void kernScatter(int n, T* odata, T* idata, int* bools, int* scan){
+	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
+
+	if (index < n){
+		if (bools[index] == 1){
+			odata[scan[index]] = idata[index];
+		}
+	}
+}
+
+template <typename T, typename Predicate> int shared_compact(int n, T* dev_odata, T* dev_idata, Predicate pred){
+	// Returns the number of elements remaining, elements after the return value in odata are undefined
+	// Assumes device memory
+	int td = ilog2ceil(n);
+	int n2 = (int)pow(2, td);
+
+	int numBlocks = (n - 1) / MAX_THREADS + 1;
+	int numBlocks2 = (n2 - 1) / MAX_THREADS + 1;
+	int n_size = n * sizeof(int);
+	int n2_size = n2 * sizeof(int);
+	int out_size = 0;
+
+	int* dev_temp;
+	int* dev_temp_n2;
+	int* dev_scan;
+
+	cudaMalloc((void**)&dev_temp, n_size);
+	cudaMalloc((void**)&dev_temp_n2, n2_size);
+	cudaMalloc((void**)&dev_scan, n2_size);
+
+	// Compute temp (binary)
+	kernMapToBoolean << <numBlocks, MAX_THREADS >> >(n, dev_temp, dev_idata, pred);
+
+	// Scan on temp
+	cudaMemcpy(dev_temp_n2, dev_temp, n_size, cudaMemcpyDeviceToDevice); // Grow temp
+	cudaMemset(dev_temp_n2 + n, 0, n2_size - n_size); // Pad with 0's
+	shared_scan << <numBlocks2, MAX_THREADS >> >(n2, dev_scan, dev_temp_n2);
+
+	// Scatter on scan
+	kernScatter << <numBlocks, MAX_THREADS >> >(n, dev_odata, dev_idata, dev_temp, dev_scan);
+
+	// Compute outsize
+	int lastnum;
+	int lastbool;
+	cudaMemcpy(&lastnum, dev_scan + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpy(&lastbool, dev_temp + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
+	out_size = lastnum + lastbool;
+	return out_size;
 }
