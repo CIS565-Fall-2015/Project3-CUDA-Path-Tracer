@@ -187,7 +187,7 @@ __global__ void scatter(PathRay *grid, Material *iMaterials, Camera cam, const i
 	if (index < grid_size) {
 		PathRay pr = grid[index];
 		Material m = iMaterials[pr.matId];
-		scatterRay(pr.ray, pr.color, pr.intersect, pr.normal, m, random_engine(iter, index, depth));
+		scatterRay(pr.ray, pr.color, pr.intersect, pr.ray.direction, pr.normal, m, random_engine(iter, index, depth));
 		grid[index] = pr;
 	}
 };
@@ -318,9 +318,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		scatter << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size, iter, d);
 		checkCUDAError("scatter");
 	}
-	// Kill unterminated paths
-	killPath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_image, cam, grid_size);
-	checkCUDAError("killPath");
+	dev_grid.clear();
 
     ///////////////////////////////////////////////////////////////////////////
 
