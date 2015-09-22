@@ -111,52 +111,36 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
-    // TODO: implement this.
-    // A basic implementation of pure-diffuse shading will just call the
-    // calculateRandomDirectionInHemisphere defined above.
-	float atten;
 
 	glm::vec3 diffuseDirection = calculateRandomDirectionInHemisphere(normal, rng);
-	atten = dot(normalize(diffuseDirection), normalize(normal));
-	if (atten < 0){
-		atten = 0;
-	}
-	glm::vec3 diffuseColor = color * m.color * atten;
+	glm::vec3 diffuseColor = color * m.color;
 
-	float split = 0.5;
+	glm::vec3 perfectSpecDirection;
+	glm::vec3 glossNormal;
+	glm::vec3 glossDirection;
+	glm::vec3 glossColor;
+	if (m.hasReflective == 1.0f){
+		perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
+		glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
+		glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
+		glossColor = color * m.specular.color;
 
-	glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
-	atten = dot(normalize(perfectSpecDirection), normalize(normal));
-	if (atten < 0){
-		atten = 0;
-	}
-	glm::vec3 specColor = color * m.specular.color * atten;
+		thrust::uniform_real_distribution<float> range(0, 1);
+		float pick = range(rng);
+		float split = 0.5;
 
-	glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
-	glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
-	atten = dot(normalize(glossDirection), normalize(normal));
-	if (atten < 0){
-		atten = 0;
-	}
-	glm::vec3 glossColor = color * m.specular.color * atten;
-
-
-	thrust::uniform_real_distribution<float> range(0, 1);
-	float pick = range(rng);
-
-	if (pick < split){
-		color = diffuseColor * 2.0f;
-		ray.direction = diffuseDirection;
-	}
-	else {
-		if (m.hasReflective == 1.0f){
-			color = specColor * 2.0f;
-			ray.direction = perfectSpecDirection;
+		if (pick < split){
+			color = diffuseColor * 2.0f;
+			ray.direction = diffuseDirection;
 		}
 		else {
 			color = glossColor * 2.0f;
 			ray.direction = glossDirection;
 		}
+	}
+	else {
+		color = diffuseColor;
+		ray.direction = diffuseDirection;
 	}
 
 	ray.origin = intersect;

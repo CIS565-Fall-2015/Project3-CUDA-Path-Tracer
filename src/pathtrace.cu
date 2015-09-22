@@ -20,6 +20,7 @@
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 #define ERRORCHECK 1
+#define ANTIALIASING 0
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #if ERRORCHECK
 	+ cudaDeviceSynchronize();
@@ -69,6 +70,7 @@ static Scene *hst_scene = NULL;
 __constant__ static glm::vec3 *dev_image = NULL;
 __constant__ static Geom* dev_geoms = NULL;
 __constant__ static Material* dev_materials = NULL;
+__constant__ static glm::vec3 *dev_oversample_image = NULL;
 static int geomcount = 0;
 
 void pathtraceInit(Scene *scene) {
@@ -78,6 +80,7 @@ void pathtraceInit(Scene *scene) {
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
+	cudaMalloc(&dev_oversample_image, pixelcount * sizeof(glm::vec3));
 
 	Geom* hst_geoms = hst_scene->geoms.data();
 	Material* hst_materials = hst_scene->materials.data();
@@ -96,6 +99,7 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
+	cudaFree(dev_oversample_image);
 
     checkCUDAError("pathtraceFree");
 }
@@ -133,7 +137,7 @@ __global__ void initRayGrid(PathRay *oGrid, Camera cam){
 }
 
 
-__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount, glm::vec3 *image){
+__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -245,6 +249,33 @@ __global__ void killPath(PathRay *grid, glm::vec3 *image, Camera cam, const int 
 	}
 }
 
+#if ANTIALIASING
+__global__ void avgOversample(glm::vec3 *oImage, glm::vec3 *tempImage, Camera cam, const int passes){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+		oImage[index] += tempImage[index] / (float)passes;
+	}
+}
+
+__global__ void jitterRay(PathRay *grid, thrust::default_random_engine rng, Camera cam){
+	// From camera as single point, to image grid with FOV
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < cam.resolution.x && y < cam.resolution.y) {
+		int index = x + (y * cam.resolution.x);
+		PathRay pr = grid[index];
+		thrust::uniform_real_distribution<float> u01(-0.01, 0.01);
+		pr.ray.origin = glm::vec3(pr.ray.origin.x + u01(rng), pr.ray.origin.y + u01(rng), pr.ray.origin.z + u01(rng));
+		grid[index] = pr;
+	}
+}
+#endif ANTIALIASING
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -290,14 +321,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	thrust::device_vector<PathRay> dev_grid(pixelcount);
 	PathRay *dev_grid_ptr = thrust::raw_pointer_cast(&dev_grid[0]);
 
+#if !ANTIALIASING
 	// initRayGrid
-    initRayGrid<<<blocksPerGrid, blockSize>>>(dev_grid_ptr, cam);
+	initRayGrid << <blocksPerGrid, blockSize >> >(dev_grid_ptr, cam);
 	int grid_size = dev_grid.size();
 
 	// For each traceDepth
 	for (int d = 0; d < traceDepth; d++){
 		// Intersection test
-		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount, dev_image);
+		interesect << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
 		checkCUDAError("intersect");
 
 		// Mark all terminated paths
@@ -319,6 +351,45 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		checkCUDAError("scatter");
 	}
 	dev_grid.clear();
+#else
+	int oversampling_pass = 3;
+	cudaMemset(dev_oversample_image, 0, pixelcount * sizeof(glm::vec3));
+	for (int a = 0; a < oversampling_pass; a++){
+
+		// initRayGrid
+		initRayGrid << <blocksPerGrid, blockSize >> >(dev_grid_ptr, cam);
+		int grid_size = dev_grid.size();
+		jitterRay << <blocksPerGrid, blockSize >> >(dev_grid_ptr, random_engine(iter, 0, oversampling_pass), cam);
+
+		// For each traceDepth
+		for (int d = 0; d < traceDepth; d++){
+			// Intersection test
+			interesect << <blocksPerGrid, blockSize>> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
+			checkCUDAError("intersect");
+
+			// Mark all terminated paths
+			terminatePath << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size);
+			checkCUDAError("terminatePath");
+
+			// Paint image
+			fillPixel << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_oversample_image, cam, grid_size);
+			checkCUDAError("fillPixel");
+
+			// Stream compaction
+			thrust::detail::normal_iterator<thrust::device_ptr<PathRay>> newGridEnd = thrust::remove_if(dev_grid.begin(), dev_grid.end(), is_terminated());
+			checkCUDAError("compact");
+			dev_grid.erase(newGridEnd, dev_grid.end());
+			grid_size = dev_grid.size();
+
+			// Scatter
+			scatter << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size, iter, d);
+			checkCUDAError("scatter");
+		}
+		dev_grid.clear();
+	}
+	avgOversample << <blocksPerGrid, blockSize >> >(dev_image, dev_oversample_image, cam, oversampling_pass);
+#endif ANTIALIASING
+
 
     ///////////////////////////////////////////////////////////////////////////
 
