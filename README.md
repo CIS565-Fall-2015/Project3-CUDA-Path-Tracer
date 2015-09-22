@@ -76,9 +76,9 @@ You will need to implement the following features:
 You are also required to implement at least 2 of the following features.
 
 * These 2 smaller features:
-  * Refraction (e.g. glass/water) with Frensel effects using Schlick's
-    approximation or more accurate methods
-  * Physically-based depth-of-field (by jittering rays within an aperture)
+  * ~~Refraction (e.g. glass/water) with Frensel effects using Schlick's
+    approximation or more accurate methods~~
+  * ~~Physically-based depth-of-field (by jittering rays within an aperture)~~
   * ~~Recommended but not required: non-perfect specular surfaces~~
 * Texture mapping
 * Bump mapping

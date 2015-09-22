@@ -21,6 +21,7 @@
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 #define ERRORCHECK 1
 #define ANTIALIASING 0
+#define DOF 0
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #if ERRORCHECK
 	+ cudaDeviceSynchronize();
@@ -72,6 +73,7 @@ __constant__ static Geom* dev_geoms = NULL;
 __constant__ static Material* dev_materials = NULL;
 __constant__ static glm::vec3 *dev_oversample_image = NULL;
 static int geomcount = 0;
+static int oversampling_pass = 3;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -174,6 +176,7 @@ __global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int gr
 					pr.intersect = iPoint;
 					pr.normal = iNormal;
 					pr.matId = g.materialid;
+					pr.outside = outside;
 				}
 			}
 		}
@@ -191,7 +194,7 @@ __global__ void scatter(PathRay *grid, Material *iMaterials, Camera cam, const i
 	if (index < grid_size) {
 		PathRay pr = grid[index];
 		Material m = iMaterials[pr.matId];
-		scatterRay(pr.ray, pr.color, pr.intersect, pr.ray.direction, pr.normal, m, random_engine(iter, index, depth));
+		scatterRay(pr.ray, pr.color, pr.intersect, pr.outside, pr.ray.direction, pr.normal, m, random_engine(iter, index, depth));
 		grid[index] = pr;
 	}
 };
@@ -269,8 +272,18 @@ __global__ void jitterRay(PathRay *grid, thrust::default_random_engine rng, Came
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
 		PathRay pr = grid[index];
+#if DOF
+		thrust::uniform_real_distribution<float> u01(-0.1, 0.1);
+		glm::vec3 p = pr.ray.origin + glm::normalize(pr.ray.direction) * cam.dof;
+		glm::vec3 jitter = cam.up*u01(rng) + cam.right*u01(rng);
+		pr.ray.origin = pr.ray.origin + jitter;
+#else
 		thrust::uniform_real_distribution<float> u01(-0.01, 0.01);
 		pr.ray.origin = glm::vec3(pr.ray.origin.x + u01(rng), pr.ray.origin.y + u01(rng), pr.ray.origin.z + u01(rng));
+#endif DOF
+#if DOF
+		pr.ray.direction = p - pr.ray.origin;
+#endif DOF
 		grid[index] = pr;
 	}
 }
@@ -352,7 +365,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	}
 	dev_grid.clear();
 #else
-	int oversampling_pass = 3;
 	cudaMemset(dev_oversample_image, 0, pixelcount * sizeof(glm::vec3));
 	for (int a = 0; a < oversampling_pass; a++){
 

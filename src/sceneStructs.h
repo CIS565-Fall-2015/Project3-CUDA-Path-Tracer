@@ -36,6 +36,7 @@ struct Material {
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+	float hasSSS;
 };
 
 struct Camera {
@@ -46,6 +47,7 @@ struct Camera {
     glm::vec2 fov;
 	glm::vec3 right;
 	glm::vec3 toGrid;
+	float dof;
 };
 
 struct RenderState {
@@ -65,6 +67,7 @@ struct PathRay {
 	bool terminate;
 	int matId;
 	bool hasIntersect;
+	bool outside;
 };
 
 struct is_terminated{

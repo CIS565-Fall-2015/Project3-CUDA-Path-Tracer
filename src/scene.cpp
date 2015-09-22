@@ -126,7 +126,7 @@ int Scene::loadCamera() {
             camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
 		}
 		else if (strcmp(tokens[0].c_str(), "DOF") == 0) {
-			camera.dof = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+			camera.dof = atof(tokens[1].c_str());
 		}
 
         utilityCore::safeGetline(fp_in, line);
@@ -192,6 +192,17 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.emittance = atof(tokens[1].c_str());
             }
         }
+
+		string line;
+		utilityCore::safeGetline(fp_in, line);
+		while (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			if (strcmp(tokens[0].c_str(), "SSS") == 0) {
+				newMaterial.hasSSS = atof(tokens[1].c_str());
+			}
+
+			utilityCore::safeGetline(fp_in, line);
+		}
         materials.push_back(newMaterial);
         return 1;
     }
