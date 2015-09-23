@@ -220,18 +220,6 @@ void scatterRay(
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
 		glm::vec3 glossColor = color * m.specular.color;
 
-		if (m.hasSSS == 1.0f){
-			float n1 = 1;
-			float n2 = m.indexOfRefraction;
-			float r0 = pow((n1 - n2) / (n1 + n2), 2);
-
-			// A modified Schlick coefficient; enhanced intensity of gloss
-			// For aesthetic purpose only and not physically correct 
-			float r = r0 + (1 - r0)*( 1 - dot(normalize(glossDirection), normalize(normal))/1.2 );
-
-			glossColor = glossColor * r;
-		}
-
 		float dI = glm::length(diffuseColor);
 		float gI = glm::length(glossColor);
 		float split = dI / (dI + gI);
