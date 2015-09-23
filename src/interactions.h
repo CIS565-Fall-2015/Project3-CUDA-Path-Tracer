@@ -85,6 +85,7 @@ glm::vec3 normal, float n, thrust::default_random_engine &rng) {
 /**
 * Computes a cosine-weighted random direction and a guessed new origin in a hemisphere for SSS
 * Used for SSS.
+* Really a simplified version of Dipole approximation
 */
 __host__ __device__
 void calculateSSSOut(Ray &r, glm::vec3 &intersect, glm::vec3 &inDirection, glm::vec3 &normal, thrust::default_random_engine &rng) {

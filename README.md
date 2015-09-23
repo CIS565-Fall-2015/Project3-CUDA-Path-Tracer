@@ -24,22 +24,42 @@ Instructions (delete me)
 
 You will need to implement the following features:
 
-* ~~Raycasting from the camera into the scene through an imaginary grid of pixels~~
-  (the screen)
-  * ~~Implement antialiasing (by jittering rays within each pixel)~~
-* ~~Diffuse surfaces~~
-* ~~Perfectly specular-reflective (mirrored) surfaces~~
-  * ~~See notes on diffuse/specular in `scatterRay` and on specular below~~
 * **NEWLY ADDED:** Work-efficient stream compaction using shared memory across
   multiple blocks (See *GPU Gems 3* Chapter 39).
 
 * Features:
-  * Refraction (e.g. glass/water) with Frensel effects using Schlick's
-    approximation
-  * Physically-based depth-of-field (by jittering rays within an aperture)
-  * Recommended but not required: non-perfect specular surfaces
-  * Subsurface scattering
-    * SSS for reflective material
+  * Raycasting from the camera into the scene through an imaginary grid of pixels
+    * Casting to plane at distance based on FOV
+  * Diffuse surfaces
+    * Cosine weighted
+  * (E) Non-perfect specular surfaces
+    * Cosine weighted, restricted by specular exponent
+    * Perfectly specular-reflective (mirrored) surfaces would be a non-perfect surface with very large (toward positive infinity) specular exponent
+    * http://www.cs.cornell.edu/courses/cs4620/2012fa/lectures/37raytracing.pdf
+  * (E) Refraction (ice / diamond) with Frensel effects using Schlick's approximation
+    * https://en.wikipedia.org/wiki/Schlick's_approximation
+  * (E) Subsurface scattering
+    * Simplified version of Dipole
+      * https://graphics.stanford.edu/papers/bssrdf/bssrdf.pdf
+      * Reduced memory overhead by approximating ray-out position without passing geometry all the way into scatter function
+      * Passing geometry slows the entire rendering process by a factor of ~3
+    * SSS for reflective material (split on specular and diffuse, then further split on diffuse)
+  * Antialiasing
+    * Oversampling at each iteration
+    * Effectively increases render time; proportional to # of oversampling passes
+  * (E) Physically-based depth-of-field (by jittering rays within an aperture)
+    * Using antialiasing routines but with different jittering method
+    * Find focal plane
+    * Jitter each ray on its origin
+    * Keep ray end point intact so it always focuses on focal plane; equivalent to jittering camera itself around focal plane
+
+* Scenes:
+  * `cornell1`: mixed objects (specular, refraction, diffuse, caustic)
+  * `cornell2`: SSS, same size spheres, mixed distances to light
+  * `cornell3`: SSS + specular
+  * `cornell4`: SSS, same size cubes, mixed distances to light
+  * `cornell5`: mixed objects, closed scene, camera inside box
+  * `cornell6`: single sphere, for performance testing
 
 For each extra feature, you must provide the following analysis:
 
@@ -128,10 +148,23 @@ In addition:
   effects of stream compaction within a single iteration (i.e. the number of
   unterminated rays after each bounce) and evaluate the benefits you get from
   stream compaction.
+```
+Depth: 0 / Grid size: 625125
+Depth: 1 / Grid size: 497276
+Depth: 2 / Grid size: 406024
+Depth: 3 / Grid size: 326613
+Depth: 4 / Grid size: 264707
+Depth: 5 / Grid size: 214660
+Depth: 6 / Grid size: 174592
+Depth: 7 / Grid size: 141986
+```
+
 * Compare scenes which are open (like the given cornell box) and closed
   (i.e. no light can escape the scene). Again, compare the performance effects
   of stream compaction! Remember, stream compaction only affects rays which
   terminate, so what might you expect?
+  * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
+  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; about 2x slower perceived
 
 
 ## Submit

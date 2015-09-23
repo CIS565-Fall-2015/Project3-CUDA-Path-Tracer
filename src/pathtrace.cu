@@ -20,7 +20,7 @@
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 #define ERRORCHECK 1
-#define ANTIALIASING 1
+#define ANTIALIASING 0
 #define DOF 0
 #define USETHRUSTCOMPACTION 1
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
@@ -266,9 +266,10 @@ __global__ void jitterRay(PathRay *grid, thrust::default_random_engine rng, Came
 		// Find intersection to focal plane
 		glm::vec3 p = pr.ray.origin + glm::normalize(pr.ray.direction) * cam.dof;
 		glm::vec3 jitter = cam.up*u01(rng) + cam.right*u01(rng);
-		// Move ray to the plane
+		// Jitter ray origin
 		pr.ray.origin = pr.ray.origin + jitter;
-		// Shoot ray off direction
+		// Update ray direction based on new origin
+		// So new ray always points to exact pixel cell on focal plane
 		pr.ray.direction = p - pr.ray.origin;
 #else
 		thrust::uniform_real_distribution<float> u01(-0.01, 0.01);
@@ -327,6 +328,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 #if ANTIALIASING
 	cudaMemset(dev_oversample_image, 0, pixelcount * sizeof(glm::vec3));
 	for (int a = 0; a < oversampling_pass; a++){
+		dev_grid.resize(pixelcount);
 		// initRayGrid
 		initRayGrid << <blocksPerGrid, blockSize >> >(dev_grid_ptr, cam);
 		int grid_size = dev_grid.size();
@@ -367,6 +369,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		// Scatter
 		scatter << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_materials, cam, grid_size, iter, d);
 		checkCUDAError("scatter");
+
+		// Stream compaction stat
+		//printf("Depth: %d / Grid size: %d\n", d, grid_size);
 	}
 	dev_grid.clear();
 #if ANTIALIASING
