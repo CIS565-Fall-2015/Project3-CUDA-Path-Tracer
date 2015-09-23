@@ -233,6 +233,7 @@ void scatterRay(
 						ray.direction = inDirection;
 						ray.origin = intersect + normalize(inDirection)*0.0005f;
 					}
+					color = diffuseColor / split / 2.0f;
 				}
 				color = diffuseColor / split;
 			}

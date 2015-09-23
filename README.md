@@ -14,46 +14,6 @@ project, and we will not be able to grade you without a good README.
 Instructions (delete me)
 ========================
 
-This is due Thursday, September 24 evening at midnight.
-
-**Summary:**
-In this project, you'll implement a CUDA-based path tracer capable of rendering
-globally-illuminated images very quickly.
-Since in this class we are concerned with working in GPU programming,
-performance, and the generation of actual beautiful images (and not with
-mundane programming tasks like I/O), this project includes base code for
-loading a scene description file, described below, and various other things
-that generally make up a framework for previewing and saving images.
-
-The core renderer is left for you to implement. Finally, note that, while this
-base code is meant to serve as a strong starting point for a CUDA path tracer,
-you are not required to use it if you don't want to. You may also change any
-part of the base code as you please. **This is YOUR project.**
-
-**Recommendation:** Every image you save should automatically get a different
-filename. Don't delete all of them! For the benefit of your README, keep a
-bunch of them around so you can pick a few to document your progress at the
-end.
-
-### Contents
-
-* `src/` C++/CUDA source files.
-* `scenes/` Example scene description files.
-* `img/` Renders of example scene description files.
-  (These probably won't match precisely with yours.)
-* `external/` Includes and static libraries for 3rd party libraries.
-
-
-### Running the code
-
-The main function requires a scene description file. Call the program with
-one as an argument: `cis565_path_tracer scene/sphere.txt`.
-(In Visual Studio, `../scene/sphere.txt`.)
-
-If you are using Visual Studio, you can set this in the Debugging > Command
-Arguments section in the Project properties. Make sure you get the path right -
-read the console for errors.
-
 #### Controls
 
 * Esc to save an image and exit.
@@ -73,28 +33,13 @@ You will need to implement the following features:
 * **NEWLY ADDED:** Work-efficient stream compaction using shared memory across
   multiple blocks (See *GPU Gems 3* Chapter 39).
 
-You are also required to implement at least 2 of the following features.
-
-* These 2 smaller features:
-  * ~~Refraction (e.g. glass/water) with Frensel effects using Schlick's
-    approximation or more accurate methods~~
-  * ~~Physically-based depth-of-field (by jittering rays within an aperture)~~
-  * ~~Recommended but not required: non-perfect specular surfaces~~
-* Texture mapping
-* Bump mapping
-* Direct lighting (by taking a final ray directly to a random point on an
-  emissive object acting as a light source)
-* Some method of defining object motion, and motion blur
-* ~~Subsurface scattering~~
-* Arbitrary mesh loading and rendering (e.g. `obj` files). You can find these
-  online or export them from your favorite 3D modeling application.
-  With approval, you may use a third-party OBJ loading code to bring the data
-  into C++.
-  * You can use the triangle intersection function `glm::intersectRayTriangle`.
-
-This 'extra features' list is not comprehensive. If you have a particular idea
-you would like to implement (e.g. acceleration structures, etc.), please
-contact us first.
+* Features:
+  * Refraction (e.g. glass/water) with Frensel effects using Schlick's
+    approximation
+  * Physically-based depth-of-field (by jittering rays within an aperture)
+  * Recommended but not required: non-perfect specular surfaces
+  * Subsurface scattering
+    * ~~SSS for reflective material
 
 For each extra feature, you must provide the following analysis:
 
@@ -105,55 +50,6 @@ For each extra feature, you must provide the following analysis:
   (you don't have to implement it!) Does it benefit or suffer from being
   implemented on the GPU?
 * How might this feature be optimized beyond your current implementation?
-
-## Base Code Tour
-
-You'll be working in the following files. Look for important parts of the code:
-search for `CHECKITOUT`. You'll have to implement parts labeled with `TODO`.
-(But don't let these constrain you - you have free rein!)
-
-* `src/pathtrace.cu`: path tracing kernels, device functions, and calling code
-  * `pathtraceInit` initializes the path tracer state - it should copy
-    scene data (e.g. geometry, materials) from `Scene`.
-  * `pathtraceFree` frees memory allocated by `pathtraceInit`
-  * `pathtrace` performs one iteration of the rendering - it handles kernel
-    launches, memory copies, transferring some data, etc.
-    * See comments for a low-level path tracing recap.
-* `src/intersections.h`: ray intersection functions
-  * `boxIntersectionTest` and `sphereIntersectionTest`, which take in a ray and
-    a geometry object and return various properties of the intersection.
-* `src/interactions.h`: ray scattering functions
-  * `calculateRandomDirectionInHemisphere`: a cosine-weighted random direction
-    in a hemisphere. Needed for implementing diffuse surfaces.
-  * `scatterRay`: this function should perform all ray scattering, and will
-    call `calculateRandomDirectionInHemisphere`. See comments for details.
-* `src/main.cpp`: you don't need to do anything here, but you can change the
-  program to save `.hdr` image files, if you want (for postprocessing).
-
-### Generating random numbers
-
-```
-thrust::default_random_engine rng(hash(index));
-thrust::uniform_real_distribution<float> u01(0, 1);
-float result = u01(rng);
-```
-
-There is a convenience function for generating a random engine using a
-combination of index, iteration, and depth as the seed:
-
-```
-thrust::default_random_engine rng = random_engine(iter, index, depth);
-```
-
-### Notes on GLM
-
-This project uses GLM for linear algebra.
-
-On NVIDIA cards pre-Fermi (pre-DX12), you may have issues with mat4-vec4
-multiplication. If you have one of these cards, be careful! If you have issues,
-you might need to grab `cudamat4` and `multiplyMV` from the
-[Fall 2014 project](https://github.com/CIS565-Fall-2014/Project3-Pathtracer).
-Let us know if you need to do this.
 
 ### Scene File Format
 
@@ -202,19 +98,6 @@ Objects are defined in the following fashion:
 Two examples are provided in the `scenes/` directory: a single emissive sphere,
 and a simple cornell box made using cubes for walls and lights and a sphere in
 the middle.
-
-## Third-Party Code Policy
-
-* Use of any third-party code must be approved by asking on our Google Group.
-* If it is approved, all students are welcome to use it. Generally, we approve
-  use of third-party code that is not a core part of the project. For example,
-  for the path tracer, we would approve using a third-party library for loading
-  models, but would not approve copying and pasting a CUDA function for doing
-  refraction.
-* Third-party code **MUST** be credited in README.md.
-* Using third-party code without its approval, including using another
-  student's code, is an academic integrity violation, and will, at minimum,
-  result in you receiving an F for the semester.
 
 ## README
 
