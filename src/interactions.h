@@ -78,39 +78,16 @@ glm::vec3 normal, float n, thrust::default_random_engine &rng) {
 }
 
 __host__ __device__
-glm::vec3 calculateRandomOrigin(
-glm::vec3 normal, thrust::default_random_engine &rng) {
-	thrust::uniform_real_distribution<float> u01(0, 1);
-
-	float up = sqrt(u01(rng)); // cos(theta)
-	float over = sqrt(1 - up * up); // sin(theta)
-	float around = u01(rng) * TWO_PI;	// phi
-
-	// Find a direction that is not the normal based off of whether or not the
-	// normal's components are all equal to sqrt(1/3) or whether or not at
-	// least one component is less than sqrt(1/3). Learned this trick from
-	// Peter Kutz.
-
-	glm::vec3 directionNotNormal;
-	if (abs(normal.x) < SQRT_OF_ONE_THIRD) {
-		directionNotNormal = glm::vec3(1, 0, 0);
-	}
-	else if (abs(normal.y) < SQRT_OF_ONE_THIRD) {
-		directionNotNormal = glm::vec3(0, 1, 0);
-	}
-	else {
-		directionNotNormal = glm::vec3(0, 0, 1);
-	}
-
-	// Use not-normal direction to generate two perpendicular directions
-	glm::vec3 perpendicularDirection1 =
-		glm::normalize(glm::cross(normal, directionNotNormal));
-	glm::vec3 perpendicularDirection2 =
-		glm::normalize(glm::cross(normal, perpendicularDirection1));
-
-	thrust::uniform_real_distribution<float> u02(-1, 1);
-
-	return perpendicularDirection1*u02(rng) + perpendicularDirection2*u02(rng);
+void calculateSSSOut(Ray &r, glm::vec3 &intersect, glm::vec3 &inDirection, glm::vec3 &normal, thrust::default_random_engine &rng) {
+	// Punch in a "pinhole" along negative normal direction
+	// Use endpoint as origin, and shoot a random ray toward surface inside
+	glm::vec3 origin = intersect + normalize(inDirection)*0.0001f - normal;
+	glm::vec3 scatterDirection = calculateRandomDirectionInHemisphere(normal, rng);
+	// Shoot the ray from inside
+	// Approximate scattered origin with normal length
+	glm::vec3 scatterOrigin = origin + normalize(scatterDirection) * glm::length(normal);
+	r.origin = scatterOrigin + normalize(scatterDirection)*0.0005f;
+	r.direction = scatterDirection;
 }
 
 __host__ __device__
@@ -238,12 +215,23 @@ void scatterRay(
 		ray.origin = intersect;
 	}
 	else if (m.hasSSS == 1.0f){
-		glm::vec3 SSSDirection = calculateRandomDirectionInHemisphere(normal, rng);
-		glm::vec3 SSSColor = color * m.color;
-		
-		color = SSSColor;
-		ray.direction = SSSDirection;
-		ray.origin = intersect + calculateRandomOrigin(normal, rng);
+		if (outside){
+			calculateSSSOut(ray, intersect, inDirection, normal, rng);
+		}
+		else {
+			float split = 0.5;
+			thrust::uniform_real_distribution<float> range(0, 1);
+			float pick = range(rng);
+			if (pick < split){
+				ray.direction = diffuseDirection;
+				ray.origin = intersect;
+			}
+			else {
+				ray.direction = inDirection;
+				ray.origin = intersect + normalize(inDirection)*0.0005f;
+			}
+		}
+		color = diffuseColor * 2.0f;
 	}
 	else {
 		color = diffuseColor;

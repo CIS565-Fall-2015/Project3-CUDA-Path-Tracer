@@ -85,7 +85,7 @@ You are also required to implement at least 2 of the following features.
 * Direct lighting (by taking a final ray directly to a random point on an
   emissive object acting as a light source)
 * Some method of defining object motion, and motion blur
-* Subsurface scattering
+* ~~Subsurface scattering~~
 * Arbitrary mesh loading and rendering (e.g. `obj` files). You can find these
   online or export them from your favorite 3D modeling application.
   With approval, you may use a third-party OBJ loading code to bring the data
