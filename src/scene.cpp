@@ -241,6 +241,28 @@ int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs,const AABB& box
 	left_objs.assign(construct_objs.begin(),t);
 	right_objs.assign(t,construct_objs.end());
 
+	int tmp_size = left_objs.size();
+
+	//TODO: overlap object should be added to both branch
+	for (auto o : right_objs)
+	{
+		if (o.aabb.min_pos[cur.split.axis] < cur.split.pos)
+		{
+			left_objs.push_back(o);
+		}
+	}
+
+	for (int i = 0; i < tmp_size; i++)	//naive parse method....
+	{
+		KDNodeConstructWrapper & o = left_objs.at(i);
+		if (o.aabb.max_pos[cur.split.axis] > cur.split.pos)
+		{
+			right_objs.push_back(o);
+		}
+	}
+
+
+
 
 	cur.left_idx = build(left_objs,aabb_pair.first,cur_idx,depth+1);
 	cur.right_idx = build(right_objs,aabb_pair.second,cur_idx,depth+1);
