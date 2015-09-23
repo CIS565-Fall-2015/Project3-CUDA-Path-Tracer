@@ -166,9 +166,9 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 
 
 
-__host__ __device__ void getCemeraRayAtPixel(Path & path,const Camera &c, int x, int y,int iter,int index)
+__host__ __device__ void getCameraRayAtPixel(Path & path,const Camera &c, int x, int y,int iter,int index)
 {
-	thrust::default_random_engine rng = random_engine(iter, index, 0);
+	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
 	path.ray.origin = c.position;
@@ -200,7 +200,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 		Path & path = paths[index];
-		getCemeraRayAtPixel(path,cam,x,y,iter,index);
+		getCameraRayAtPixel(path,cam,x,y,iter,index);
 
 		//TODO: k-d tree accleration goes here?
 
@@ -231,6 +231,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		//for ( thrust::device_vector<Geom>::iterator it = geoms.begin(); it != geoms.end(); ++it)
 		float t_min = FLT_MAX;
 		int hit_geom_index = -1;
+		bool outside;
 		for(int i = 0; i < geoms_size; i++)
 		{
 			//Geom & geom = static_cast<Geom>(*it);
@@ -239,11 +240,11 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[i];
 			if( geom.type == CUBE)
 			{
-				t = boxIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
+				t = boxIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
 			}
 			else if( geom.type == SPHERE)
 			{
-				t = sphereIntersectionTest(geom,path.ray,tmp_intersect,tmp_normal);
+				t = sphereIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
 			}
 			else
 			{
@@ -281,7 +282,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			else
 			{
 				path.terminated = false;
-				thrust::default_random_engine rng = random_engine(iter, path.image_index, depth);
+				thrust::default_random_engine rng = makeSeededRandomEngine(iter, path.image_index, depth);
 				scatterRay(path.ray,path.color,intersect_point,normal,material,rng);
 			}
 
@@ -311,9 +312,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
 	const int blockSizeTotal = blockSideLength * blockSideLength;
-    const dim3 blocksPerGrid(
-            (cam.resolution.x + blockSize.x - 1) / blockSize.x,
-            (cam.resolution.y + blockSize.y - 1) / blockSize.y);
+    
+	const dim3 blockSize2d(8, 8);
+	const dim3 blocksPerGrid2d(
+		(cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
+		(cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -349,7 +352,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	int depth = 0;
 
-	generateRayFromCamera<<<blocksPerGrid,blockSize>>>(cam,iter,dev_path);
+	generateRayFromCamera<<<blocksPerGrid2d,blockSize>>>(cam,iter,dev_path);
 	checkCUDAError("generate camera ray");
 
 	
