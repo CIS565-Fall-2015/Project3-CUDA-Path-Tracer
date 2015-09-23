@@ -129,23 +129,22 @@ thrust::default_random_engine &rrr) {
 		ray.terminated = true;
 	}
 	// Shading 
-	else if (m.hasReflective || m.hasRefractive)
+	else if (m.hasRefractive)
 	{
-		//!!! later : reflective or refractive
-		if (m.hasReflective)
+
+	}
+	else if (m.hasReflective)
+	{
+		if (m.bssrdf>0)
+		{
+
+		}
+		else
 		{
 			ray.origin = getPointOnRay(ray, intrT);
 			ray.direction = glm::reflect(ray.direction, normal);
 			ray.carry *= m.specular.color;
 		}
-		if (m.hasRefractive)
-		{
-			//rays[index].origin = getPointOnRay(rays[index], intrT);
-			//rays[index].direction = glm::reflect(rays[index].direction, intrNormal);
-			//rays[index].carry *= intrMat.specular.color;
-		}
-		//later fresnel
-
 	}
 	else if (m.bssrdf > 0) //subsurface scattering : try brute-force bssrdf
 	{
@@ -170,11 +169,10 @@ thrust::default_random_engine &rrr) {
 			//Sigma_a: Absorption coefficient
 			//Sigma_s: Scattering coefficient
 			// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
-			float Sigma_t =1.5;
+			float Sigma_t = m.bssrdf;
 			float so = -log(u01(rrr)) / Sigma_t;
 			float si = glm::length(getPointOnRay(ray, intrT) - ray.origin);
-			if (si <= so) //turns into exitant, go out of the object
-			//if (true)
+			if (si <= so) //turns into exitant, go out of the objects
 			{
 				ray.origin = getPointOnRay(ray, intrT + .0002f);
 				ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));

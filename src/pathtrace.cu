@@ -185,10 +185,9 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 	}
 }
 
-__device__ float rayIntersection(Geom geometry, Ray r,glm::vec3& intersectionPoint, glm::vec3& normal, int &materIdx)
+__device__ float rayIntersection(Geom geometry, Ray r,glm::vec3& intersectionPoint, glm::vec3& normal, int &materIdx,bool &outside)
 {
 	float temp_T = -1;
-	bool outside = true;//???????
 	switch (geometry.type)
 	{
 	case SPHERE:
@@ -230,8 +229,8 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 			glm::vec3 temp_intrNormal;
 			float temp_T;
 			int temp_MatIdx;
-
-			temp_T = rayIntersection(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal, temp_MatIdx);
+			bool temp_outside;
+			temp_T = rayIntersection(dev_geo[i], rays[index], temp_intrPoint, temp_intrNormal, temp_MatIdx, temp_outside);
 			if (temp_T < 0) continue;
 
 			if (intrT < 0 || temp_T < intrT && temp_T >0)
@@ -310,7 +309,8 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 			glm::vec3 temp_intrNormal;
 			float temp_T;
 			int temp_MatIdx;
-			temp_T = rayIntersection(dev_geo[i], surToLight, temp_intrPoint, temp_intrNormal, temp_MatIdx);
+			bool temp_outside;
+			temp_T = rayIntersection(dev_geo[i], surToLight, temp_intrPoint, temp_intrNormal, temp_MatIdx, temp_outside);
 
 			if (temp_T < 0) continue;
 			if (intrT < 0 || temp_T < intrT && temp_T >0)
