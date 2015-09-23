@@ -161,20 +161,19 @@ void scatterRay(
 		glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
 		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
-
-
-		float r = r0 + (1 - r0)*pow((1 - dot(normalize(glossDirection), normalize(normal))), 5);
-
-		glm::vec3 glossColor = color * m.specular.color * r;
+		glm::vec3 glossColor = color * m.specular.color;
 
 		glm::vec3 refractDirection = calculateRefractDirection(outside, inDirection, normal, n1, n2);
 
+		float r = r0 + (1 - r0)*pow((1 - dot(normalize(glossDirection), normalize(normal))), 5);
+
 		if (refractDirection == glm::vec3(0.0f)){
-			color = glossColor;
+			color = glossColor * r;
 			ray.direction = glossDirection;
 			ray.origin = intersect;
 		}
 		else {
+			glossColor = glossColor * r;
 			float dI = glm::length(diffuseColor);
 			float gI = glm::length(glossColor);
 			float split = dI / (dI+gI);
@@ -214,28 +213,30 @@ void scatterRay(
 		}
 		ray.origin = intersect;
 	}
-	else if (m.hasSSS == 1.0f){
-		if (outside){
-			calculateSSSOut(ray, intersect, inDirection, normal, rng);
-		}
-		else {
-			float split = 0.5;
-			thrust::uniform_real_distribution<float> range(0, 1);
-			float pick = range(rng);
-			if (pick < split){
-				ray.direction = diffuseDirection;
-				ray.origin = intersect;
+	else {
+		if (m.hasSSS == 1.0f){
+			if (outside){
+				calculateSSSOut(ray, intersect, inDirection, normal, rng);
 			}
 			else {
-				ray.direction = inDirection;
-				ray.origin = intersect + normalize(inDirection)*0.0005f;
+				float split = 0.5;
+				thrust::uniform_real_distribution<float> range(0, 1);
+				float pick = range(rng);
+				if (pick < split){
+					ray.direction = diffuseDirection;
+					ray.origin = intersect;
+				}
+				else {
+					ray.direction = inDirection;
+					ray.origin = intersect + normalize(inDirection)*0.0005f;
+				}
 			}
+			color = diffuseColor * 2.0f;
 		}
-		color = diffuseColor * 2.0f;
-	}
-	else {
-		color = diffuseColor;
-		ray.direction = diffuseDirection;
-		ray.origin = intersect;
+		else {
+			color = diffuseColor;
+			ray.direction = diffuseDirection;
+			ray.origin = intersect;
+		}
 	}
 }
