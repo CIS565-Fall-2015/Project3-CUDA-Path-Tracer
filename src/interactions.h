@@ -66,6 +66,31 @@ glm::vec3 getRandomPointOnSphereLight(Geom &sphere, thrust::default_random_engin
 	return multiplyMV(sphere.transform, point);
 }
 
+
+__host__ __device__
+glm::vec3 getRandomPointOnLight(Geom *g, int *lightIndices, int *lightCount, thrust::default_random_engine &rng, int& i)
+{
+	thrust::uniform_real_distribution<float> u01(0, *lightCount);
+
+	int k = u01(rng);
+	i = lightIndices[k];
+
+//	switch( g[lightIndices[k]].type )
+//	{
+//		case CUBE:
+//			return getRandomPointOnCubeLight(g[lightIndices[k]], rng);
+//			break;
+//		case SPHERE:
+			return getRandomPointOnSphereLight(g[i], rng);
+//			break;
+//		default:
+//			break;
+//	}
+//
+//	return glm::vec3(0);
+}
+
+
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -130,12 +155,16 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  */
 __host__ __device__
 void scatterRay(
+		glm::vec3 &camPosition,
         RayState &ray,
         glm::vec3 intersect,
         glm::vec3 normal,
         Material &m,
         thrust::default_random_engine &rng,
-        Geom &g )	//For refraction
+        Geom *g,
+        int geomIndex,
+        int *lightIndices,
+        int *lightCount)
 {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
@@ -147,64 +176,79 @@ void scatterRay(
 	{
 		//Diffused material
 
-		thrust::uniform_real_distribution<float> u01(0, 1);
-
-//		if(u01(rng) > 0.5f)
+		if(m.specular.exponent > 0)
 		{
-			//Do perfect diffused
-			ray.rayColor *= (m.color * 1.0f);
-			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
-			r.origin = intersect + 0.001f * r.direction;
-		}
-
-//		else
-//		{
-//			//Do specular reflection
-//			r.direction = glm::reflect(r.direction, normal);
-//			float specFactor = glm::dot(r.direction, )
-//			ray.rayColor *= (m.color * 2.0f);
-//
-//			r.origin = intersect + 0.001f * r.direction;
-//		}
-	}
-
-	else if (m.hasReflective > 0 && m.hasRefractive > 0)
-	{
-		//Do frenels reflection
-		thrust::uniform_real_distribution<float> u01(0, 1);
-
-		if(u01(rng) < 0.75f)
-		{
-			//Do refraction
-			ray.rayColor *= (m.color * 5.0f);
-			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
-			r.origin = intersect + 0.001f * r.direction;
-
-			//Intersect with the object again
-			float t;
-			bool outside;
-			if(g.type == SPHERE)
+			thrust::uniform_real_distribution<float> u01(0, 1);
+			if(u01(rng) > 0.5f)
 			{
-				t = sphereIntersectionTest(g, r, intersect, normal, outside);
+				//Do perfect diffused
+				ray.rayColor *= (m.color);
+				r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
+				r.origin = intersect + 0.001f * r.direction;
 			}
 
-			else if(g.type == CUBE)
+			else
 			{
-				t = boxIntersectionTest(g, r, intersect, normal, outside);
-			}
+				//Do specular reflection
+				int i;
+				glm::vec3 lightVector = glm::normalize(getRandomPointOnLight(g, lightIndices, lightCount, rng, i) - intersect);
+				glm::vec3 camVector = glm::normalize(camPosition - intersect);
 
-			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
-			r.origin = intersect + 0.001f * r.direction;
+				float specTerm = glm::dot(normal, glm::normalize(lightVector+camVector));
+				specTerm = powf(specTerm, m.specular.exponent);
+
+				ray.rayColor *= ( m.specular.color * specTerm );
+				r.direction = glm::reflect(r.direction, normal);
+				r.origin = intersect + 0.001f * r.direction;
+			}
 		}
+
 		else
 		{
-			//do reflection
-			ray.rayColor *= (m.color * 1.25f);
-			r.direction = (glm::reflect(r.direction, normal));
-			r.origin = intersect + 0.001f * r.direction;
+			//Do perfect diffused
+			ray.rayColor *= (m.color);
+			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
+			r.origin = intersect + 0.0001f * r.direction;
 		}
-
 	}
+
+//	else if (m.hasReflective > 0 && m.hasRefractive > 0)
+//	{
+//		//Do frenels reflection
+//		thrust::uniform_real_distribution<float> u01(0, 1);
+//
+//		if(u01(rng) < 0.75f)
+//		{
+//			//Do refraction
+//			ray.rayColor *= (m.color * 5.0f);
+//			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+//			r.origin = intersect + 0.001f * r.direction;
+//
+//			//Intersect with the object again
+//			float t;
+//			bool outside;
+//			if(g[geomIndex].type == SPHERE)
+//			{
+//				t = sphereIntersectionTest(g, r, intersect, normal, outside);
+//			}
+//
+//			else if(g[geomIndex].type == CUBE)
+//			{
+//				t = boxIntersectionTest(g, r, intersect, normal, outside);
+//			}
+//
+//			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+//			r.origin = intersect + 0.001f * r.direction;
+//		}
+//		else
+//		{
+//			//do reflection
+//			ray.rayColor *= (m.color * 1.25f);
+//			r.direction = (glm::reflect(r.direction, normal));
+//			r.origin = intersect + 0.001f * r.direction;
+//		}
+//
+//	}
 
 	else if(m.hasReflective > 0)
 	{
@@ -224,14 +268,14 @@ void scatterRay(
 		//Intersect with the object again
 		float t;
 		bool outside;
-		if(g.type == SPHERE)
+		if(g[geomIndex].type == SPHERE)
 		{
-			t = sphereIntersectionTest(g, r, intersect, normal, outside);
+			t = sphereIntersectionTest(g[geomIndex], r, intersect, normal, outside);
 		}
 
-		else if(g.type == CUBE)
+		else if(g[geomIndex].type == CUBE)
 		{
-			t = boxIntersectionTest(g, r, intersect, normal, outside);
+			t = boxIntersectionTest(g[geomIndex], r, intersect, normal, outside);
 		}
 
 //		if (t > 0)
