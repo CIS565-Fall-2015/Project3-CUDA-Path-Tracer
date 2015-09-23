@@ -41,11 +41,16 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+/**
+* Computes a cosine-weighted random direction in a hemisphere.
+* Used for non-perfect specular lighting.
+*/
 __host__ __device__
 glm::vec3 calculateRandomSpecDirection(
 glm::vec3 normal, float n, thrust::default_random_engine &rng) {
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
+	// Weighted cosine by specular exponent
 	float up = pow(u01(rng), 1/(n+1)); // cos(theta)
 	float over = sqrt(1 - up * up); // sin(theta)
 	float around = u01(rng) * TWO_PI;	// phi
@@ -77,19 +82,29 @@ glm::vec3 normal, float n, thrust::default_random_engine &rng) {
 		+ sin(around) * over * perpendicularDirection2;
 }
 
+/**
+* Computes a cosine-weighted random direction and a guessed new origin in a hemisphere for SSS
+* Used for SSS.
+*/
 __host__ __device__
 void calculateSSSOut(Ray &r, glm::vec3 &intersect, glm::vec3 &inDirection, glm::vec3 &normal, thrust::default_random_engine &rng) {
 	// Punch in a "pinhole" along negative normal direction
-	// Use endpoint as origin, and shoot a random ray toward surface inside
+	// Use endpoint as origin, and shoot a random ray toward surface from inside
 	glm::vec3 origin = intersect + normalize(inDirection)*0.0001f - normal;
 	glm::vec3 scatterDirection = calculateRandomDirectionInHemisphere(normal, rng);
 	// Shoot the ray from inside
 	// Approximate scattered origin with normal length
 	glm::vec3 scatterOrigin = origin + normalize(scatterDirection) * glm::length(normal);
+	// Does not necessarily put the ray outside geometry; if not it will be catched at the next intersection test
+	// Passing geometry all the way to this function is REALLY slow; therefore the hacky way
 	r.origin = scatterOrigin + normalize(scatterDirection)*0.0005f;
 	r.direction = scatterDirection;
 }
 
+/**
+* Computes refraction direction
+* Used for refraction lighting.
+*/
 __host__ __device__
 glm::vec3 calculateRefractDirection(bool outside, glm::vec3 inDirection, glm::vec3 normal, float n1, float n2) {
 	float mu;
@@ -113,6 +128,10 @@ glm::vec3 calculateRefractDirection(bool outside, glm::vec3 inDirection, glm::ve
 	}
 }
 
+/**
+* Computes the perfect reflection direction on a given normal
+* Used for perfect specular lighting. (not used for non-perfect specular lighting)
+*/
 __host__ __device__
 glm::vec3 calculatePerfectSpecDirection(glm::vec3 inDirection, glm::vec3 normal) {
 	return inDirection - 2.0f * glm::dot(inDirection, normal) * normal;
@@ -149,6 +168,7 @@ void scatterRay(
         const Material &m,
         thrust::default_random_engine &rng) {
 
+	// Diffuse is for sure to happen
 	glm::vec3 diffuseDirection = calculateRandomDirectionInHemisphere(normal, rng);
 	glm::vec3 diffuseColor = color * m.color;
 
@@ -157,16 +177,20 @@ void scatterRay(
 		float n2 = m.indexOfRefraction;
 		float r0 = pow((n1-n2)/(n1+n2), 2);
 
-		glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
+		//glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
+
+		// Jitter intersection normal to get jittered specular reflections
 		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
 		glm::vec3 glossColor = color * m.specular.color;
 
 		glm::vec3 refractDirection = calculateRefractDirection(outside, inDirection, normal, n1, n2);
 
+		// Schlick coefficient
 		float r = r0 + (1 - r0)*pow((1 - dot(normalize(glossDirection), normalize(normal))), 5);
 
 		if (refractDirection == glm::vec3(0.0f)){
+			// Total internal reflection
 			color = glossColor * r;
 			ray.direction = glossDirection;
 			ray.origin = intersect;
@@ -191,7 +215,7 @@ void scatterRay(
 		}
 	}
 	else if (m.hasReflective == 1.0f){
-		glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
+		//glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
 		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
 		glm::vec3 glossColor = color * m.specular.color;
@@ -201,6 +225,8 @@ void scatterRay(
 			float n2 = m.indexOfRefraction;
 			float r0 = pow((n1 - n2) / (n1 + n2), 2);
 
+			// A modified Schlick coefficient; enhanced intensity of gloss
+			// For aesthetic purpose only and not physically correct 
 			float r = r0 + (1 - r0)*( 1 - dot(normalize(glossDirection), normalize(normal))/1.2 );
 
 			glossColor = glossColor * r;
@@ -251,9 +277,11 @@ void scatterRay(
 	}
 	else if (m.hasSSS == 1.0f){
 		if (outside){
+			// Only scatter under surface if it's an incoming light
 			calculateSSSOut(ray, intersect, inDirection, normal, rng);
 		}
 		else {
+			// Otherwise light is going out; should be the offset diffuse reflection
 			float split = 0.5;
 			thrust::uniform_real_distribution<float> range(0, 1);
 			float pick = range(rng);

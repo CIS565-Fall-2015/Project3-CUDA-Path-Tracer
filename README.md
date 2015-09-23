@@ -39,7 +39,7 @@ You will need to implement the following features:
   * Physically-based depth-of-field (by jittering rays within an aperture)
   * Recommended but not required: non-perfect specular surfaces
   * Subsurface scattering
-    * ~~SSS for reflective material
+    * SSS for reflective material
 
 For each extra feature, you must provide the following analysis:
 

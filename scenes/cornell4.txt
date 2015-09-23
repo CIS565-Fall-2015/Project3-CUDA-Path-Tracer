@@ -81,7 +81,7 @@ EMITTANCE   0
 
 // Camera
 CAMERA
-RES         400 400
+RES         800 800
 FOVY        45
 ITERATIONS  5000
 DEPTH       8
@@ -150,34 +150,34 @@ SCALE       2 2 .3
 
 // Sphere SSS
 OBJECT 7
-sphere
+cube
 material 5
 TRANS       2 5 3
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Sphere
 OBJECT 8
-sphere
+cube
 material 6
 TRANS       -2 5 3
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Sphere SSS
 OBJECT 9
-sphere
+cube
 material 5
 TRANS       0 3 -3
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Sphere
 OBJECT 10
-sphere
+cube
 material 6
 TRANS       0 7 -3
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Back light bottom
@@ -215,18 +215,18 @@ SCALE       2 2 .3
 
 // Sphere SSS
 OBJECT 15
-sphere
+cube
 material 5
 TRANS       2 3 0
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Sphere
 OBJECT 16
-sphere
+cube
 material 6
 TRANS       -2 7 0
-ROTAT       0 0 0
+ROTAT       45 45 0
 SCALE       2 2 2
 
 // Back light diag left
