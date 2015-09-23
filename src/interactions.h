@@ -157,7 +157,6 @@ void scatterRay(
 		float n2 = m.indexOfRefraction;
 		float r0 = pow((n1-n2)/(n1+n2), 2);
 
-
 		glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
 		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
@@ -197,6 +196,16 @@ void scatterRay(
 		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
 		glm::vec3 glossColor = color * m.specular.color;
 
+		if (m.hasSSS == 1.0f){
+			float n1 = 1;
+			float n2 = m.indexOfRefraction;
+			float r0 = pow((n1 - n2) / (n1 + n2), 2);
+
+			float r = r0 + (1 - r0)*( 1 - dot(normalize(glossDirection), normalize(normal))/1.2 );
+
+			glossColor = glossColor * r;
+		}
+
 		float dI = glm::length(diffuseColor);
 		float gI = glm::length(glossColor);
 		float split = dI / (dI + gI);
@@ -204,39 +213,63 @@ void scatterRay(
 		float pick = range(rng);
 
 		if (pick < split){
-			color = diffuseColor / dI;
+			/*
+			color = diffuseColor / split;
 			ray.direction = diffuseDirection;
-		}
-		else {
-			color = glossColor / dI;
-			ray.direction = glossDirection;
-		}
-		ray.origin = intersect;
-	}
-	else {
-		if (m.hasSSS == 1.0f){
-			if (outside){
-				calculateSSSOut(ray, intersect, inDirection, normal, rng);
-			}
-			else {
-				float split = 0.5;
-				thrust::uniform_real_distribution<float> range(0, 1);
-				float pick = range(rng);
-				if (pick < split){
-					ray.direction = diffuseDirection;
-					ray.origin = intersect;
+			*/
+			if (m.hasSSS == 1.0f){
+				if (outside){
+					calculateSSSOut(ray, intersect, inDirection, normal, rng);
 				}
 				else {
-					ray.direction = inDirection;
-					ray.origin = intersect + normalize(inDirection)*0.0005f;
+					float split = 0.5;
+					thrust::uniform_real_distribution<float> range(0, 1);
+					float pick = range(rng);
+					if (pick < split){
+						ray.direction = diffuseDirection;
+						ray.origin = intersect;
+					}
+					else {
+						ray.direction = inDirection;
+						ray.origin = intersect + normalize(inDirection)*0.0005f;
+					}
 				}
+				color = diffuseColor / split;
 			}
-			color = diffuseColor * 2.0f;
+			else {
+				color = diffuseColor / split;
+				ray.direction = diffuseDirection;
+				ray.origin = intersect;
+			}
 		}
 		else {
-			color = diffuseColor;
-			ray.direction = diffuseDirection;
+			color = glossColor / split;
+			ray.direction = glossDirection;
 			ray.origin = intersect;
 		}
+	}
+	else if (m.hasSSS == 1.0f){
+		if (outside){
+			calculateSSSOut(ray, intersect, inDirection, normal, rng);
+		}
+		else {
+			float split = 0.5;
+			thrust::uniform_real_distribution<float> range(0, 1);
+			float pick = range(rng);
+			if (pick < split){
+				ray.direction = diffuseDirection;
+				ray.origin = intersect;
+			}
+			else {
+				ray.direction = inDirection;
+				ray.origin = intersect + normalize(inDirection)*0.0005f;
+			}
+		}
+		color = diffuseColor * 2.0f;
+	}
+	else {
+		color = diffuseColor;
+		ray.direction = diffuseDirection;
+		ray.origin = intersect;
 	}
 }
