@@ -6,12 +6,12 @@
 __host__ __device__
 glm::vec3 getRandomPointOnCubeLight(Geom &box, thrust::default_random_engine &rng)
 {
-	glm::vec3 dim = multiplyMV(box.transform, glm::vec4(1,1,1,1));
+	glm::vec3 dim(0);// = box.scale;//, glm::vec4(1,1,1,1.0f));
 
 	float side1 = dim[0] * dim[1];		// x-y
 	float side2 = dim[1] * dim[2];		// y-z
 	float side3 = dim[0] * dim[2];		// x-z
-	float totalArea = 2.0f * (side1 + side2 + side3);
+	float totalArea = 1.0f / (2.0f * (side1 + side2 + side3));
 
 	// pick random face weighted by surface area
 	thrust::uniform_real_distribution<float> u01(0, 1);
@@ -25,16 +25,16 @@ glm::vec3 getRandomPointOnCubeLight(Geom &box, thrust::default_random_engine &rn
 	if (r < side1 / totalArea) {
 		// x-y front
 		point = glm::vec4(c1, c2, 0.5f, 1);
-	} else if (r < (side1 * 2) / totalArea) {
+	} else if (r < (side1 * 2) * totalArea) {
 		// x-y back
 		point = glm::vec4(c1, c2, -0.5f, 1);
-	} else if (r < (side1 * 2 + side2) / totalArea) {
+	} else if (r < (side1 * 2 + side2) * totalArea) {
 		// y-z front
 		point = glm::vec4(0.5f, c1, c2, 1);
-	} else if (r < (side1 * 2 + side2 * 2) / totalArea) {
+	} else if (r < (side1 * 2 + side2 * 2) * totalArea) {
 		// y-z back
 		point = glm::vec4(-0.5f, c1, c2, 1);
-	} else if (r < (side1 * 2 + side2 * 2 + side3) / totalArea) {
+	} else if (r < (side1 * 2 + side2 * 2 + side3) * totalArea) {
 		// x-z front
 		point = glm::vec4(c1, 0.5f, c2, 1);
 	} else {
@@ -42,6 +42,7 @@ glm::vec3 getRandomPointOnCubeLight(Geom &box, thrust::default_random_engine &rn
 		point = glm::vec4(c1, -0.5f, c2, 1);
 	}
 
+//	return glm::vec3(point);
 	return multiplyMV(box.transform, point);
 }
 
@@ -117,7 +118,6 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  * (NOT RECOMMENDED - converges slowly or badly especially for pure-diffuse
  *   or pure-specular. In principle this correct, though.)
  *   Always take a 50/50 split between a diffuse bounce and a specular bounce,
- * - Always take a 50/50 split between a diffuse bounce and a specular bounce,
  *   but multiply the result of either one by 1/0.5 to cancel the 0.5 chance
  *   of it happening.
  * - Pick the split based on the intensity of each color, and multiply each
@@ -134,24 +134,110 @@ void scatterRay(
         glm::vec3 intersect,
         glm::vec3 normal,
         Material &m,
-        thrust::default_random_engine &rng) {
+        thrust::default_random_engine &rng,
+        Geom &g )	//For refraction
+{
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
 
-
-//	if(m.emittance > 0)
-//	{
-//		//Light source
-//		ray.isAlive = false;
-//		ray.rayColor *= m.color;
-//	}
+	Ray &r = ray.ray;
 
 	if(m.hasReflective == 0 && m.hasRefractive == 0)
 	{
 		//Diffused material
+
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
+//		if(u01(rng) > 0.5f)
+		{
+			//Do perfect diffused
+			ray.rayColor *= (m.color * 1.0f);
+			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
+			r.origin = intersect + 0.001f * r.direction;
+		}
+
+//		else
+//		{
+//			//Do specular reflection
+//			r.direction = glm::reflect(r.direction, normal);
+//			float specFactor = glm::dot(r.direction, )
+//			ray.rayColor *= (m.color * 2.0f);
+//
+//			r.origin = intersect + 0.001f * r.direction;
+//		}
+	}
+
+	else if (m.hasReflective > 0 && m.hasRefractive > 0)
+	{
+		//Do frenels reflection
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
+		if(u01(rng) < 0.75f)
+		{
+			//Do refraction
+			ray.rayColor *= (m.color * 5.0f);
+			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+			r.origin = intersect + 0.001f * r.direction;
+
+			//Intersect with the object again
+			float t;
+			bool outside;
+			if(g.type == SPHERE)
+			{
+				t = sphereIntersectionTest(g, r, intersect, normal, outside);
+			}
+
+			else if(g.type == CUBE)
+			{
+				t = boxIntersectionTest(g, r, intersect, normal, outside);
+			}
+
+			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+			r.origin = intersect + 0.001f * r.direction;
+		}
+		else
+		{
+			//do reflection
+			ray.rayColor *= (m.color * 1.25f);
+			r.direction = (glm::reflect(r.direction, normal));
+			r.origin = intersect + 0.001f * r.direction;
+		}
+
+	}
+
+	else if(m.hasReflective > 0)
+	{
+		//Reflective surface
 		ray.rayColor *= m.color;
-		ray.ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
-		ray.ray.origin = intersect + 0.0001f * ray.ray.direction;
+		r.direction = (glm::reflect(r.direction, normal));
+		r.origin = intersect + 0.001f * r.direction;
+	}
+
+	else if(m.hasRefractive > 0)
+	{
+		//Refractive surface
+		ray.rayColor *= m.color;
+		r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+		r.origin = intersect + 0.001f * r.direction;
+
+		//Intersect with the object again
+		float t;
+		bool outside;
+		if(g.type == SPHERE)
+		{
+			t = sphereIntersectionTest(g, r, intersect, normal, outside);
+		}
+
+		else if(g.type == CUBE)
+		{
+			t = boxIntersectionTest(g, r, intersect, normal, outside);
+		}
+
+//		if (t > 0)
+		{
+			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+			r.origin = intersect + 0.001f * r.direction;
+		}
 	}
 }

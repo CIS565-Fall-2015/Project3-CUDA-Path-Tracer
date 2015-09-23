@@ -117,7 +117,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     if (action == GLFW_PRESS) {
         switch (key) {
         case GLFW_KEY_ESCAPE:
-            saveImage();
+            //saveImage();
             glfwSetWindowShouldClose(window, GL_TRUE);
             break;
         case GLFW_KEY_SPACE:

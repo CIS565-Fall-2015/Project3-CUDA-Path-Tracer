@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<?fileVersion 4.0.0?>
-
-<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+<?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
 		<cconfiguration id="com.nvidia.cuda.ide.toolchain.base.1022870347">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.nvidia.cuda.ide.toolchain.base.1022870347" moduleId="org.eclipse.cdt.core.settings" name="Debug">
@@ -26,11 +24,20 @@
 							<builder id="com.nvidia.cuda.ide.builder.1852863291" incrementalBuildTarget="${ConfigName}" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="CUDA Toolkit 7.0 Builder" superClass="com.nvidia.cuda.ide.builder"/>
 							<tool id="nvcc.compiler.base.979724176" name="NVCC Compiler" superClass="nvcc.compiler.base">
 								<option id="nvcc.compiler.pic.1539379077" name="Position Independent Code (-fPIC)" superClass="nvcc.compiler.pic"/>
+								<option id="nvcc.compiler.include.paths.1653358879" superClass="nvcc.compiler.include.paths" valueType="includePath">
+									<listOptionValue builtIn="false" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/include"/>
+								</option>
 								<inputType id="nvcc.compiler.input.cu.457588649" superClass="nvcc.compiler.input.cu"/>
 								<inputType id="nvcc.compiler.input.cpp.393980518" superClass="nvcc.compiler.input.cpp"/>
 								<inputType id="nvcc.compiler.input.c.983084362" superClass="nvcc.compiler.input.c"/>
 							</tool>
 							<tool id="nvcc.linker.base.977974995" name="NVCC Linker" superClass="nvcc.linker.base">
+								<option id="nvcc.linker.option.libs.843739494" superClass="nvcc.linker.option.libs" valueType="libs">
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/lib/libassimp.a"/>
+								</option>
+								<option id="nvcc.linker.option.paths.1601721645" superClass="nvcc.linker.option.paths" valueType="libPaths">
+									<listOptionValue builtIn="false" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/lib"/>
+								</option>
 								<inputType id="nvcc.linker.input.347028153" superClass="nvcc.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -63,18 +70,27 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration buildProperties="" description="" id="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359" name="Release" parent="org.eclipse.cdt.build.core.emptycfg">
+				<configuration artifactName="Project3-CUDA-Path-Tracer" buildProperties="" description="" id="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359" name="Release" parent="org.eclipse.cdt.build.core.emptycfg">
 					<folderInfo id="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359." name="/" resourcePath="">
 						<toolChain id="com.nvidia.cuda.ide.toolchain.base.1694579368" name="com.nvidia.cuda.ide.toolchain.base" superClass="com.nvidia.cuda.ide.toolchain.base">
 							<targetPlatform archList="all" binaryParser="com.nvidia.cuda.ide.elf;com.nvidia.cuda.ide.macho;com.nvidia.cuda.ide.cubin" id="com.nvidia.cuda.ide.targetPlatform.22615485" isAbstract="false" name="Debug Platform" osList="linux,macosx" superClass="com.nvidia.cuda.ide.targetPlatform"/>
 							<builder id="com.nvidia.cuda.ide.builder.1747060888" incrementalBuildTarget="${ConfigName}" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="CUDA Toolkit 7.0 Builder" superClass="com.nvidia.cuda.ide.builder"/>
 							<tool id="nvcc.compiler.base.1290464001" name="NVCC Compiler" superClass="nvcc.compiler.base">
 								<option id="nvcc.compiler.pic.413885544" name="Position Independent Code (-fPIC)" superClass="nvcc.compiler.pic"/>
+								<option id="nvcc.compiler.include.paths.615117403" name="Include paths (-I)" superClass="nvcc.compiler.include.paths" valueType="includePath">
+									<listOptionValue builtIn="false" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/include"/>
+								</option>
 								<inputType id="nvcc.compiler.input.cu.450798328" superClass="nvcc.compiler.input.cu"/>
 								<inputType id="nvcc.compiler.input.cpp.120202231" superClass="nvcc.compiler.input.cpp"/>
 								<inputType id="nvcc.compiler.input.c.1383011677" superClass="nvcc.compiler.input.c"/>
 							</tool>
 							<tool id="nvcc.linker.base.1379005264" name="NVCC Linker" superClass="nvcc.linker.base">
+								<option id="nvcc.linker.option.libs.2061219118" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs">
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/lib/libassimp.a"/>
+								</option>
+								<option id="nvcc.linker.option.paths.511205570" name="Library search path (-L)" superClass="nvcc.linker.option.paths" valueType="libPaths">
+									<listOptionValue builtIn="false" value="/Users/sanchitgarg/Desktop/cggt/Fall_2015/GPU/project3/external/assimp-3.1.1/lib"/>
+								</option>
 								<inputType id="nvcc.linker.input.826958740" superClass="nvcc.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -183,16 +199,37 @@
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
 		<project id="Project3-CUDA-Path-Tracer.null.511728241" name="Project3-CUDA-Path-Tracer"/>
 	</storageModule>
-	<storageModule moduleId="scannerConfiguration">
-		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="RelWithDebugInfo"/>
+		<configuration configurationName="MinSizeRel"/>
 		<configuration configurationName="Default">
 			<resource resourceType="PROJECT" workspacePath="/Project3-CUDA-Path-Tracer"/>
 		</configuration>
 		<configuration configurationName="Debug">
 			<resource resourceType="PROJECT" workspacePath="/Project3-CUDA-Path-Tracer"/>
 		</configuration>
+		<configuration configurationName="Release"/>
+	</storageModule>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359;com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359.;nvcc.compiler.base.1290464001;nvcc.compiler.input.cu.450798328">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359;com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359.;nvcc.compiler.base.1290464001;nvcc.compiler.input.cpp.120202231">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347;com.nvidia.cuda.ide.toolchain.base.1022870347.540900755;nvcc.compiler.base.979724176;nvcc.compiler.input.c.983084362">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347;com.nvidia.cuda.ide.toolchain.base.1022870347.540900755;nvcc.compiler.base.979724176;nvcc.compiler.input.cu.457588649">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347;com.nvidia.cuda.ide.toolchain.base.1022870347.540900755;nvcc.compiler.base.979724176;nvcc.compiler.input.cpp.393980518">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359;com.nvidia.cuda.ide.toolchain.base.1022870347.1473931359.;nvcc.compiler.base.1290464001;nvcc.compiler.input.c.1383011677">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.nvidia.cuda.ide.build.NVCCPerProjectProfile"/>
+		</scannerConfigBuildInfo>
 	</storageModule>
 </cproject>

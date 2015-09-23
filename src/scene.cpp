@@ -3,6 +3,7 @@
 #include <cstring>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
+//#include "Mesh.h"
 
 Scene::Scene(string filename) {
     cout << "Reading scene from " << filename << " ..." << endl;
@@ -53,6 +54,9 @@ int Scene::loadGeom(string objectid) {
             } else if (strcmp(line.c_str(), "cube") == 0) {
                 cout << "Creating new cube..." << endl;
                 newGeom.type = CUBE;
+            } else if (strcmp(line.c_str(), "mesh") == 0) {
+                cout << "Creating new mesh..." << endl;
+                newGeom.type = MESH;
             }
         }
 
@@ -82,6 +86,13 @@ int Scene::loadGeom(string objectid) {
             {
             	newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             }
+            else if (strcmp(tokens[0].c_str(), "OBJFILE") == 0)
+            {
+//            	Mesh m;
+//            	m.LoadMesh(tokens[1].c_str());
+
+//            	meshes.push_back(m);
+            }
 
             utilityCore::safeGetline(fp_in, line);
         }
@@ -103,7 +114,7 @@ int Scene::loadCamera() {
     float fovy;
 
     //load static properties
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 7; i++) {
         string line;
         utilityCore::safeGetline(fp_in, line);
         vector<string> tokens = utilityCore::tokenizeString(line);
@@ -118,6 +129,10 @@ int Scene::loadCamera() {
             state.traceDepth = atoi(tokens[1].c_str());
         } else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
             state.imageName = tokens[1];
+        } else if (strcmp(tokens[0].c_str(), "FOCAL") == 0) {
+        	camera.focalLength = atof(tokens[1].c_str());
+        } else if (strcmp(tokens[0].c_str(), "APER") == 0) {
+        	camera.aperture = atof(tokens[1].c_str());
         }
     }
 
@@ -206,10 +221,19 @@ void Scene::configureCamera()
 
 	camera.H = glm::normalize(A) * (l) * atan(glm::radians(camera.fov.x));
 	camera.V = glm::normalize(B) * (l) * atan(glm::radians(camera.fov.y));
+//	camera.H = glm::normalize(A) * (l) * atan((camera.fov.x));
+//	camera.V = glm::normalize(B) * (l) * atan((camera.fov.y));
 
-	//utilityCore::printVec3(camera.M);
-	//utilityCore::printVec3(camera.H);
-	//utilityCore::printVec3(camera.V);
+	//Creating camSphere
+
+	Geom &camSphere = camera.camSphere;
+	camSphere.translation = camera.position;
+	camSphere.rotation = glm::vec3(0);
+   	camSphere.scale = glm::vec3(camera.focalLength);
+	camSphere.transform = utilityCore::buildTransformationMatrix(
+	    					camSphere.translation, camSphere.rotation, camSphere.scale);
+	camSphere.inverseTransform = glm::inverse(camSphere.transform);
+	camSphere.invTranspose = glm::inverseTranspose(camSphere.transform);
 }
 
 void Scene::findLights()

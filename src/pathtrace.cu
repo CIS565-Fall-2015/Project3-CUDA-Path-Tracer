@@ -15,6 +15,10 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define DI 0
+#define DOF 1
+#define ERRORCHECK 1
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
@@ -72,6 +76,7 @@ static RenderState *dev_state = NULL;
 static RayState *dev_rays_begin = NULL;
 static RayState *dev_rays_end = NULL;
 static int *dev_light_indices = NULL;
+static Geom *dev_camSphere = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -89,6 +94,10 @@ void pathtraceInit(Scene *scene) {
     //Copy Camera
     cudaMalloc((void**)&dev_camera, sizeof(Camera));
     cudaMemcpy(dev_camera, &hst_scene->state.camera, sizeof(Camera), cudaMemcpyHostToDevice);
+
+    //Copy Camera Sphere
+//    cudaMalloc((void**)&dev_camSphere, sizeof(Geom));
+//    cudaMalloc(dev_camSphere, &hst_scene->state.camera.)
 
     //Copy geometry
     cudaMalloc((void**)&dev_geoms, hst_scene->geoms.size() * sizeof(Geom));
@@ -129,6 +138,7 @@ void pathtraceFree() {
     cudaFree(dev_geoms_count);
     cudaFree(dev_rays_begin);
     cudaFree(dev_light_indices);
+    cudaFree(dev_camSphere);
 
     checkCUDAError("pathtraceFree");
 }
@@ -190,16 +200,39 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 	}
 }
 
-//Kernel function that performs one iteration of tracing the path.
-__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, glm::vec3* image, int iter, int currDepth)
+//Kernel function that generates the Depth of field jitter
+__global__ void kernJitterDOF(Camera * camera, RayState* rays, int iter)
 {
-	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	 if (x < camera->resolution.x && y < camera->resolution.y)
+	if (x < camera->resolution.x && y < camera->resolution.y)
+	{
+		int index = x + (y * camera->resolution.x);
+
+		Ray &r = rays[index].ray;
+
+		bool outside;
+		glm::vec3 intersectionPoint, normal;
+
+		sphereIntersectionTest(camera->camSphere, r, intersectionPoint, normal, outside);
+
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+		thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
+
+		r.origin += glm::vec3(camera->aperture * u01(rng), camera->aperture * u01(rng), 0);
+		r.direction = glm::normalize(intersectionPoint - r.origin);
+	}
+}
+
+
+//Kernel function that performs one iteration of tracing the path.
+__global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int *geomCount, Material* materials, glm::vec3* image, int iter, int currDepth, int rayCount)
+{
+	 int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	 if(index < rayCount)
 	 {
-		 int index = x + (y * camera->resolution.x);
-
 		 if(ray[index].isAlive)
 		 {
 			 glm::vec3 intersectionPoint = glm::vec3(0), normal = glm::vec3(0);
@@ -255,22 +288,20 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 						 nearestIntersectionPoint,
 						 nearestNormal,
 						 materials[geoms[nearestIndex].materialid],
-						 rng);
+						 rng,
+						 geoms[nearestIndex]);
 				 }
 			 }
 		 }
     }
 }
 
-__global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms, int * lightIndices, Material* materials, glm::vec3* image, int iter, int currDepth)
+__global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms, int * lightIndices, Material* materials, glm::vec3* image, int iter, int currDepth, int rayCount)
 {
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-	if (x < camera->resolution.x && y < camera->resolution.y)
+	if(index < rayCount)
 	{
-		int index = x + (y * camera->resolution.x);
-
 		if(ray[index].isAlive)
 		{
 			glm::vec3 intersectionPoint, normal;
@@ -291,23 +322,10 @@ __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms
 			if(t > 0)
 			{
 				//Intersection with light, write the color
-				image[r.pixelIndex] += (r.rayColor);// * materials[geoms[i].materialid].emittance);
+				image[r.pixelIndex] += (r.rayColor * materials[geoms[i].materialid].emittance);
 			}
 		}
 	}
-}
-
-__global__ void kernWriteToImage(Camera *camera, RayState * r, glm::vec3* image)
-{
-	 int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	 int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	 if (x < camera->resolution.x && y < camera->resolution.y)
-	 {
-		 int index = x + (y * camera->resolution.x);
-
-		 image[r[index].pixelIndex] += r[index].rayColor;
-	 }
 }
 
 struct isDead
@@ -356,30 +374,36 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     //Setup initial rays
     kernGetRayDirections<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, iter);
+
+    //Jitter rays as per Depth of field
+    if(DOF)
+    {
+    	kernJitterDOF<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, iter);
+    }
+
     dev_rays_end = dev_rays_begin + pixelcount;
     int rayCount = pixelcount;
-    glm::ivec3 newRes;
+    int numBlocks, numThreads = 64;
+    numBlocks = (rayCount + numThreads - 1) / numThreads;
 
     //&& (dev_rays_end - dev_rays_begin > 0)
-    for(int i=0; (i<traceDepth); ++i)
+    for(int i=0; (i<traceDepth && rayCount > 0); ++i)
     {
     	//Take one step, should make dead rays as false
-    	kernTracePath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_materials, dev_image, iter, i);
+    	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_materials, dev_image, iter, i, rayCount);
 
     	//Compact rays, dev_rays_end points to the new end
-//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
 
-//    	rayCount = dev_rays_begin - dev_rays_end;
-//    	newRes.x = sqrt(rayCount) + 1;
-//    	newRes.y = newRes.x;
-//
-//    	blocksPerGrid.x = (newRes.x + blockSize.x - 1)/ blockSize.x;
-//    	blocksPerGrid.y = (newRes.y + blockSize.y - 1)/ blockSize.y;
-
+    	rayCount = dev_rays_end - dev_rays_begin;
+    	numBlocks = (rayCount + numThreads - 1) / numThreads;
     }
 
     //Direct Illumination
-    kernDirectLightPath<<<blocksPerGrid, blockSize>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_materials, dev_image, iter, traceDepth);
+    if(DI && rayCount > 0)
+    {
+    	kernDirectLightPath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_materials, dev_image, iter, traceDepth, rayCount);
+    }
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
