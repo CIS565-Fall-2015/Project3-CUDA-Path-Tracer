@@ -48,9 +48,21 @@ int Scene::loadGeom(string objectid) {
             if (strcmp(line.c_str(), "sphere") == 0) {
                 cout << "Creating new sphere..." << endl;
                 newGeom.type = SPHERE;
+				newGeom.mesh=nullptr;
             } else if (strcmp(line.c_str(), "cube") == 0) {
                 cout << "Creating new cube..." << endl;
                 newGeom.type = CUBE;
+				newGeom.mesh=nullptr;
+            }
+			else if (strcmp(line.c_str(), "mesh") == 0) {
+                cout << "Creating new mesh..." << endl;
+                newGeom.type = MESH;
+				string s;
+				utilityCore::safeGetline(fp_in, s);
+				cout<<"Importing "<<s<<" file"<<endl;
+				newGeom.mesh=loadObj(s);
+				cout<<"Importing succeed"<<endl;
+				cout<<"Object with "<<newGeom.mesh->vertexNum<<" vertexes and "<<newGeom.mesh->indexNum/3<<" faces"<<endl;
             }
         }
 
@@ -94,6 +106,103 @@ int Scene::loadGeom(string objectid) {
         geoms.push_back(newGeom);
         return 1;
     }
+}
+
+Mesh *Scene::loadObj(string fileName){
+	string input;
+	bool usVn=false;
+	Mesh *m=new Mesh();
+	vector<glm::vec3> ver,nor;
+	vector<int> ind,tex,norIdx;
+	int index;
+	ifstream inObj;
+	inObj.open(fileName);
+	while(inObj>>input){
+		//cout<<input<<endl;
+		if(input=="v"){
+			glm::vec3 vec;
+			inObj>>vec.x;
+			inObj>>vec.y;
+			inObj>>vec.z;
+			ver.push_back(vec);
+		}
+		else if(input=="vn"){
+			usVn=true;
+			glm::vec3 vec;
+			inObj>>vec.x;
+			inObj>>vec.y;
+			inObj>>vec.z;
+			nor.push_back(vec);
+		}
+		else if(input=="vt"){}
+		else if(input=="f"){
+			for(int j=0;j<3;j++){
+				int i=0;
+				inObj>>input;
+				//cout<<input<<endl;
+				int count=0;
+				index=0;
+				while(input[count]<='9'&&input[count]>='0') count++;
+				for(i=0;i<count;i++)
+					index+=(input[i]-'0')*pow(10.0,count-1-i);
+				ind.push_back(index-1);
+				i++;
+
+				if(i<input.size()){//texture
+					int count=i;
+					index=0;
+					while(input[count]<='9'&&input[count]>='0') count++;
+					for(;i<count;i++)
+						index+=(input[i]-'0')*pow(10.0,count-1-i);
+					tex.push_back(index-1);
+					i++;
+				}
+				if(i<input.size()){//normal
+					int count=i;
+					index=0;
+					while(input[count]<='9'&&input[count]>='0') count++;
+					for(;i<count;i++)
+						index+=(input[i]-'0')*pow(10.0,count-1-i);
+					norIdx.push_back(index-1);
+					i++;
+				}
+			}
+		}
+	}
+	inObj.close();
+	m->vertex=new glm::vec3[ver.size()];
+	m->vertexNum=ver.size();
+	for(int i=0;i<ver.size();++i) m->vertex[i]=ver[i];
+	m->normal=new glm::vec3[nor.size()];
+	m->normalNum=nor.size();
+	for(int i=0;i<nor.size();++i) m->normal[i]=nor[i];
+	m->indices=new int[ind.size()];
+	m->indexNum=ind.size();
+	for(int i=0;i<ind.size();++i) m->indices[i]=ind[i];
+	m->computeBoundingSphere();
+	initTreeStructure(m);
+	return m;
+}
+
+void Scene::initTreeStructure(Mesh *m){
+	float xmax,xmin,ymax,ymin,zmax,zmin;
+	xmax=ymax=zmax=-1e10;xmin=ymin=zmin=1e10;
+	for(int i=0;i<m->vertexNum;i++){
+		if(xmax<m->vertex[i].x) xmax=m->vertex[i].x;
+		if(xmin>m->vertex[i].x) xmin=m->vertex[i].x;
+		if(ymax<m->vertex[i].y) ymax=m->vertex[i].y;
+		if(ymin>m->vertex[i].y) ymin=m->vertex[i].y;
+		if(zmax<m->vertex[i].z) zmax=m->vertex[i].z;
+		if(zmin>m->vertex[i].z) zmin=m->vertex[i].z;
+	}
+	vector<int> *verIdx=new vector<int>;
+	for(int i=0;i<m->indexNum/3;i++) verIdx->push_back(i);
+	m->tree=new kdtree(0,xmax,xmin,ymax,ymin,zmax,zmin,verIdx);
+	vector<glm::vec3> ver;
+	vector<int> ind;
+	for(int i=0;i<m->vertexNum;++i) ver.push_back(m->vertex[i]);
+	for(int i=0;i<m->indexNum;++i) ind.push_back(m->indices[i]);
+	m->tree->createTree(&ver,&ind);
 }
 
 int Scene::loadCamera() {

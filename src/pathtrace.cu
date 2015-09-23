@@ -62,7 +62,10 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static glm::vec3 *cameraRay=NULL;
-static glm::vec3 *dev_cam;//only used for test
+static glm::vec3 *dev_cam;
+//static glm::vec3 *dev_vertex;
+//static Mesh *dev_mesh;
+//static int *dev_index;
 static Geom *geom,*dev_geom;
 static Material *material,*dev_material;
 
@@ -84,9 +87,55 @@ void pathtraceInit(Scene *scene) {
     checkCUDAError("pathtraceInit");
 }
 
+kdtree *initTree(kdtree *root){
+	//postorder method to first get the left and right child on GPU Memory, then replace it with the memory on CPU, then copy the whole point to GPU
+	if(root==nullptr) return nullptr;
+	kdtree *dev_lc=initTree(root->lc);
+	kdtree *dev_rc=initTree(root->rc);
+	kdtree *tmp(root);
+	tmp->lc=dev_lc;
+	tmp->rc=dev_rc;
+	kdtree *dev_root;
+	cudaMalloc(&dev_root,sizeof(kdtree));
+	cudaMemcpy(dev_root,tmp,sizeof(kdtree),cudaMemcpyHostToDevice);
+	//cout<<tmp->xmax<<endl;
+	return dev_root;
+}
+
+void traverse(kdtree *root){
+	if(root==nullptr) return;
+	cout<<root->xmax<<","<<root->xmin<<","<<root->ymax<<","<<root->ymin<<","<<root->zmax<<","<<root->zmin<<endl;
+	traverse(root->lc);
+	traverse(root->rc);
+}
+
 void initGeom(){
 	geom=new Geom[hst_scene->geoms.size()];
-	for(int i=0;i<hst_scene->geoms.size();++i) geom[i]=hst_scene->geoms[i];
+	for(int i=0;i<hst_scene->geoms.size();++i){ 
+		geom[i]=hst_scene->geoms[i];
+		if(geom[i].mesh!=nullptr){
+			glm::vec3 *dev_vertex;
+			Mesh *dev_mesh,*mesh;
+			int *dev_index;
+			mesh=geom[i].mesh;
+			cudaMalloc(&dev_vertex, sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum);
+			cudaMemcpy(dev_vertex,hst_scene->geoms[i].mesh->vertex,sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum,cudaMemcpyHostToDevice);
+
+			cudaMalloc(&dev_index, sizeof(int)*hst_scene->geoms[i].mesh->indexNum);
+			cudaMemcpy(dev_index,hst_scene->geoms[i].mesh->indices,sizeof(int)*hst_scene->geoms[i].mesh->indexNum,cudaMemcpyHostToDevice);
+			
+			mesh->vertex=dev_vertex;
+			mesh->indices=dev_index;
+			//traverse(mesh->tree);
+			
+			mesh->tree=initTree(mesh->tree);
+			//getchar();
+			cudaMalloc(&dev_mesh, sizeof(Mesh));
+			cudaMemcpy(dev_mesh,mesh,sizeof(Mesh),cudaMemcpyHostToDevice);
+
+			geom[i].mesh=dev_mesh;
+		}
+	}
 	cudaMalloc(&dev_geom, hst_scene->geoms.size()*sizeof(Geom));
 	cudaMemcpy(dev_geom, geom, hst_scene->geoms.size()*sizeof(Geom), cudaMemcpyHostToDevice);
 }
@@ -101,8 +150,12 @@ void initMaterial(){
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
-
+	cudaFree(cameraRay);
+	cudaFree(dev_cam);
+	cudaFree(dev_geom);
+	cudaFree(dev_material);
     checkCUDAError("pathtraceFree");
+	cout<<"Memory is released"<<endl;
 }
 
 /**
@@ -141,8 +194,8 @@ __device__ float findIntersection(Ray r, Geom *geom, int geomNum,int& interId,gl
 		else if(geom[i].type==SPHERE){
 			tmp=sphereIntersectionTest(geom[i],r,tmpPos,tmpNormal);
 		}
-		else{
-			tmp=boxIntersectionTest(geom[i],r,tmpPos,tmpNormal);
+		else if(geom[i].type==MESH){
+			tmp=meshIntersectionTest(geom[i],r,tmpPos,tmpNormal);
 		}
 		if(tmp!=-1&&(tmp<t||t==-1)){
 			t=tmp;
@@ -320,7 +373,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    const int blockSideLength = 8;
+    const int blockSideLength =20;
     const dim3 blockSize(blockSideLength, blockSideLength);
     const dim3 blocksPerGrid(
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,

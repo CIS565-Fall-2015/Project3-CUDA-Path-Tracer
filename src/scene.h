@@ -16,6 +16,9 @@ private:
     int loadMaterial(string materialid);
     int loadGeom(string objectid);
     int loadCamera();
+	void initTreeStructure(Mesh *m);
+	Mesh *loadObj(string fileName);
+	void averageNormal();
 public:
     Scene(string filename);
     ~Scene();

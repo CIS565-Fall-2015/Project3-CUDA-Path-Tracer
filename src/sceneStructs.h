@@ -4,10 +4,12 @@
 #include <vector>
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
+#include "kdtree.h"
 
 enum GeomType {
     SPHERE,
     CUBE,
+	MESH,
 };
 
 struct Ray {
@@ -15,8 +17,34 @@ struct Ray {
     glm::vec3 direction;
 };
 
+struct Mesh{
+	glm::vec3 *vertex,*normal;
+	int *normalIdx,*textureIdx,*indices;
+	int vertexNum,normalNum,indexNum;
+	float radius;
+	glm::vec3 center;
+	kdtree *tree;
+	void computeBoundingSphere(){
+		float num=vertexNum,max_length=-1,length;
+		glm::vec3 dis;
+		center=glm::vec3(0);
+		for(int i=0;i<vertexNum;i++)
+			center=center+vertex[i];
+		center=center/num;
+		for(int i=0;i<vertexNum;i++){
+			dis=vertex[i]-center;
+			length=glm::length(dis);
+			if(length>max_length){
+				max_length=length;
+			}
+		}
+		radius=max_length;
+	}
+};
+
 struct Geom {
     enum GeomType type;
+	Mesh *mesh;
     int materialid;
     glm::vec3 translation;
     glm::vec3 rotation;
