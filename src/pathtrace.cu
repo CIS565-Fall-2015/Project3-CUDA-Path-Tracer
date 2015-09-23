@@ -17,9 +17,13 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define ERRORCHECK 1
+
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+#if ERRORCHECK
+    cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;
@@ -30,12 +34,17 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
         fprintf(stderr, " (%s:%d)", file, line);
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+#  ifdef _WIN32
+    getchar();
+#  endif
     exit(EXIT_FAILURE);
+#endif
 }
 
-__host__ __device__ thrust::default_random_engine random_engine(
-        int iter, int index = 0, int depth = 0) {
-    return thrust::default_random_engine(utilhash((index + 1) * iter) ^ utilhash(depth));
+__host__ __device__
+thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth) {
+    int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
+    return thrust::default_random_engine(h);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -140,7 +149,7 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        thrust::default_random_engine rng = random_engine(iter, index, 0);
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
         thrust::uniform_real_distribution<float> u01(0, 1);
 
         // CHECKITOUT: Note that on every iteration, noise gets added onto
@@ -315,10 +324,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //     multiplicative identity, white = (1, 1, 1).
     //   * For debugging, you can output your ray directions as colors.
     // * For each depth:
-	//   * Compute one new (ray, color) pair along each path (using scatterRay).
-	//     Note that many rays will terminate by hitting a light or hitting
-	//     nothing at all. You'll have to decide how to represent your path rays
-	//     and how you'll mark terminated rays.
+    //   * Compute one new (ray, color) pair along each path (using scatterRay).
+    //     Note that many rays will terminate by hitting a light or hitting
+    //     nothing at all. You'll have to decide how to represent your path rays
+    //     and how you'll mark terminated rays.
     //     * Color is attenuated (multiplied) by reflections off of any object
     //       surface.
     //     * You can debug your ray-scene intersections by displaying various
@@ -328,6 +337,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //   * Stream compact away all of the terminated paths.
     //     You may use either your implementation or `thrust::remove_if` or its
     //     cousins.
+    //     * Note that you can't really use a 2D kernel launch any more - switch
+    //       to 1D.
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
@@ -361,7 +372,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     ///////////////////////////////////////////////////////////////////////////
 
     // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
 
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
