@@ -375,7 +375,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		checkCUDAError("scatter");
 
 		// Stream compaction stat
-		printf("Iter: %d / Depth: %d / Grid size: %d\n", iter, d, grid_size);
+		//printf("Iter: %d / Depth: %d / Grid size: %d\n", iter, d, grid_size);
 	}
 	dev_grid.clear();
 #if ANTIALIASING

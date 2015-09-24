@@ -52,20 +52,8 @@ namespace Efficient {
 		}
 	}
 
-
-
 	__global__ void countF(int *c, int *f, int *idx, const int n){
 		c[0] = f[n - 1] + idx[n - 1];
-	}
-
-	__global__ void countS(PathRay *dv, int n, int *f, int *idx){
-		int count = 0;
-		for (int i = 0; i < n; i++){
-			if (f[i] != 0){
-				count++;
-			}
-		}
-		printf("%d : %d, %d\n", count, idx[0], idx[n - 1]);
 	}
 
 	/**
@@ -73,7 +61,6 @@ namespace Efficient {
 	*/
 	__global__ void smallScan(int *small_scan, const int *idata, const int n){
 		__shared__ int scanBlock[BLOCKSIZE];
-		//__shared__ int oBlock[BLOCKSIZE];
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 		int t = threadIdx.x;
 
@@ -81,11 +68,9 @@ namespace Efficient {
 
 		if (k < n){
 			scanBlock[t] = idata[k];
-			//oBlock[t] = idata[k];
 		}
 		else {
 			scanBlock[t] = 0;
-			//oBlock[t] = 0;
 		}
 
 		// Up sweep
@@ -99,13 +84,10 @@ namespace Efficient {
 			}
 		}
 
-		__syncthreads();
 		// Reset root
 		if (t == 0){
 			scanBlock[BLOCKSIZE-1] = 0;
 		}
-
-		__syncthreads();
 
 		for (int d = ceiling - 1; d >= 0; d--){
 			__syncthreads();
@@ -119,14 +101,17 @@ namespace Efficient {
 		}
 		__syncthreads();
 
-		if (k < n){
-			small_scan[k] = scanBlock[t];
-		}
+		small_scan[k] = scanBlock[t];
 	}
 
-	__global__ void getBlockTotal(int *block_total, int *scans, const int B){
+	__global__ void getBlockTotal(int *block_total, const int *scans, const int * data_in, const int B, const int n){
 		int totalIndex = (blockIdx.x + 1)*B - 1;
-		block_total[blockIdx.x] = scans[totalIndex];
+		if (totalIndex < n){
+			block_total[blockIdx.x] = scans[totalIndex] + data_in[totalIndex];
+		}
+		else {
+			block_total[blockIdx.x] = scans[totalIndex];
+		}
 	}
 
 	__global__ void blockIncrement(int *odata, int *block_incr, int *small_scan, const int n){
@@ -142,14 +127,17 @@ namespace Efficient {
 void scan(int n, int *odata, const int *idata) {
 	if (n <= BLOCKSIZE){
 		// Base case
+		int *scan_out;
+		cudaMalloc((void**)&scan_out, BLOCKSIZE * sizeof(int));
 		// Scan on each block & get total sum
-		smallScan << <1, BLOCKSIZE >> >(odata, idata, n);
+		smallScan << <1, BLOCKSIZE >> >(scan_out, idata, n);
+		cudaMemcpy(odata, scan_out, n * sizeof(int), cudaMemcpyDeviceToHost);
 
 		checkCUDAError1("SC small scan base case");
 	}
 	else {
 		// Divide into blocks and padding
-		int gridSize = ceil(n / BLOCKSIZE);
+		int gridSize = lround(ceil((double)n / (double)BLOCKSIZE));
 
 		int *scan_out;
 		int *block_total, *block_scan;
@@ -157,24 +145,21 @@ void scan(int n, int *odata, const int *idata) {
 		// Padding zero
 		cudaMalloc((void**)&scan_out, gridSize * BLOCKSIZE * sizeof(int));
 		cudaMalloc((void**)&block_total, gridSize * sizeof(int));
-		cudaMemset(block_total, 0, gridSize * sizeof(int));
-		cudaMalloc((void**)&block_scan, gridSize * sizeof(int));
-		cudaMemset(block_scan, 0, gridSize * sizeof(int));
 
 		smallScan << <gridSize, BLOCKSIZE >> >(scan_out, idata, n);
 		checkCUDAError1("SC small scan");
 
-		getBlockTotal << <gridSize, 1 >> >(block_total, scan_out, BLOCKSIZE);
+		getBlockTotal << <gridSize, 1 >> >(block_total, scan_out, idata, BLOCKSIZE, n);
 
 		// Scan and get block increment; recursively
-		scan(gridSize, block_scan, block_total);
+		scan(gridSize, block_total, block_total);
 
 		// Increment block
-		blockIncrement << <gridSize, 1 >> >(odata, block_scan, scan_out, n);
+		blockIncrement << <gridSize, BLOCKSIZE >> >(odata, block_total, scan_out, n);
 		checkCUDAError1("SC block increment");
+
 		cudaFree(scan_out);
 		cudaFree(block_total);
-		cudaFree(block_scan);
 	}
 }
 
@@ -210,8 +195,6 @@ int compact(int n, PathRay *idata) {
 
 	scatter << <tsize, BLOCKSIZE >> >(dv_out, idata, f, idx, n);
 	checkCUDAError1("SC scatter");
-
-	countS << <1, 1 >> >(dv_out, n, f, idx);
 
 	// Get new array size
 	int count = 0;
