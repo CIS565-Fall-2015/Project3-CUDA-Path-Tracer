@@ -289,6 +289,7 @@ __host__ __device__ float triIntersectionTest(Ray r, glm::vec3 p1,glm::vec3 p2,g
 		return -1;
 	}
 	normal=glm::normalize(v);
+	if(glm::dot(normal,r.direction)>0) normal=-normal;
 	return t;
 }
 
