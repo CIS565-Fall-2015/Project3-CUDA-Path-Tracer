@@ -180,11 +180,13 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 			dist = sphereIntersectionTest(geoms[i], ray, interPoint, norm, out);
 		}
 		if ((dist != -1 && dist < t) || t == -1) {
-			t = dist;
-			intersectionPoint = interPoint;
-			normal = norm;
-			outside = out;
-			objIndex = i;
+			if (out){
+				t = dist;
+				intersectionPoint = interPoint;
+				normal = norm;
+				outside = out;
+				objIndex = i;
+			}
 		}
 	}
 	return t;
@@ -192,13 +194,13 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 }
 
 //Function to find next ray
-__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter){
+__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * cam.resolution.x);
 	//find closest intersection
 	if (x < cam.resolution.x && y < cam.resolution.y && rayArray[index].index < 0) {
-		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+		thrust::default_random_engine rng = makeSeededRandomEngine(depth, iter, index);
 		glm::vec3 interPoint;
 		glm::vec3 norm;
 		bool out;
@@ -273,7 +275,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray);
 
 	for (int i = 0; i < traceDepth; i++) {
-		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter);
+		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i);
 	}
 	
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
