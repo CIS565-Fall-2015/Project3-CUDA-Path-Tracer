@@ -19,7 +19,7 @@ EYE         0.0 5 10.5
 VIEW        0 0 -1
 UP          0 1 0
 
-// Sphere
+// sphere
 OBJECT 0
 sphere
 material 0
