@@ -15,7 +15,7 @@
 
 #define FILENAME1 (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError1(msg) checkCUDAErrorFn1(msg, FILENAME1, __LINE__)
-#define ERRORCHECK1 1
+#define ERRORCHECK1 0
 void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
 #if ERRORCHECK1
 	+ cudaDeviceSynchronize();
@@ -174,9 +174,11 @@ void scan(int n, int *odata, const int *idata) {
 int compact(int n, PathRay *idata) {
 	int *f;
 	// Padding
-	int gridSize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
-	int m = (int)pow((double)2, (double)ilog2ceil(gridSize));
-	int tsize = m > gridSize ? m : gridSize;
+	//int gridSize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
+	//int m = (int)pow((double)2, (double)ilog2ceil(gridSize));
+	//int tsize = m > gridSize ? m : gridSize;
+	//int tsize = gridSize;
+	int tsize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
 
 	// Filter
 	cudaMalloc((void**)&f, n * sizeof(int));

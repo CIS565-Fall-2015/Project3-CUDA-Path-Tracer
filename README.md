@@ -107,7 +107,10 @@ Depth: 7 / Grid size: 141986
   of stream compaction! Remember, stream compaction only affects rays which
   terminate, so what might you expect?
   * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
-  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; about 2x slower perceived. Closed scene is much brighter.
+  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; theoretical 3x more slower with 3 passes; about 2x slower perceived. Closed scene is much brighter.
+
+## Performance
+* Baseline: `cornell6`, 200*200
 
 
 ## Submit

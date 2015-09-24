@@ -24,7 +24,7 @@
 #define USETHRUSTCOMPACTION 0
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
-#define ERRORCHECK 1
+#define ERRORCHECK 0
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #if ERRORCHECK
 	+ cudaDeviceSynchronize();
