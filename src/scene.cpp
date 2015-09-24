@@ -128,7 +128,7 @@ int Scene::loadCamera() {
 
         utilityCore::safeGetline(fp_in, line);
     }
-
+	
     //calculate fov based on resolution
     float yscaled = tan(fovy * (PI / 180));
     float xscaled = (yscaled * camera.resolution.x) / camera.resolution.y;

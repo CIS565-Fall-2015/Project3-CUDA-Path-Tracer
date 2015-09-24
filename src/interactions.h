@@ -75,4 +75,18 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
+	if (m.hasReflective)
+	{
+
+	}
+	else if (m.hasRefractive)
+	{
+		 
+	}
+	else //diffuse
+	{
+		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		ray.direction = glm::normalize(ray.direction);
+	}
 }

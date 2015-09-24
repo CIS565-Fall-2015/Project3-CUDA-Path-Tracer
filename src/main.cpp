@@ -19,7 +19,14 @@ int height;
 //-------------------------------
 
 int main(int argc, char** argv) {
-    startTimeString = currentTimeString();
+    
+	////test 
+	//glm::vec3 a  (1.f, 2.f, 3.f);
+
+	//glm::vec3 b = a*a;
+	//
+	
+	startTimeString = currentTimeString();
 
     if (argc < 2) {
         printf("Usage: %s SCENEFILE.txt\n", argv[0]);
@@ -31,6 +38,7 @@ int main(int argc, char** argv) {
     // Load scene file
     scene = new Scene(sceneFile);
 
+	//std::cout << scene->state.camera.position.x << " " << scene->state.camera.position.y << " " << scene->state.camera.position.z << " " << std::endl;
     // Set up camera stuff from loaded path tracer settings
     iteration = 0;
     renderState = &scene->state;
