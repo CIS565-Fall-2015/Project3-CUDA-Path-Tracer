@@ -252,7 +252,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-
 	int nums = 70;
 	int* a = new int[nums];
 	int* aa;
@@ -425,7 +424,7 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 
 	// Base case
 	if (nfb == 1){
-		kernSharedScan<<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb, 1);
+		kernSharedScan<<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb);
 		cudaMemcpy(dev_odata, dev_odata_fb, n_size, cudaMemcpyDeviceToDevice);
 		cudaFree(dev_idata_fb);
 		cudaFree(dev_odata_fb);
@@ -439,7 +438,7 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 	cudaMalloc((void**)&dev_block_increments, nfb*sizeof(int));
 	cudaMalloc((void**)&dev_block_increments_scan, nfb*sizeof(int));
 
-	kernSharedScan <<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb, 0);
+	kernSharedScan <<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb);
 	cudaDeviceSynchronize();
 
 	int* hst_odata_fb = (int*)malloc(fb_size);
