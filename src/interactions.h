@@ -109,7 +109,7 @@ glm::vec3 specDir,float specExp, thrust::default_random_engine &rng) {
 __host__ __device__
 glm::vec3 scatterRay(
 Ray &ray,
-int intrObjIdx,
+bool outside,
 float intrT,
 glm::vec3 intersect,
 glm::vec3 normal,
@@ -118,7 +118,14 @@ thrust::default_random_engine &rrr) {
 	// TODO: implement this.
 	// A basic implementation of pure-diffuse shading will just call the
 	// calculateRandomDirectionInHemisphere defined above.
-
+	enum RayType
+	{
+		DiffRay, // Diffuse ray : calculateRandomDirectionInHemisphere
+		ReflRay, // (Mirror) Reflected ray: glm::reflect(ray.direction, normal);
+		RefrRay, // (Transparent) refracted ray : n1/n2
+		SpecRay, // (Non-perfect Mirror) calculateRandomSpecularDirection
+		SSSRay   //
+	};
 	if (ray.terminated)
 		return glm::vec3(0, 0, 0);
 
@@ -151,17 +158,14 @@ thrust::default_random_engine &rrr) {
 		//http://noobody.org/bachelor-thesis.pdf
 		//(1) incident or exitant or currently inside obj ?
 		//	if incident:
-		if (ray.lastObjIdx != intrObjIdx)
+		if (outside) //from outside
 		{
 			ray.origin = getPointOnRay(ray, intrT + .0002f);
-
 			glm::vec3 refraDir = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
 			ray.carry *= m.color;
-			//ray.carry = glm::vec3(1,0,0);
 			ray.direction = refraDir;
-			//mark obj/material id
 		}
-		else if (ray.lastObjIdx == intrObjIdx)//inside
+		else//inside
 		{
 			//compute random so	
 			//compare si=|xo-ray.orig| with so

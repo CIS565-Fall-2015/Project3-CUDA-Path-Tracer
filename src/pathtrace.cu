@@ -221,7 +221,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		glm::vec3 intrNormal;
 		float intrT = -1;
 		int intrMatIdx;
-		int intrObjIdx=-1;
+		bool intrOutside;
 
 		for (int i = 0; i<geoNum; i++)
 		{
@@ -239,15 +239,15 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
 				intrMatIdx = temp_MatIdx;
-				intrObjIdx = i;
+				intrOutside = temp_outside;
 			}
 		}
 		if (intrT > 0)//intersect with obj, update ray
 		{
 			thrust::default_random_engine rr = makeSeededRandomEngine(iter, index, depth);
-			scatterRay(rays[index], intrObjIdx, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
+			scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx], rr);
 			rays[index].origMatIdx = intrMatIdx;
-			rays[index].lastObjIdx = intrObjIdx;
+			rays[index].lastObjIdx = intrOutside;
 		}
 		else
 		{
@@ -298,6 +298,7 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 		glm::vec3 intrNormal;
 		float intrT = -1;
 		int intrMatIdx;
+		bool intrOutside;
 
 		Ray surToLight;
 		surToLight.origin = rays[index].origin;
@@ -319,6 +320,7 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 				intrPoint = temp_intrPoint;
 				intrNormal = temp_intrNormal;
 				intrMatIdx = temp_MatIdx;
+				intrOutside = temp_outside;
 			}
 		}
 		//(3) if nothing in between, cos ray, calc direct illumination
@@ -328,7 +330,7 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 			//!!! later : reduce bounce
 			glm::vec3 color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
 			color *= rays[index].carry;
-			scatterRay(rays[index],-1, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
+			scatterRay(rays[index],intrOutside, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
 			color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
 			image[rays[index].imageIndex] += color;
 			rays[index].terminated = true;
