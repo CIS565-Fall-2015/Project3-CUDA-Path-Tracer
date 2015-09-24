@@ -8,6 +8,8 @@
 #include <thrust/count.h>
 #include <thrust/device_vector.h>
 
+#include <stream_compaction/efficient.h>
+
 #include "sceneStructs.h"
 #include "scene.h"
 #include "glm/glm.hpp"
@@ -17,12 +19,12 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define ANTIALIASING 0
+#define DOF 0
+#define USETHRUSTCOMPACTION 0
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 #define ERRORCHECK 1
-#define ANTIALIASING 0
-#define DOF 0
-#define USETHRUSTCOMPACTION 1
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #if ERRORCHECK
 	+ cudaDeviceSynchronize();
@@ -364,6 +366,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		dev_grid.erase(newGridEnd, dev_grid.end());
 		grid_size = dev_grid.size(); 
 #else
+		grid_size = StreamCompaction::Efficient::compact(grid_size, dev_grid_ptr);
+		checkCUDAError("efficientCompact");
 #endif USETHRUSTCOMPACTION
 
 		// Scatter
@@ -371,7 +375,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		checkCUDAError("scatter");
 
 		// Stream compaction stat
-		//printf("Depth: %d / Grid size: %d\n", d, grid_size);
+		printf("Iter: %d / Depth: %d / Grid size: %d\n", iter, d, grid_size);
 	}
 	dev_grid.clear();
 #if ANTIALIASING

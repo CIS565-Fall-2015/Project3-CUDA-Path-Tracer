@@ -67,7 +67,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CUDA_PROPAGATE_HOST_FLAGS OFF)
 endif()
 
-#add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction
+include_directories(.)
+add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction
 add_subdirectory(src)
 
 cuda_add_executable(${CMAKE_PROJECT_NAME}
@@ -77,7 +78,7 @@ cuda_add_executable(${CMAKE_PROJECT_NAME}
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
     src
-    #stream_compaction  # TODO: uncomment if using your stream compaction
+    stream_compaction  # TODO: uncomment if using your stream compaction
     ${CORELIBS}
     )
 

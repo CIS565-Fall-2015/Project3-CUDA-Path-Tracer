@@ -14,20 +14,10 @@ project, and we will not be able to grade you without a good README.
 Instructions (delete me)
 ========================
 
-#### Controls
-
-* Esc to save an image and exit.
-* Space to save an image. Watch the console for the output filename.
-* W/A/S/D and R/F move the camera. Arrow keys rotate.
-
 ## Requirements
 
-You will need to implement the following features:
-
-* **NEWLY ADDED:** Work-efficient stream compaction using shared memory across
-  multiple blocks (See *GPU Gems 3* Chapter 39).
-
 * Features:
+  * Work-efficient stream compaction using shared memory
   * Raycasting from the camera into the scene through an imaginary grid of pixels
     * Casting to plane at distance based on FOV
   * Diffuse surfaces
@@ -71,54 +61,6 @@ For each extra feature, you must provide the following analysis:
   implemented on the GPU?
 * How might this feature be optimized beyond your current implementation?
 
-### Scene File Format
-
-This project uses a custom scene description format. Scene files are flat text
-files that describe all geometry, materials, lights, cameras, and render
-settings inside of the scene. Items in the format are delimited by new lines,
-and comments can be added using C-style `// comments`.
-
-Materials are defined in the following fashion:
-
-* MATERIAL (material ID) //material header
-* RGB (float r) (float g) (float b) //diffuse color
-* SPECX (float specx) //specular exponent
-* SPECRGB (float r) (float g) (float b) //specular color
-* REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
-* REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
-* REFRIOR (float ior) //index of refraction for Fresnel effects
-* EMITTANCE (float emittance) //the emittance of the material. Anything >0
-  makes the material a light source.
-
-Cameras are defined in the following fashion:
-
-* CAMERA //camera header
-* RES (float x) (float y) //resolution
-* FOVY (float fovy) //vertical field of view half-angle. the horizonal angle is calculated from this and the reslution
-* ITERATIONS (float interations) //how many iterations to refine the image,
-  only relevant for supersampled antialiasing, depth of field, area lights, and
-  other distributed raytracing applications
-* DEPTH (int depth) //maximum depth (number of times the path will bounce)
-* FILE (string filename) //file to output render to upon completion
-* EYE (float x) (float y) (float z) //camera's position in worldspace
-* VIEW (float x) (float y) (float z) //camera's view direction
-* UP (float x) (float y) (float z) //camera's up vector
-
-Objects are defined in the following fashion:
-
-* OBJECT (object ID) //object header
-* (cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or
-  "mesh". Note that cubes and spheres are unit sized and centered at the
-  origin.
-* material (material ID) //material to assign this object
-* TRANS (float transx) (float transy) (float transz) //translation
-* ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
-* SCALE (float scalex) (float scaley) (float scalez) //scale
-
-Two examples are provided in the `scenes/` directory: a single emissive sphere,
-and a simple cornell box made using cubes for walls and lights and a sphere in
-the middle.
-
 ## README
 
 Please see: [**TIPS FOR WRITING AN AWESOME README**](https://github.com/pjcozzi/Articles/blob/master/CIS565/GitHubRepo/README.md)
@@ -149,6 +91,7 @@ In addition:
   unterminated rays after each bounce) and evaluate the benefits you get from
   stream compaction.
 ```
+800 * 800 cornell1
 Depth: 0 / Grid size: 625125
 Depth: 1 / Grid size: 497276
 Depth: 2 / Grid size: 406024
@@ -164,7 +107,7 @@ Depth: 7 / Grid size: 141986
   of stream compaction! Remember, stream compaction only affects rays which
   terminate, so what might you expect?
   * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
-  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; about 2x slower perceived
+  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; about 2x slower perceived. Closed scene is much brighter.
 
 
 ## Submit
