@@ -228,52 +228,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Recap:
-    // * Initialize array of path rays (using rays that come out of the camera)
-    //   * You can pass the Camera object to that kernel.
-    //   * Each path ray is a (ray, color) pair, where color starts as the
-    //     multiplicative identity, white = (1, 1, 1).
-    //   * For debugging, you can output your ray directions as colors.
-    // * For each depth:
-    //   * Compute one new (ray, color) pair along each path (using scatterRay).
-    //     Note that many rays will terminate by hitting a light or hitting
-    //     nothing at all. You'll have to decide how to represent your path rays
-    //     and how you'll mark terminated rays.
-    //     * Color is attenuated (multiplied) by reflections off of any object
-    //       surface.
-    //     * You can debug your ray-scene intersections by displaying various
-    //       values as colors, e.g., the first surface normal, the first bounced
-    //       ray direction, the first unlit material color, etc.
-    //   * Add all of the terminated rays' results into the appropriate pixels.
-    //   * Stream compact away all of the terminated paths.
-    //     You may use either your implementation or `thrust::remove_if` or its
-    //     cousins.
-    // * Finally, handle all of the paths that still haven't terminated.
-    //   (Easy way is to make them black or background-colored.)
-
-	int nums = 70;
-	int* a = new int[nums];
-	int* aa;
-	int* bb;
-	int* b = new int[nums];
-
-	for (int i = 0; i < nums; i++){
-		a[i] = 1;
-	}
-
-	cudaMalloc((void**)&bb, nums * sizeof(int));
-	cudaMalloc((void**)&aa, nums * sizeof(int));
-	cudaMemcpy(aa, a, nums * sizeof(int), cudaMemcpyHostToDevice);
-	//kernSharedScan << <1, MAX_THREADS, MAX_THREADS*sizeof(int) >> >(MAX_THREADS, bb, aa);
-	blockwise_scan(nums, bb, aa);
-	cudaDeviceSynchronize();
-	cudaMemcpy(b, bb, nums * sizeof(int), cudaMemcpyDeviceToHost);
-
-	for (int j = 0; j < nums; j++){
-		printf("%d ", b[j]);
-	}
-
 	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
 	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays);
@@ -311,7 +265,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     checkCUDAError("pathtrace");
 }
-
 
 /*
 * Exclusive scan on idata, stores into odata, using shared memory
@@ -380,19 +333,12 @@ template <typename T> __global__ void kernScatter(int n, T* odata, T* idata, int
 	}
 }
 
-__global__ void kernGetLastInBlocks(int n, int blockSize, int* dev_odata, int* dev_idata){
+__global__ void kernGetLastInBlocks(int n, int blockSize, int* dev_odata, int* dev_idata, int* dev_orig_idata){
 	// n is the number of elements expected in the output array
 	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
 
 	if (index < n){
-		dev_odata[index] = dev_idata[(index+1)*blockSize-1];
-	}
-}
-
-__global__ void kernExcToIncByBlock(int n, int blockSize, int* dev_odata, int* dev_idata, int* dev_orig_data){
-	int index = (blockIdx.x*blockDim.x) + threadIdx.x;
-	if (index < n){
-
+		dev_odata[index] = dev_idata[(index + 1)*blockSize - 1] + dev_orig_idata[(index + 1)*blockSize - 1];
 	}
 }
 
@@ -420,7 +366,6 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 
 	cudaMemset(dev_idata_fb, 0, fb_size);
 	cudaMemcpy(dev_idata_fb, dev_idata, n_size, cudaMemcpyDeviceToDevice);
-	//cudaMemset(dev_idata_fb + n, 0, fb_size - n_size);
 
 	// Base case
 	if (nfb == 1){
@@ -441,49 +386,12 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 	kernSharedScan <<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb);
 	cudaDeviceSynchronize();
 
-	int* hst_odata_fb = (int*)malloc(fb_size);
-	cudaMemcpy(hst_odata_fb, dev_odata_fb, fb_size, cudaMemcpyDeviceToHost);
-	printf("Ind. block scans: ");
-	for (int i = 0; i < nfb*MAX_THREADS; i++){
-		printf("%d ", hst_odata_fb[i]);
-	}
-	printf("\n");
-
-	//int* dev_copy_odata_fb;
-	//cudaMalloc((void**)&dev_copy_odata_fb, fb_size);
-	//cudaMemcpy(dev_copy_odata_fb, dev_odata_fb, fb_size, cudaMemcpyDeviceToDevice);
-
-	kernGetLastInBlocks<<<numBlocks, MAX_THREADS>>>(nfb, MAX_THREADS, dev_block_increments, dev_odata_fb);
+	kernGetLastInBlocks<<<numBlocks, MAX_THREADS>>>(nfb, MAX_THREADS, dev_block_increments, dev_odata_fb, dev_idata_fb);
 	cudaDeviceSynchronize();
-
-	int* hst_block_increments = (int*)malloc(nfb*sizeof(int));
-	cudaMemcpy(hst_block_increments, dev_block_increments, nfb*sizeof(int), cudaMemcpyDeviceToHost);
-	printf("Last elements: ");
-	for (int i = 0; i < nfb; i++){
-		printf("%d ", hst_block_increments[i]);
-	}
-	printf("\n");
-
 
 	blockwise_scan(nfb, dev_block_increments_scan, dev_block_increments);
 
-	int* hst_block_increments_scan = (int*)malloc(nfb*sizeof(int));
-	cudaMemcpy(hst_block_increments_scan, dev_block_increments_scan, nfb*sizeof(int), cudaMemcpyDeviceToHost);
-	printf("Last elements scanned: ");
-	for (int i = 0; i < nfb; i++){
-		printf("%d ", hst_block_increments_scan[i]);
-	}
-	printf("\n");
-
 	kernInPlaceIncrementBlocks<<<nfb, MAX_THREADS>>>(n2, dev_odata_fb, dev_block_increments_scan);
-
-	//int* hst_odata_fb = (int*)malloc(fb_size);
-	cudaMemcpy(hst_odata_fb, dev_odata_fb, fb_size, cudaMemcpyDeviceToHost);
-	printf("Ind. block scans: ");
-	for (int i = 0; i < nfb*MAX_THREADS; i++){
-		printf("%d ", hst_odata_fb[i]);
-	}
-	printf("\n");
 
 	cudaDeviceSynchronize();
 	cudaMemcpy(dev_odata, dev_odata_fb, n_size, cudaMemcpyDeviceToDevice);
@@ -497,8 +405,6 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 template <typename T> int shared_compact(int n, T* dev_odata, T* dev_idata){
 	// Returns the number of elements remaining, elements after the return value in odata are undefined
 	// Assumes device memory
-	//int td = ilog2ceil(n);
-	//int n2 = (int)pow(2, td);
 
 	int numBlocks = (n - 1) / MAX_THREADS + 1;
 	int n_size = n * sizeof(int);
@@ -514,18 +420,11 @@ template <typename T> int shared_compact(int n, T* dev_odata, T* dev_idata){
 	cudaMalloc((void**)&dev_scan, n2_size);
 
 	// Compute temp (binary)
-	//kernMapToBool<<<numBlocks, MAX_THREADS>>>(n, dev_temp, dev_idata, pred);
 	kernFindAlive<<<numBlocks, MAX_THREADS>>>(n, dev_temp, dev_idata);
 	cudaDeviceSynchronize();
 
 	// Scan on temp
 	blockwise_scan(n, dev_scan, dev_temp);
-
-	int* hst_scan = (int*)malloc(n2_size);
-	cudaMemcpy(hst_scan, dev_scan, n2_size, cudaMemcpyDeviceToHost);
-	for (int i = 0; i < n; i++){
-		printf("%d\n",hst_scan[i]);
-	}
 
 	// Scatter on scan
 	kernScatter<<<numBlocks, MAX_THREADS>>>(n, dev_odata, dev_idata, dev_temp, dev_scan);
@@ -535,9 +434,10 @@ template <typename T> int shared_compact(int n, T* dev_odata, T* dev_idata){
 	int lastbool;
 	cudaMemcpy(&lastnum, dev_scan + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
 	cudaMemcpy(&lastbool, dev_temp + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
-	printf("last num: %d\n", lastnum);
-	printf("last bool: %d\n", lastbool);
 	out_size = lastnum + lastbool;
-	printf("out size: %d\n",out_size);
+
+	cudaFree(dev_temp);
+	cudaFree(dev_temp2);
+	cudaFree(dev_scan);
 	return out_size;
 }
