@@ -124,34 +124,38 @@ thrust::default_random_engine &rrr) {
 		ReflRay, // (Mirror) Reflected ray: glm::reflect(ray.direction, normal);
 		RefrRay, // (Transparent) refracted ray : n1/n2
 		SpecRay, // (Non-perfect Mirror) calculateRandomSpecularDirection
-		SSSRay   //
+		SSSRay_o,   //
+		SSSRay_i
 	};
-	if (ray.terminated)
-		return glm::vec3(0, 0, 0);
+	int ray_type;
+	float specProb = 0;
 
+	if (ray.terminated)
+		return ray.carry;
 
 	if (m.emittance > 0)
 	{
 		ray.carry *= m.emittance*m.color;
 		ray.terminated = true;
+		return ray.carry;
 	}
 	// Shading 
 	else if (m.hasRefractive)
-	{
-
+	{//later
+		if (true) ray_type = RefrRay; 
+		else ray_type = RefrRay;
 	}
 	else if (m.hasReflective)
 	{
 		if (m.bssrdf>0)
 		{
-
+			//later
+			ray_type = SSSRay_i;
+			//or
+			ray_type = SSSRay_o;
 		}
 		else
-		{
-			ray.origin = getPointOnRay(ray, intrT);
-			ray.direction = glm::reflect(ray.direction, normal);
-			ray.carry *= m.specular.color;
-		}
+			ray_type = ReflRay;
 	}
 	else if (m.bssrdf > 0) //subsurface scattering : try brute-force bssrdf
 	{
@@ -159,34 +163,10 @@ thrust::default_random_engine &rrr) {
 		//(1) incident or exitant or currently inside obj ?
 		//	if incident:
 		if (outside) //from outside
-		{
-			ray.origin = getPointOnRay(ray, intrT + .0002f);
-			glm::vec3 refraDir = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
-			ray.carry *= m.color;
-			ray.direction = refraDir;
-		}
+			ray_type = SSSRay_o;
 		else//inside
-		{
-			//compute random so	
-			//compare si=|xo-ray.orig| with so
-			thrust::uniform_real_distribution<float> u01(0, 1);
-			//Sigma_a: Absorption coefficient
-			//Sigma_s: Scattering coefficient
-			// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
-			float Sigma_t = m.bssrdf;
-			float so = -log(u01(rrr)) / Sigma_t;
-			float si = glm::length(getPointOnRay(ray, intrT) - ray.origin);
-			if (si <= so) //turns into exitant, go out of the objects
-			{
-				ray.origin = getPointOnRay(ray, intrT + .0002f);
-				ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
-			}
-			else //stays in the obj, pick new direction and scatter distance
-			{
-				ray.origin = getPointOnRay(ray, so);
-				ray.direction = -glm::normalize(calculateRandomDirectionInHemisphere(ray.direction, rrr));
-			}
-		}
+			ray_type = SSSRay_i;
+
 	}
 	else // diffuse / specular
 	{
@@ -196,28 +176,85 @@ thrust::default_random_engine &rrr) {
 		if (m.specular.exponent > 0)
 		{
 			thrust::uniform_real_distribution<float> u01(0, 1);
-			ray.origin = getPointOnRay(ray, intrT);
-			float specProb = glm::length(m.specular.color);
+			
+			specProb = glm::length(m.specular.color);
 			specProb = specProb / (specProb + glm::length(m.color));
 			if (u01(rrr) < specProb) //spec ray
-			{
-				glm::vec3 specDir = glm::reflect(ray.direction, normal);
-				ray.direction = glm::normalize(calculateRandomSpecularDirection(specDir, m.specular.exponent, rrr));
-				ray.carry *= m.specular.color *(1.f / specProb);
-			}
+				ray_type = SpecRay;
 			else//diffuse ray
-			{
-				ray.carry *= m.color*(1.f / (1 - specProb));
-				ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
-			}
+				ray_type = DiffRay;				
 		}
 		else 
-		{
-			ray.origin = getPointOnRay(ray, intrT);
-			ray.carry *= m.color;
-			ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
-		}
+			ray_type = DiffRay;
+	}
 
+
+	switch (ray_type)
+	{
+	case DiffRay:
+	{
+		ray.origin = getPointOnRay(ray, intrT);
+		ray.carry *= m.color*(1.f / (1 - specProb));
+		ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
+	}
+		break;
+	case ReflRay:
+	{
+		ray.origin = getPointOnRay(ray, intrT);
+		ray.direction = glm::normalize(glm::reflect(ray.direction, normal));
+		ray.carry *= m.specular.color;
+	}
+		break;
+	case RefrRay:
+	{
+		ray.origin = getPointOnRay(ray, intrT + 0.0003f);
+		if (outside)
+			ray.direction = glm::normalize(glm::refract(ray.direction, normal, 1.f / m.indexOfRefraction));
+		else
+			ray.direction = glm::normalize(glm::refract(ray.direction, normal, m.indexOfRefraction));
+		ray.carry *= m.color; //???diffuse color...
+		
+	}
+		break;
+	case SpecRay:
+	{
+		ray.origin = getPointOnRay(ray, intrT);
+		glm::vec3 specDir = glm::reflect(ray.direction, normal);
+		ray.direction = glm::normalize(calculateRandomSpecularDirection(specDir, m.specular.exponent, rrr));
+		ray.carry *= m.specular.color *(1.f / specProb);
+	}
+		break;
+	case SSSRay_o:
+	{
+		ray.origin = getPointOnRay(ray, intrT + .0002f);
+		glm::vec3 refraDir = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
+		ray.carry *= m.color;
+		ray.direction = refraDir;
+	}
+		break;
+	case SSSRay_i:
+	{
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		//Sigma_a: Absorption coefficient
+		//Sigma_s: Scattering coefficient
+		// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
+		float Sigma_t = m.bssrdf;
+		float so = -log(u01(rrr)) / Sigma_t;
+		float si = glm::length(getPointOnRay(ray, intrT) - ray.origin);
+		if (si <= so) //turns into exitant, go out of the objects
+		{
+			ray.origin = getPointOnRay(ray, intrT + .0002f);
+			ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
+		}
+		else //stays in the obj, pick new direction and scatter distance
+		{
+			ray.origin = getPointOnRay(ray, so);
+			ray.direction = -glm::normalize(calculateRandomDirectionInHemisphere(ray.direction, rrr));
+		}
+	}
+		break;
+	default:
+		break;
 	}
 	return ray.carry;
 

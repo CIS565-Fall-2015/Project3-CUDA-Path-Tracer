@@ -97,6 +97,17 @@ REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
 
+// transparent white
+MATERIAL 9
+RGB         .95 .95 .95
+SPECEX      0
+SPECRGB     1 1 1
+REFL        0
+REFR        1
+REFRIOR     1.4
+EMITTANCE   0
+BSSRDF	    0
+
 // Camera
 CAMERA
 RES         800 800
@@ -188,4 +199,12 @@ cube
 material 7
 TRANS       1 2 0
 ROTAT       0 30 0
-SCALE       2 2 2
+SCALE       1 1 1
+
+// Transparent Sphere (white)
+OBJECT 10
+sphere
+material 9
+TRANS       0 5 4
+ROTAT       0 0 0
+SCALE       3 3 3
