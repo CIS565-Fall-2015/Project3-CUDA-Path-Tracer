@@ -283,6 +283,7 @@ __device__ bool pathTraceThread(Ray& r,glm::vec3& color, Geom *geom, int geomNum
 		}
 		if(m.hasReflective){
 			reflectRay(r,normal,interPos);
+			color=m.color;
 			return false;
 		}
 		else if(m.hasRefractive){//using fresenl's law, schlick's approach
@@ -294,6 +295,7 @@ __device__ bool pathTraceThread(Ray& r,glm::vec3& color, Geom *geom, int geomNum
 				float angle=1-ref*ref*(1-pow(glm::dot(normal,r.direction),2));
 				if(angle<0){
 					reflectRay(r,normal,interPos);
+					color=m.color;
 					return false;
 				}
 				else{
@@ -304,6 +306,7 @@ __device__ bool pathTraceThread(Ray& r,glm::vec3& color, Geom *geom, int geomNum
 			}
 			else{
 				reflectRay(r,normal,interPos);
+				color=m.color;
 				return false;
 			}
 		}

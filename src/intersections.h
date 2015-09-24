@@ -237,15 +237,15 @@ __host__ __device__ bool cubeImpl(Ray r,float xmax,float xmin,float ymax,float y
 
 __host__ __device__ void kdIntersect(Ray r, kdtree *root,int *treeIdx){
 	int count=0,num=0,n=0;
-	kdtree *kd[500];
+	kdtree *kd[800];
 	kd[count++]=root;
-	while(count<500&&n!=count){
+	while(count<800&&n!=count){
 		kdtree *current=kd[n];
 		if(cubeImpl(r,current->xmax,current->xmin,current->ymax,current->ymin,current->zmax,current->zmin)){
 			if(current->lc==nullptr&&current->rc==nullptr) treeIdx[num++]=current->mesh;
 			else{
 				kd[count++]=current->lc;
-				if(count>=500) break;
+				if(count>=800) break;
 				kd[count++]=current->rc;
 			}
 		}
@@ -301,10 +301,10 @@ __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r, glm::vec3& inte
 	Ray rt;
     rt.origin = ro;
     rt.direction = rd;
-	int treeIdx[100];
-	for(int i=0;i<100;++i) treeIdx[i]=-1;
+	int treeIdx[150];
+	for(int i=0;i<150;++i) treeIdx[i]=-1;
 	kdIntersect(rt,mesh.mesh->tree,treeIdx);
-	for(int i=0;i<100;++i){
+	for(int i=0;i<150;++i){
 		if(treeIdx[i]==-1) break;
 		//int index1=mesh.mesh->indices[i];
 		//int index2=mesh.mesh->indices[i+1];
