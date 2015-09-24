@@ -70,24 +70,28 @@ glm::vec3 getRandomPointOnSphereLight(Geom &sphere, thrust::default_random_engin
 __host__ __device__
 glm::vec3 getRandomPointOnLight(Geom *g, int *lightIndices, int *lightCount, thrust::default_random_engine &rng, int& i)
 {
-	thrust::uniform_real_distribution<float> u01(0, *lightCount);
+	thrust::uniform_real_distribution<float> u01(0, *lightCount-0.001);
 
 	int k = u01(rng);
+//	if(k >= *lightCount)
+//	{
+//		k = *lightCount - 1;
+//	}
 	i = lightIndices[k];
 
-//	switch( g[lightIndices[k]].type )
-//	{
-//		case CUBE:
-//			return getRandomPointOnCubeLight(g[lightIndices[k]], rng);
-//			break;
-//		case SPHERE:
+	switch( g[i].type )
+	{
+		case CUBE:
+			return getRandomPointOnCubeLight(g[i], rng);
+			break;
+		case SPHERE:
 			return getRandomPointOnSphereLight(g[i], rng);
-//			break;
-//		default:
-//			break;
-//	}
-//
-//	return glm::vec3(0);
+			break;
+		default:
+			break;
+	}
+
+	return glm::vec3(0);
 }
 
 
@@ -179,7 +183,7 @@ void scatterRay(
 		if(m.specular.exponent > 0)
 		{
 			thrust::uniform_real_distribution<float> u01(0, 1);
-			if(u01(rng) > 0.5f)
+			if(u01(rng) > 0.3f)
 			{
 				//Do perfect diffused
 				ray.rayColor *= (m.color);
@@ -212,43 +216,56 @@ void scatterRay(
 		}
 	}
 
-//	else if (m.hasReflective > 0 && m.hasRefractive > 0)
-//	{
-//		//Do frenels reflection
-//		thrust::uniform_real_distribution<float> u01(0, 1);
-//
-//		if(u01(rng) < 0.75f)
-//		{
-//			//Do refraction
-//			ray.rayColor *= (m.color * 5.0f);
-//			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
-//			r.origin = intersect + 0.001f * r.direction;
-//
-//			//Intersect with the object again
-//			float t;
-//			bool outside;
-//			if(g[geomIndex].type == SPHERE)
-//			{
-//				t = sphereIntersectionTest(g, r, intersect, normal, outside);
-//			}
-//
-//			else if(g[geomIndex].type == CUBE)
-//			{
-//				t = boxIntersectionTest(g, r, intersect, normal, outside);
-//			}
-//
-//			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
-//			r.origin = intersect + 0.001f * r.direction;
-//		}
-//		else
-//		{
-//			//do reflection
-//			ray.rayColor *= (m.color * 1.25f);
-//			r.direction = (glm::reflect(r.direction, normal));
-//			r.origin = intersect + 0.001f * r.direction;
-//		}
-//
-//	}
+	else if (m.hasReflective > 0 && m.hasRefractive > 0)
+	{
+		//Do frenels reflection
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
+		//Do refraction to get refracted ray dir
+//		float IOR = m.indexOfRefraction;
+		glm::vec3 transmittedDir = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+
+		float cos_t = glm::dot(transmittedDir, -normal),
+				cos_i = glm::dot(-r.direction, normal);
+
+		float r_parallel = (m.indexOfRefraction * cos_i - cos_t) / (m.indexOfRefraction * cos_i + cos_t),
+			r_perpendicular = (cos_i - m.indexOfRefraction * cos_t) / (cos_i + m.indexOfRefraction * cos_t);
+
+//		printf("%f\n", 0.5f * (r_parallel * r_parallel + r_perpendicular * r_perpendicular));
+		if(u01(rng) < 0.5f * (r_parallel * r_parallel + r_perpendicular * r_perpendicular))
+		{
+			//do reflection
+
+			ray.rayColor *= (m.color);
+			r.direction = (glm::reflect(r.direction, normal));
+			r.origin = intersect + 0.001f * r.direction;
+		}
+
+		else
+		{
+			//Do refraction
+			ray.rayColor *= (m.color);
+			r.direction = transmittedDir;
+			r.origin = intersect + 0.001f * r.direction;
+
+			//Intersect with the object again
+			float t;
+			bool outside;
+			if(g[geomIndex].type == SPHERE)
+			{
+				t = sphereIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+			}
+
+			else if(g[geomIndex].type == CUBE)
+			{
+				t = boxIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+			}
+
+			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+			r.origin = intersect + 0.001f * r.direction;
+		}
+
+	}
 
 	else if(m.hasReflective > 0)
 	{
@@ -262,7 +279,7 @@ void scatterRay(
 	{
 		//Refractive surface
 		ray.rayColor *= m.color;
-		r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+		r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
 		r.origin = intersect + 0.001f * r.direction;
 
 		//Intersect with the object again
@@ -280,7 +297,7 @@ void scatterRay(
 
 //		if (t > 0)
 		{
-			r.direction = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
 			r.origin = intersect + 0.001f * r.direction;
 		}
 	}
