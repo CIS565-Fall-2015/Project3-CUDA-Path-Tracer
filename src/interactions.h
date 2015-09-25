@@ -158,20 +158,17 @@ glm::vec3 calculatePerfectSpecDirection(glm::vec3 inDirection, glm::vec3 normal)
  *
  * You may need to change the parameter list for your purposes!
  */
+
 __host__ __device__
 void scatterRay(
-        Ray &ray,
-        glm::vec3 &color,
-		glm::vec3 &intersect,
-		bool &outside,
-		glm::vec3 &inDirection,
-        glm::vec3 &normal,
+		PathRay &path,
         const Material &m,
         thrust::default_random_engine &rng) {
 
+	thrust::uniform_real_distribution<float> range(0, 1);
 	// Diffuse is for sure to happen
-	glm::vec3 diffuseDirection = calculateRandomDirectionInHemisphere(normal, rng);
-	glm::vec3 diffuseColor = color * m.color;
+	glm::vec3 diffuseDirection = calculateRandomDirectionInHemisphere(path.normal, rng);
+	glm::vec3 diffuseColor = path.color * m.color;
 
 	if (m.hasRefractive == 1.0f){
 		float n1 = 1;
@@ -181,50 +178,48 @@ void scatterRay(
 		//glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
 
 		// Jitter intersection normal to get jittered specular reflections
-		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
-		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
-		glm::vec3 glossColor = color * m.specular.color;
+		glm::vec3 glossNormal = calculateRandomSpecDirection(path.normal, m.specular.exponent, rng);
+		glm::vec3 glossDirection = calculatePerfectSpecDirection(path.ray.direction, glossNormal);
+		glm::vec3 glossColor = path.color * m.specular.color;
 
-		glm::vec3 refractDirection = calculateRefractDirection(outside, inDirection, normal, n1, n2);
+		glm::vec3 refractDirection = calculateRefractDirection(path.outside, path.ray.direction, path.normal, n1, n2);
 
 		// Schlick coefficient
-		float r = r0 + (1 - r0)*pow((1 - dot(normalize(glossDirection), normalize(normal))), 5);
+		float r = r0 + (1 - r0)*pow((1 - dot(normalize(glossDirection), normalize(path.normal))), 5);
 
 		if (refractDirection == glm::vec3(0.0f)){
 			// Total internal reflection
-			color = glossColor * r;
-			ray.direction = glossDirection;
-			ray.origin = intersect;
+			path.color = glossColor * r;
+			path.ray.direction = glossDirection;
+			path.ray.origin = path.intersect;
 		}
 		else {
 			glossColor = glossColor * r;
 			float dI = glm::length(diffuseColor);
-			float gI = glm::length(glossColor);
-			float split = dI / (dI+gI);
-			thrust::uniform_real_distribution<float> range(0, 1);
+			float split = dI / (dI + glm::length(glossColor));
 			float pick = range(rng);
 			if (pick < split){
-				color = diffuseColor / split;
-				ray.direction = refractDirection;
-				ray.origin = intersect + normalize(inDirection)*0.0005f;
+				path.color = diffuseColor / split;
+				// Move on the original incident direction
+				path.ray.origin = path.intersect + normalize(path.ray.direction)*0.0005f;
+				// Update to outbound direction
+				path.ray.direction = refractDirection;
 			}
 			else {
-				color = glossColor / split;
-				ray.direction = glossDirection;
-				ray.origin = intersect;
+				path.color = glossColor / split;
+				path.ray.direction = glossDirection;
+				path.ray.origin = path.intersect;
 			}
 		}
 	}
 	else if (m.hasReflective == 1.0f){
 		//glm::vec3 perfectSpecDirection = calculatePerfectSpecDirection(inDirection, normal);
-		glm::vec3 glossNormal = calculateRandomSpecDirection(normal, m.specular.exponent, rng);
-		glm::vec3 glossDirection = calculatePerfectSpecDirection(inDirection, glossNormal);
-		glm::vec3 glossColor = color * m.specular.color;
+		glm::vec3 glossNormal = calculateRandomSpecDirection(path.normal, m.specular.exponent, rng);
+		glm::vec3 glossDirection = calculatePerfectSpecDirection(path.ray.direction, glossNormal);
+		glm::vec3 glossColor = path.color * m.specular.color;
 
 		float dI = glm::length(diffuseColor);
-		float gI = glm::length(glossColor);
-		float split = dI / (dI + gI);
-		thrust::uniform_real_distribution<float> range(0, 1);
+		float split = dI / (dI + glm::length(glossColor));
 		float pick = range(rng);
 
 		if (pick < split){
@@ -233,61 +228,57 @@ void scatterRay(
 			ray.direction = diffuseDirection;
 			*/
 			if (m.hasSSS == 1.0f){
-				if (outside){
-					calculateSSSOut(ray, intersect, inDirection, normal, rng);
+				if (path.outside){
+					calculateSSSOut(path.ray, path.intersect, path.ray.direction, path.normal, rng);
 				}
 				else {
-					float split = 0.5;
-					thrust::uniform_real_distribution<float> range(0, 1);
 					float pick = range(rng);
-					if (pick < split){
-						ray.direction = diffuseDirection;
-						ray.origin = intersect;
+					if (pick < 0.5){
+						path.ray.origin = path.intersect;
+						path.ray.direction = diffuseDirection;
 					}
 					else {
-						ray.direction = inDirection;
-						ray.origin = intersect + normalize(inDirection)*0.0005f;
+						path.ray.origin = path.intersect + normalize(path.ray.direction)*0.0005f;
+						path.ray.direction = path.ray.direction;
 					}
-					color = diffuseColor / split / 2.0f;
+					path.color = diffuseColor / split / 2.0f;
 				}
-				color = diffuseColor / split;
+				path.color = diffuseColor / split;
 			}
 			else {
-				color = diffuseColor / split;
-				ray.direction = diffuseDirection;
-				ray.origin = intersect;
+				path.color = diffuseColor / split;
+				path.ray.origin = path.intersect;
+				path.ray.direction = diffuseDirection;
 			}
 		}
 		else {
-			color = glossColor / split;
-			ray.direction = glossDirection;
-			ray.origin = intersect;
+			path.color = glossColor / split;
+			path.ray.origin = path.intersect;
+			path.ray.direction = glossDirection;
 		}
 	}
 	else if (m.hasSSS == 1.0f){
-		if (outside){
+		if (path.outside){
 			// Only scatter under surface if it's an incoming light
-			calculateSSSOut(ray, intersect, inDirection, normal, rng);
+			calculateSSSOut(path.ray, path.intersect, path.ray.direction, path.normal, rng);
 		}
 		else {
 			// Otherwise light is going out; should be the offset diffuse reflection
-			float split = 0.5;
-			thrust::uniform_real_distribution<float> range(0, 1);
 			float pick = range(rng);
-			if (pick < split){
-				ray.direction = diffuseDirection;
-				ray.origin = intersect;
+			if (pick < 0.5){
+				path.ray.origin = path.intersect;
+				path.ray.direction = diffuseDirection;
 			}
 			else {
-				ray.direction = inDirection;
-				ray.origin = intersect + normalize(inDirection)*0.0005f;
+				path.ray.origin = path.intersect + normalize(path.ray.direction)*0.0005f;
+				path.ray.direction = path.ray.direction;
 			}
 		}
-		color = diffuseColor * 2.0f;
+		path.color = diffuseColor * 2.0f;
 	}
 	else {
-		color = diffuseColor;
-		ray.direction = diffuseDirection;
-		ray.origin = intersect;
+		path.color = diffuseColor;
+		path.ray.origin = path.intersect;
+		path.ray.direction = diffuseDirection;
 	}
 }

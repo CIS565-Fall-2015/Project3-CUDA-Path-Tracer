@@ -84,7 +84,63 @@ In addition:
 * If you have a fast GPU renderer, it is very good to show case this with a
   video to show interactivity. If you do so, please include a link!
 
+## Performance
+* Baseline: `cornell6`, 200*200, scan block size 64
+* Scan:
+  * Occupacy with block size
+    * Block size needs to be 2^n: pick 128, occupacy 33.3% -> 41.28%
+  * Occupacy with register counts
+    * Wasn't able to reduce register count, but reduced execution time
+      * Remove shorthand variable for `threadIdx.x`: no effect (should have used one less register)
+      * Store `threadIdx-1` to avoid repetitive calculations: no effect on registers, but reduced execution time from ~7700 to ~4000 microsec
+      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant: no effect, since only two less calculations per thread
+      * Pre-populate `2^d` values into an array in shared memory: no effect on registers, but reduced execution time from ~4000 to ~330 microsec
+    * Conclusion: achieved occupacy 41.28% -> 40.6%; exec time: ~7700 -> ~330 microsec; 2300% speed up
+* Scan scatter (stream compaction):
+  * Pre-cache data in shared memory
+    * Reduced global memory replay overhead 50% -> 24.3%
+    * L1 cache 1% -> 86.7%
+    * Slight exec time speed up on larger array
+    * Trade-off:
+      * Reduced occupacy due to increased register count: 7 -> 23, 66.6% -> 33.3%
+      * Minimal exec time loss on small arrays ~200 microsec
+* Intersection test:
+  * Block size left unchanged as optimal
+  * Pre-cache geometries in shared memory
+    * Reduced access to device memory by 30% in data size, without obvious change in exec time
+      * More access to L1 cache as a result
+      * In some cases exec becomes faster but not consistent
+    * LIMITATION: Current code allows only 64 geometries can be efficiently loaded, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work
+  * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference
+    * On top of above memory improvement, further reduced access to device memory by 30% in data size
+    * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size
+    * 14.5% speed up on exec time (reduce by ~200 microsec)
+    * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all their parameters passed by reference
+  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
+    * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better
+    * Further reduced device memory access by 40%
+    * Further reduced exec time by ~150 microsec
+    * Reduced register count by 1
+    * Increased access to L1 cache: 65% -> 85%
+    * Increased global memory replay overhead: 25% -> 34.7%
+* Ray scatter:
+  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
+    * Reduced register count: 63 -> 55
+    * 63% exec time speed up
+    * 50% less device memory access (data size)
+    * L2 cache 31.6% -> 40.6%
+    * Global memory replay overhead 49.2% -> 39.3%
+  * Refactor `scatterRay` to remove redundant parameters
+    * Minor improvements regarding items above
+* Path termination
+  * Remove temporary variable for `(ray, color)` pair and material
+    * Reduced register count: 29 -> 12
+    * 586% exec time speed up
+    * Trade-off: high global memory replay overhead (47.5%)
+
 ### Analysis
+
+* Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, directly passing the array element around results in much better performance in terms of both exec time and memory access. For example, caching a `(ray, color)` pair for later computation only reduces performance. On the other hand, caching geometries for repetitive access across different threads increases performance.
 
 * Stream compaction helps most after a few bounces. Print and plot the
   effects of stream compaction within a single iteration (i.e. the number of
@@ -108,47 +164,6 @@ Depth: 7 / Grid size: 141986
   terminate, so what might you expect?
   * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
   * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; theoretical 3x more slower with 3 passes; about 2x slower perceived. Closed scene is much brighter.
-
-## Performance
-* Baseline: `cornell6`, 200*200, scan block size 64
-* Scan:
-  * Occupacy with block size
-    * Block size needs to be 2^n: pick 128, occupacy 33.3% -> 41.28%
-  * Occupacy with register counts
-    * Wasn't able to reduce register count, but reduced execution time
-      * Remove shorthand variable for `threadIdx.x`: no effect (should have used one less register)
-      * Store `threadIdx-1` to avoid repetitive calculations: no effect on registers, but reduced execution time from ~7700 to ~4000 microsec
-      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant: no effect, since only two less calculations per thread
-      * Pre-populate `2^d` values into an array in shared memory: no effect on registers, but reduced execution time from ~4000 to ~330 microsec
-    * Conclusion: achieved occupacy 41.28% -> 40.6%; exec time: ~7700 -> ~330 microsec; 2300% speed up
-* Scan scatter (stream compaction):
-  * Pre-cache data in shared memory to reduce global memory replay overhead 50% -> 24.3%
-  * L1 cache 1% -> 86.7%
-  * Slight exec time speed up on larger array
-  * Trade-off:
-    * Reduced occupacy due to increased register count: 7 -> 23, 66.6% -> 33.3%
-    * Minimal exec time loss on small arrays ~200 microsec
-* Intersection test:
-  * Block size left unchanged as optimal
-  * Pre-cache geometries in shared memory
-    * Reduced access to device memory by 30% in data size, without obvious change in exec time
-      * More access to L1 cache as a result
-      * In some cases exec becomes faster but not consistent
-    * LIMITATION: Current code allows only 64 geometries can be efficiently loaded, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work
-  * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference
-    * On top of above memory improvement, further reduced access to device memory by 30% in data size
-    * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size
-    * 14.5% speed up on exec time (reduce by ~200 microsec)
-    * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all their parameters passed by reference
-  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
-    * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better
-    * Further reduced device memory access by 40%
-    * Further reduced exec time by ~150 microsec
-    * Reduced register count by 1
-    * Increased access to L1 cache: 65% -> 85%
-    * Increased global memory replay overhead: 25% -> 34.7%
-* Ray scatter:
-
 
 ## Submit
 

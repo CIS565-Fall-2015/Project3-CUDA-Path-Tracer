@@ -109,7 +109,7 @@ void pathtraceFree() {
     checkCUDAError("pathtraceFree");
 }
 
-__global__ void initRayGrid(PathRay *oGrid, Camera cam){
+__global__ void initRayGrid(PathRay *oGrid, const Camera cam){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -212,22 +212,24 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 	}
 };
 
-__global__ void scatter(PathRay *grid, Material *iMaterials, Camera cam, const int grid_size, const int iter, const int depth){
+__global__ void scatter(PathRay *grid, const Material *iMaterials, const Camera cam, const int grid_size, const int iter, const int depth){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
 	int index = x + (y * cam.resolution.x);
 
+	__syncthreads();
+
 	if (index < grid_size) {
-		PathRay pr = grid[index];
-		Material m = iMaterials[pr.matId];
-		scatterRay(pr.ray, pr.color, pr.intersect, pr.outside, pr.ray.direction, pr.normal, m, random_engine(iter, index, depth));
-		grid[index] = pr;
+		//PathRay pr = grid[index];
+		//Material m = iMaterials[pr.matId];
+		scatterRay(grid[index], iMaterials[grid[index].matId], random_engine(iter, index, depth));
+		//grid[index] = pr;
 	}
 };
 
-__global__ void terminatePath(PathRay *grid, Material *iMaterials, Camera cam, const int grid_size){
+__global__ void terminatePath(PathRay *grid, const Material *iMaterials, const Camera cam, const int grid_size){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -235,25 +237,23 @@ __global__ void terminatePath(PathRay *grid, Material *iMaterials, Camera cam, c
 	int index = x + (y * cam.resolution.x);
 
 	if (index < grid_size) {
-		PathRay pr = grid[index];
-		if (pr.hasIntersect){
-			Material m = iMaterials[pr.matId];
+		if (grid[index].hasIntersect){
 			// Hits a light
-			if (m.emittance > 0.0f){
-				pr.terminate = true;
-				pr.color = pr.color * m.color * m.emittance;
+			if (iMaterials[grid[index].matId].emittance > 0.0f){
+				grid[index].terminate = true;
+				grid[index].color = grid[index].color * iMaterials[grid[index].matId].color * iMaterials[grid[index].matId].emittance;
 			}
 		}
 		else {
 			// No intersections
-			pr.terminate = true;
-			pr.color = glm::vec3(0.0f);
+			grid[index].terminate = true;
+			grid[index].color = glm::vec3(0.0f);
 		}
-		grid[index] = pr;
+		//grid[index] = pr;
 	}
 }
 
-__global__ void fillPixel(PathRay *grid, glm::vec3 *image, Camera cam, const int grid_size){
+__global__ void fillPixel(const PathRay *grid, glm::vec3 *image, const Camera cam, const int grid_size){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
