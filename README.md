@@ -113,6 +113,7 @@ A GPU based path tracer that supports several common material effects. Stream co
     * *Conclusion*:
       * Execution time: dropped from ~7700 to ~330 microsec; 2300% speed up.
       * Trade-off: achieved occupacy dropped from 41.28% to 40.6%
+
 * Scan scatter (stream compaction)
   * Pre-cache data in shared memory:
     * Reduced global memory replay overhead: dropped from 50% to 24.3%
