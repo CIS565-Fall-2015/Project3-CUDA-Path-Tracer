@@ -141,15 +141,23 @@ In addition:
   * Remove temporary variable for `(ray, color)` pair
     * 49.5% speed up
 
-### Analysis
+
+## Analysis
 
 * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, directly passing the array element around results in much better performance in terms of both exec time and memory access. For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple kernels like pixel painting.
 
-* Stream compaction helps most after a few bounces. Print and plot the
-  effects of stream compaction within a single iteration (i.e. the number of
-  unterminated rays after each bounce) and evaluate the benefits you get from
-  stream compaction.
+* Compare scenes which are open (like the given cornell box) and closed
+  (i.e. no light can escape the scene). Again, compare the performance effects
+  of stream compaction! Remember, stream compaction only affects rays which
+  terminate, so what might you expect?
+  * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
+  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall
+    * Theoretical 3x more slower with 3 passes, with ray jittering and averaging overheads; about 2x slower perceived
+    * Closed scene is much brighter.
+
+* Evaluate the benefits you get from stream compaction.
 ```
+Open scene
 800 * 800 cornell1
 Depth: 0 / Grid size: 625125
 Depth: 1 / Grid size: 497276
@@ -160,19 +168,46 @@ Depth: 5 / Grid size: 214660
 Depth: 6 / Grid size: 174592
 Depth: 7 / Grid size: 141986
 ```
+```
+Closed scene
+800 * 800 cornell5
+Depth: 0 / Grid size: 624854
+Depth: 1 / Grid size: 608350
+Depth: 2 / Grid size: 592705
+Depth: 3 / Grid size: 579828
+Depth: 4 / Grid size: 568568
+Depth: 5 / Grid size: 558072
+Depth: 6 / Grid size: 547953
+Depth: 7 / Grid size: 538102
+```
 
-* Compare scenes which are open (like the given cornell box) and closed
-  (i.e. no light can escape the scene). Again, compare the performance effects
-  of stream compaction! Remember, stream compaction only affects rays which
-  terminate, so what might you expect?
-  * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
-  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; theoretical 3x more slower with 3 passes; about 2x slower perceived. Closed scene is much brighter.
+* Thrust vs. custom work-efficient compaction
+```
+Custom work-efficient stream compaction
+800 * 800 cornell1
+Depth: 0 / Grid size: 625107 / Time: 132.643494
+Depth: 1 / Grid size: 498811 / Time: 133.986755
+Depth: 2 / Grid size: 407180 / Time: 112.587265
+Depth: 3 / Grid size: 327055 / Time: 94.270851
+Depth: 4 / Grid size: 264812 / Time: 79.092445
+Depth: 5 / Grid size: 215045 / Time: 66.467293
+Depth: 6 / Grid size: 174998 / Time: 56.588383
+Depth: 7 / Grid size: 142055 / Time: 48.967999
+```
+```
+Thrust
+800 * 800 cornell1
+Depth: 0 / Grid size: 625107 / Time: 111.212959
+Depth: 1 / Grid size: 498366 / Time: 104.541763
+Depth: 2 / Grid size: 406945 / Time: 88.231812
+Depth: 3 / Grid size: 326726 / Time: 73.839684
+Depth: 4 / Grid size: 264647 / Time: 61.624031
+Depth: 5 / Grid size: 214766 / Time: 51.932480
+Depth: 6 / Grid size: 174670 / Time: 43.936127
+Depth: 7 / Grid size: 142211 / Time: 37.708385
+```
 
 ## Submit
-
-If you have modified any of the `CMakeLists.txt` files at all (aside from the
-list of `SOURCE_FILES`), you must test that your project can build in Moore
-100B/C. Beware of any build issues discussed on the Google Group.
 
 1. Open a GitHub pull request so that we can see that you have finished.
    The title should be "Submission: YOUR NAME".

@@ -22,6 +22,7 @@
 #define ANTIALIASING 0
 #define DOF 0
 #define USETHRUSTCOMPACTION 0
+#define TIMEFUNCTION 0
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 #define ERRORCHECK 0
@@ -270,7 +271,7 @@ __global__ void fillPixel(const PathRay *grid, glm::vec3 *image, const Camera ca
 }
 
 #if ANTIALIASING
-__global__ void avgOversample(glm::vec3 *oImage, glm::vec3 *tempImage, Camera cam, const int passes){
+__global__ void avgOversample(glm::vec3 *oImage, const glm::vec3 *tempImage, const Camera cam, const int passes){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -281,7 +282,7 @@ __global__ void avgOversample(glm::vec3 *oImage, glm::vec3 *tempImage, Camera ca
 	}
 }
 
-__global__ void jitterRay(PathRay *grid, thrust::default_random_engine rng, Camera cam){
+__global__ void jitterRay(PathRay *grid, thrust::default_random_engine rng, const Camera cam){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -369,6 +370,14 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 #endif ANTIALIASING
 	// For each traceDepth
 	for (int d = 0; d < traceDepth; d++){
+
+#if TIMEFUNCTION
+		cudaEvent_t start, stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		cudaEventRecord(start);
+#endif TIMEFUNCTION
+
 		// Intersection test
 		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
 		checkCUDAError("intersect");
@@ -402,6 +411,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		// Stream compaction stat
 		//printf("Iter: %d / Depth: %d / Grid size: %d\n", iter, d, grid_size);
+
+#if TIMEFUNCTION
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		float ms1 = 0;
+		cudaEventElapsedTime(&ms1, start, stop);
+
+		// Exec time comparison: thrust vs. work-efficient
+		printf("Iter: %d / Depth: %d / Grid size: %d / Thrust?: %d / Time: %f\n", iter, d, grid_size, USETHRUSTCOMPACTION, ms1);
+#endif TIMEFUNCTION
 	}
 	dev_grid.clear();
 #if ANTIALIASING
