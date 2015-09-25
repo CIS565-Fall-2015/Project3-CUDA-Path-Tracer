@@ -31,6 +31,9 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
         fprintf(stderr, " (%s:%d)", file, line);
     }
     fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+#  ifdef _WIN32
+    getchar();
+#  endif
     exit(EXIT_FAILURE);
 #endif
 }
@@ -366,14 +369,13 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    const int blockSideLength = 8;
-    const dim3 blockSize(blockSideLength, blockSideLength);
-    const dim3 blocksPerGrid(
-            (cam.resolution.x + blockSize.x - 1) / blockSize.x,
-            (cam.resolution.y + blockSize.y - 1) / blockSize.y);
+    const dim3 blockSize2d(8, 8);
+    const dim3 blocksPerGrid2d(
+            (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
+            (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
 	//(1) Initialize array of path rays
-	kernInitPathRays<<<blocksPerGrid, blockSize>>>(cam, dev_rays,iter);
+	kernInitPathRays <<<blocksPerGrid2d, blockSize2d >>>(cam, dev_rays, iter);
 
 	//(2) For each depth:
 	int geoNum = hst_scene->geoms.size();
@@ -381,7 +383,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	
 	for (int i = 0; i < traceDepth; i++)
 	{
-		int bSize = blockSize.x*blockSize.y*blockSize.z;
+		int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 		dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
 		thrust::device_ptr<Ray> RayStart(dev_rays);
 		thrust::device_ptr<Ray> newRayEnd = RayStart + totalRays;
@@ -397,12 +399,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		}
 	}
 	//(3) Handle all not terminated
-	int bSize = blockSize.x*blockSize.y*blockSize.z;
+	int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
 	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);
 
     // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
 
     // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,

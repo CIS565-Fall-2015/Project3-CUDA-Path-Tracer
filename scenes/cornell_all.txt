@@ -108,6 +108,17 @@ REFRIOR     1.4
 EMITTANCE   0
 BSSRDF	    0
 
+// Reflective Subsurface white
+MATERIAL 10
+RGB         .5 .85 .85
+SPECEX      0
+SPECRGB     .5 .85 .85
+REFL        1
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+BSSRDF	    0.2
+
 // Camera
 CAMERA
 RES         800 800
@@ -197,7 +208,7 @@ SCALE       4 4 4
 OBJECT 9
 cube
 material 7
-TRANS       1 2 0
+TRANS       1 2 2
 ROTAT       0 30 0
 SCALE       2 2 2
 
@@ -205,6 +216,14 @@ SCALE       2 2 2
 OBJECT 10
 sphere
 material 9
-TRANS       -2 3 0
+TRANS       -2 3 1
 ROTAT       0 0 0
 SCALE       3 3 3
+
+// Reflective+Subsurface Sphere (blue-green)
+OBJECT 11
+sphere
+material 10
+TRANS       0 6 0
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5

@@ -21,6 +21,7 @@ public:
     ~Scene();
 
 	int lightIdx = 0;//??? multilight
+	std::vector<int> lightIdxs;
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     RenderState state;
