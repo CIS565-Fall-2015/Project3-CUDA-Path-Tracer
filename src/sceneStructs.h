@@ -15,6 +15,8 @@ struct Ray {
     glm::vec3 direction;
 	glm::vec3 color;
 	int index;
+	bool terminated;
+	int geomid;
 };
 
 struct Geom {

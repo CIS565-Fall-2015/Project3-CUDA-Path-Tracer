@@ -76,26 +76,36 @@ void scatterRay(
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
 	
-	if (m.hasReflective == 1) {
+	
+	if (m.hasRefractive == 1) {
+		thrust::uniform_real_distribution<float> probDistrib(0.0f, 1.0f);
+		float prob = probDistrib(rng);
+		if (0.5f < prob) {
+			float angle;
+			glm::vec3 refractionPoint;
+			angle = acos(glm::dot(ray.direction, normal) / (glm::length(ray.direction)*glm::length(normal)));
+			angle *= (180.0f / PI);
+			if (angle >= 90.0f){
+				refractionPoint = glm::refract(ray.direction, normal, 1.0f / m.indexOfRefraction);//asin(1.0f/isx.node->Mat.ior));
+			}
+			else{
+				refractionPoint = glm::refract(ray.direction, -normal, m.indexOfRefraction);
+			}
+			ray.direction = refractionPoint;
+			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
+			color *= m.color;
+		}
+		else {
+			ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
+			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
+			color *= m.color;
+		}
+
+	}
+	else if (m.hasReflective == 1) {
 		ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
 		ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
 		color *= m.color;
-	}
-	else if (m.hasRefractive == 1) {
-		float angle;
-		glm::vec3 refractionPoint;
-		angle = acos(glm::dot(ray.direction, normal) / (glm::length(ray.direction)*glm::length(normal)));
-		angle *= (180.0f / (TWO_PI * .5f));
-		if (angle >= 90.0f){
-			refractionPoint = glm::refract(ray.direction, normal, 1.0f / m.indexOfRefraction);//asin(1.0f/isx.node->Mat.ior));
-		}
-		else{
-			refractionPoint = glm::refract(ray.direction, -normal, m.indexOfRefraction);
-		}
-		ray.direction = refractionPoint;
-		ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
-		color *= m.color;
-
 	}
 	//DIFFUSE
 	else {

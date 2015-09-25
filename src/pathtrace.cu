@@ -4,6 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -17,7 +18,14 @@
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 
-
+struct is_terminated
+{
+ __host__ __device__
+ bool operator() (const Ray r)
+ {
+	return r.terminated;
+ }
+};
 
 
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
@@ -130,13 +138,13 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 }
 
 //Create ray to be shot at a pixel in the image
-__global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dop){
+__global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dof){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y*cam.resolution.x);
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
     thrust::uniform_real_distribution<float> unitDistrib(-.5f, .5f);
-	thrust::uniform_real_distribution<float> dopDistrib(-1.0f, 1.0f);
+	thrust::uniform_real_distribution<float> dofDistrib(-1.0f, 1.0f);
 	//Calculate camera's world position
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		glm::vec3 A = glm::cross(cam.view, cam.up);
@@ -165,10 +173,11 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dop){
 		ray[index].origin = cam.position;
 		ray[index].direction = dir;
 		ray[index].color = glm::vec3(1.0, 1.0, 1.0);
-		ray[index].index = -1*(index);
+		ray[index].index = index;
+		ray[index].terminated = false;
 
-		if (dop == true) {
-			glm::vec3 apOff = glm::vec3(dopDistrib(rng), dopDistrib(rng), 0.0f);
+		if (dof == true) {
+			glm::vec3 apOff = glm::vec3(dofDistrib(rng), dofDistrib(rng), 0.0f);
 			glm::vec3 new_E = cam.position + apOff;
 			float focal = 11.587f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
 			dir *= focal;
@@ -180,6 +189,102 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dop){
 	}
 }
 
+//Helper function to get random point on cubic light
+__device__ glm::vec3 getRandomPointOnCube(Geom node, int iter, int index) {
+	// TODO: get the dimensions of the transformed cube in world space
+	glm::vec3 dim(0.0f, 0.0f, 0.0f);
+	dim = node.scale;
+
+	// Get surface area of the cube
+	float side1 = dim[0] * dim[1];		// x-y
+	float side2 = dim[1] * dim[2];		// y-z
+	float side3 = dim[0] * dim[2];		// x-z
+	float totalArea = 2.0f * (side1 + side2 + side3);	
+
+	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+    thrust::uniform_real_distribution<float> unitDistrib(-.5f, .5f);
+	thrust::uniform_real_distribution<float> dofDistrib(0.0f, 1.0f);
+
+	// pick random face weighted by surface area
+	float r = floor(dofDistrib(rng));
+	// pick 2 random components for the point in the range (-0.5, 0.5)
+	float c1 = unitDistrib(rng);
+	float c2 = unitDistrib(rng);
+
+	glm::vec3 point;
+	if (r < side1 / totalArea) {				
+		// x-y front
+		point = glm::vec3(c1, c2, 0.5f);
+	} else if (r < (side1 * 2) / totalArea) {
+		// x-y back
+		point = glm::vec3(c1, c2, -0.5f);
+	} else if (r < (side1 * 2 + side2) / totalArea) {
+		// y-z front
+		point = glm::vec3(0.5f, c1, c2);
+	} else if (r < (side1 * 2 + side2 * 2) / totalArea) {
+		// y-z back
+		point = glm::vec3(-0.5f, c1, c2);
+	} else if (r < (side1 * 2 + side2 * 2 + side3) / totalArea) {
+		// x-z front 
+		point = glm::vec3(c1, 0.5f, c2);
+	} else {
+		// x-z back
+		point = glm::vec3(c1, -0.5f, c2);
+	}
+
+	// TODO: transform point to world space
+	glm::mat4 T(1.0f);
+	T = glm::translate(T, node.translation);
+				
+	if (node.rotation[0] != 0){
+		T = glm::rotate(T, node.rotation[0]*(PI/180.0f), glm::vec3(1,0,0));
+	}
+	if (node.rotation[1] != 0){
+		T = glm::rotate(T, node.rotation[1]*(PI/180.0f), glm::vec3(0,1,0));
+	}
+	if (node.rotation[2] != 0){
+		T = glm::rotate(T, node.rotation[2]*(PI/180.0f), glm::vec3(0,0,1));
+	}
+				
+	//T = glm::scale(T, node.scale);
+	glm::vec4 newPoint = T*glm::vec4(point, 1.0f);
+	point = glm::vec3(newPoint[0], newPoint[1], newPoint[2]);
+	return point;
+}
+
+//Helper function to get random point on spherical light
+/*__device__ glm::vec3 getRandomPointOnSphere(Geom node, int iter, int index) {
+	// generate u, v, in the range (0, 1)
+	float u = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+	float v = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+
+	float theta = 2.0f * PI * u;
+	float phi = acos(2.0f * v - 1.0f);
+
+	// find x, y, z coordinates assuming unit sphere in object space
+	glm::vec3 point;
+	point[0] = sin(phi) * cos(theta);
+	point[1] = sin(phi) * sin(theta);
+	point[2] = cos(phi);
+
+	// TODO: transform point to world space
+	glm::mat4 T(1.0f);
+	T = glm::translate(T, node.translation);
+				
+	if (node.rotation[0] != 0){
+		T = glm::rotate(T, node.rotation[0]*(PI/180.0f), glm::vec3(1,0,0));
+	}
+	if (node.rotation[1] != 0){
+		T = glm::rotate(T, node.rotation[1]*(PI/180.0f), glm::vec3(0,1,0));
+	}
+	if (node.rotation[2] != 0){
+		T = glm::rotate(T, node.rotation[2]*(PI/180.0f), glm::vec3(0,0,1));
+	}
+				
+	glm::vec4 newPoint = T*glm::vec4(point, 1.0f);
+	point = glm::vec3(newPoint[0], newPoint[1], newPoint[2]);
+	return point;
+}*/
 //Helper function to find closest intersection
 __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside, int &objIndex, const int numGeoms){
 	glm::vec3 interPoint;
@@ -213,23 +318,37 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * cam.resolution.x);
 	//find closest intersection
-	if (x < cam.resolution.x && y < cam.resolution.y && rayArray[index].index < 0) {
-		if (depth == traceDepth) {
-			dev_image[index] == glm::vec3(0.0f, 0.0f, 0.0f);
-		}
+	if (x < cam.resolution.x && y < cam.resolution.y && rayArray[index].terminated == false) {
+		
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, depth);
 		glm::vec3 interPoint;
 		glm::vec3 norm;
 		bool out;
 		int objIndex;
+		if (depth == traceDepth) {
+			dev_image[rayArray[index].index] == glm::vec3(0.0f, 0.0f, 0.0f);
+			for (int i = 0; i < numGeoms; i++) {
+				if (mats[geoms[i].materialid].emittance > 0 && mats[geoms[rayArray[index].geomid].materialid].emittance == 0 && mats[geoms[rayArray[index].geomid].materialid].hasReflective == 0 && mats[geoms[rayArray[index].geomid].materialid].hasRefractive == 0) {
+					glm::vec3 new_pt = getRandomPointOnCube(geoms[i], iter, index);
+					rayArray[index].direction = rayArray[index].origin + glm::normalize(new_pt - rayArray[index].origin);
+					float t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+					if (objIndex == i) {
+						printf("hit light in direct");
+						rayArray[index].color *= mats[geoms[i].materialid].emittance*mats[geoms[objIndex].materialid].color;
+						dev_image[index] += rayArray[index].color;
+					}
+				}
+			}
+			
+		}
 		float t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
-
+		rayArray[index].geomid = objIndex;
 		//get direction of next ray and compute new color
 		if (t >= 0.0f) {
 			if (mats[geoms[objIndex].materialid].emittance >= 1) {
 				rayArray[index].color *= mats[geoms[objIndex].materialid].emittance*mats[geoms[objIndex].materialid].color;
-				dev_image[index] += rayArray[index].color;
-				rayArray[index].index *= -1;
+				dev_image[rayArray[index].index] += rayArray[index].color;
+				rayArray[index].terminated = true;
 			}
 			else {
 				scatterRay(rayArray[index], rayArray[index].color, interPoint, norm, mats[geoms[objIndex].materialid], rng);
@@ -237,7 +356,7 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 		}
 		else {
 			//dev_image[index] *= glm::vec3(0.0f, 0.0f, 0.0f); //rayArray[index].color; 
-			rayArray[index].index *= -1;
+			rayArray[index].terminated = true;
 		}
 	}	
 }
@@ -289,11 +408,13 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     
     // TODO: perform one iteration of path tracing
-	bool dop = true;
-	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dop);
+	bool dof = false;
+	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dof);
 
 	for (int i = 0; i < traceDepth + 1; i++) {
 		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth);
+
+		//thrust::remove_if(thrust::host, dev_rayArray, dev_rayArray + pixelcount, is_terminated());
 	}
 	
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
