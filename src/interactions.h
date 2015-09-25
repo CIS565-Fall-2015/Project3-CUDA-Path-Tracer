@@ -41,6 +41,42 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__
+glm::vec3 calculateSpecularDirection( float n, glm::vec3 normal, thrust::default_random_engine &rng) 
+{
+	thrust::uniform_real_distribution<float> u01(0, 1);
+
+	float sigma1 = u01(rng);
+	float sigma2 = u01(rng);
+
+	float cos_theta = pow((double)sigma1, (double)1.0 / (double)(n + 1));
+	float sin_theta = sqrt(1 - cos_theta * cos_theta);
+	float phi = sigma2 * TWO_PI;
+
+	glm::vec3 directionNotNormal;
+	if (abs(normal.x) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(1, 0, 0);
+	}
+	else if (abs(normal.y) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(0, 1, 0);
+	}
+	else {
+		directionNotNormal = glm::vec3(0, 0, 1);
+	}
+
+	// Use not-normal direction to generate two perpendicular directions
+	glm::vec3 perpendicularDirection1 =
+		glm::normalize(glm::cross(normal, directionNotNormal));
+	glm::vec3 perpendicularDirection2 =
+		glm::normalize(glm::cross(normal, perpendicularDirection1));
+
+
+	return cos_theta * normal
+		+ cos(phi) * sin_theta * perpendicularDirection1
+		+ sin(phi) * sin_theta * perpendicularDirection2;
+
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -78,6 +114,12 @@ void scatterRay(
 
 	if (m.hasReflective)
 	{
+		
+		glm::vec3 dir_in = ray.direction;
+		glm::vec3 dir_out = (-glm::dot(dir_in,normal))*normal*2.f + dir_in;
+		
+		ray.direction = calculateSpecularDirection(m.specular.exponent, glm::normalize(dir_out), rng);
+
 
 	}
 	else if (m.hasRefractive)

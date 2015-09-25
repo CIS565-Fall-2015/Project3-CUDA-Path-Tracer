@@ -253,7 +253,21 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 			}
 			else if (m_materials[m_mat_id].hasReflective)  //reflect material 
 			{
+				
+				//update cultimativeColor
+				cumulativeColor[index] *= m_materials[m_mat_id].specular.color;
 
+
+
+				glm::vec3 tmp_color;
+				thrust::default_random_engine m_rng = makeSeededRandomEngine(cur_iter, index, cur_depth);
+				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_rng);
+				//udpate ray dir in the scatterRay
+				//update the ray
+				cur_ray.origin = m_intersectionPoint;
+				m_rays[index] = cur_ray;
+
+				return;
 			}
 			else if (m_materials[m_mat_id].hasRefractive)  //refract material
 			{
@@ -264,15 +278,15 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 				//update cultimativeColor
 				cumulativeColor[index] *= m_materials[m_mat_id].color;
 				
-				//update the ray
-				Ray m_new_ray;
-				m_new_ray.origin = m_intersectionPoint;
+				
 
 				glm::vec3 tmp_color;
 				thrust::default_random_engine m_rng = makeSeededRandomEngine(cur_iter, index, cur_depth);
-				scatterRay(m_new_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_rng);
-				
-				m_rays[index] = m_new_ray;
+				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_rng);
+				//udpate ray dir in the scatterRay
+				//update the ray
+				cur_ray.origin = m_intersectionPoint;
+				m_rays[index] = cur_ray;
 
 				return;
 			}
@@ -365,6 +379,8 @@ void pathtraceFree() {
 	dev_cumulativeColor.clear();
 	dev_geoms.clear();
 	dev_materials.clear();
+
+	cout << "pathtraceFree Succeed... " << endl;
 
     checkCUDAError("pathtraceFree");
 }
