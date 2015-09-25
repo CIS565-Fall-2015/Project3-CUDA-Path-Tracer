@@ -99,9 +99,9 @@ BSSRDF	    0
 
 // transparent white
 MATERIAL 9
-RGB         .95 .95 .95
+RGB         .98 .98 .98
 SPECEX      0
-SPECRGB     1 1 1
+SPECRGB     .98 .98 .98
 REFL        0
 REFR        1
 REFRIOR     1.4
@@ -199,12 +199,12 @@ cube
 material 7
 TRANS       1 2 0
 ROTAT       0 30 0
-SCALE       1 1 1
+SCALE       2 2 2
 
 // Transparent Sphere (white)
 OBJECT 10
 sphere
 material 9
-TRANS       0 5 4
+TRANS       -2 3 0
 ROTAT       0 0 0
 SCALE       3 3 3

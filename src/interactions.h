@@ -129,6 +129,7 @@ thrust::default_random_engine &rrr) {
 	};
 	int ray_type;
 	float specProb = 0;
+	thrust::uniform_real_distribution<float> u01(0, 1);
 
 	if (ray.terminated)
 		return ray.carry;
@@ -142,8 +143,18 @@ thrust::default_random_engine &rrr) {
 	// Shading 
 	else if (m.hasRefractive)
 	{//later
-		if (true) ray_type = RefrRay; 
-		else ray_type = RefrRay;
+		float cos_thi = glm::dot(glm::normalize(-ray.direction), glm::normalize(normal));
+		float R0 = (m.indexOfRefraction-1) / (1+m.indexOfRefraction);
+		R0 *= R0;
+		float R_thi = R0 + (1 - R0)*pow(1 - cos_thi, 5);
+		if (outside)
+		{
+			if (u01(rrr)<R_thi) ray_type = ReflRay;
+			else ray_type = RefrRay;
+		}
+		else
+			ray_type = RefrRay;
+
 	}
 	else if (m.hasReflective)
 	{
@@ -163,7 +174,12 @@ thrust::default_random_engine &rrr) {
 		//(1) incident or exitant or currently inside obj ?
 		//	if incident:
 		if (outside) //from outside
-			ray_type = SSSRay_o;
+		{
+			if (u01(rrr) > 0.1)//later: what value to choose?
+				ray_type = SSSRay_o;
+			else
+				ray_type = DiffRay;
+		}
 		else//inside
 			ray_type = SSSRay_i;
 
@@ -174,9 +190,7 @@ thrust::default_random_engine &rrr) {
 		//http://www.tomdalling.com/blog/modern-opengl/07-more-lighting-ambient-specular-attenuation-gamma/
 
 		if (m.specular.exponent > 0)
-		{
-			thrust::uniform_real_distribution<float> u01(0, 1);
-			
+		{	
 			specProb = glm::length(m.specular.color);
 			specProb = specProb / (specProb + glm::length(m.color));
 			if (u01(rrr) < specProb) //spec ray
@@ -207,13 +221,12 @@ thrust::default_random_engine &rrr) {
 		break;
 	case RefrRay:
 	{
-		ray.origin = getPointOnRay(ray, intrT + 0.0003f);
+		ray.origin = getPointOnRay(ray, intrT + 0.001f);
 		if (outside)
 			ray.direction = glm::normalize(glm::refract(ray.direction, normal, 1.f / m.indexOfRefraction));
 		else
 			ray.direction = glm::normalize(glm::refract(ray.direction, normal, m.indexOfRefraction));
 		ray.carry *= m.color; //???diffuse color...
-		
 	}
 		break;
 	case SpecRay:
@@ -234,7 +247,6 @@ thrust::default_random_engine &rrr) {
 		break;
 	case SSSRay_i:
 	{
-		thrust::uniform_real_distribution<float> u01(0, 1);
 		//Sigma_a: Absorption coefficient
 		//Sigma_s: Scattering coefficient
 		// Extinction coefficient Sigma_t = Sigma_s+Sigma_a
