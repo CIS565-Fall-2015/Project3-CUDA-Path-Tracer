@@ -41,6 +41,42 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
+        glm::vec3 normal,
+        const Material &m,
+        thrust::default_random_engine &rng) {
+    thrust::uniform_real_distribution<float> u(-1, 1);
+    glm::vec3 specular = glm::reflect(ray.direction, normal);
+
+    float x1 = u(rng);
+    float theta = glm::acos(glm::pow(x1, 1/(m.specular.exponent+1)));
+    float x2 = u(rng);
+    float phi = x2 * TWO_PI;
+
+    float over = glm::cos(phi) * glm::sin(theta);
+    float around = glm::sin(phi) * glm::sin(theta);
+    float up = glm::cos(theta);
+
+    glm::vec3 directionNotSpecular;
+    if (abs(specular.x) < SQRT_OF_ONE_THIRD) {
+        directionNotSpecular = glm::vec3(1, 0, 0);
+    } else if (abs(specular.y) < SQRT_OF_ONE_THIRD) {
+        directionNotSpecular = glm::vec3(0, 1, 0);
+    } else {
+        directionNotSpecular = glm::vec3(0, 0, 1);
+    }
+
+    // Use not-normal direction to generate two perpendicular directions
+    glm::vec3 perpendicularDirection1 =
+        glm::normalize(glm::cross(specular, directionNotSpecular));
+    glm::vec3 perpendicularDirection2 =
+        glm::normalize(glm::cross(specular, perpendicularDirection1));
+
+    return up * specular
+        + cos(around) * over * perpendicularDirection1
+        + sin(around) * over * perpendicularDirection2;
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -61,11 +97,26 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
-    color *= m.color;
+    if (m.hasReflective > 0) {
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        float prob = m.hasReflective;
+        if (u01(rng) < prob) {
+            glm::vec3 specular = sampleSpecular(ray, normal, m, rng);
+            color *= m.specular.color / prob;
+            ray.origin = intersect;
+            ray.direction = specular;
+        } else {
+            color *= m.color / (1-prob);
+            ray.origin = intersect;
+            ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+        }
+    } else {
+        color *= m.color;
+        ray.origin = intersect;
+        ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+    }
+
     if (m.emittance > 0) {
         color *= m.emittance;
     }
-
-    ray.origin = intersect;
-    ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
 }
