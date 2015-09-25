@@ -53,23 +53,21 @@ __host__ __device__ float boxIntersectionTest(Geom &box, Ray &r,
 	float tmax = 1e38f;
 	glm::vec3 tmin_n;
 	glm::vec3 tmax_n;
+	float t1, t2, ta, tb;
+	glm::vec3 n;
 	for (int xyz = 0; xyz < 3; ++xyz) {
-		float qdxyz = q.direction[xyz];
-		/*if (glm::abs(qdxyz) > 0.00001f)*/ {
-			float t1 = (-0.5f - q.origin[xyz]) / qdxyz;
-			float t2 = (+0.5f - q.origin[xyz]) / qdxyz;
-			float ta = glm::min(t1, t2);
-			float tb = glm::max(t1, t2);
-			glm::vec3 n;
-			n[xyz] = t2 < t1 ? +1 : -1;
-			if (ta > 0 && ta > tmin) {
-				tmin = ta;
-				tmin_n = n;
-			}
-			if (tb < tmax) {
-				tmax = tb;
-				tmax_n = n;
-			}
+		t1 = (-0.5f - q.origin[xyz]) / q.direction[xyz];
+		t2 = (+0.5f - q.origin[xyz]) / q.direction[xyz];
+		ta = glm::min(t1, t2);
+		tb = glm::max(t1, t2);
+		n[xyz] = t2 < t1 ? +1 : -1;
+		if (ta > 0 && ta > tmin) {
+			tmin = ta;
+			tmin_n = n;
+		}
+		if (tb < tmax) {
+			tmax = tb;
+			tmax_n = n;
 		}
 	}
 
@@ -98,17 +96,13 @@ __host__ __device__ float boxIntersectionTest(Geom &box, Ray &r,
  */
 __host__ __device__ float sphereIntersectionTest(Geom &sphere, Ray &r,
 	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
-	float radius = .5;
-
-	glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
-	glm::vec3 rd = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
 
 	Ray rt;
-	rt.origin = ro;
-	rt.direction = rd;
+	rt.origin = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
+	rt.direction = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
 
 	float vDotDirection = glm::dot(rt.origin, rt.direction);
-	float radicand = vDotDirection * vDotDirection - (glm::dot(rt.origin, rt.origin) - pow(radius, 2));
+	float radicand = vDotDirection * vDotDirection - (glm::dot(rt.origin, rt.origin) - pow(.5, 2));
 	if (radicand < 0) {
 		return -1;
 	}

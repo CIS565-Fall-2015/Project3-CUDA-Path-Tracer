@@ -115,13 +115,13 @@ A GPU based path tracer that supports several common material effects. Stream co
       * Trade-off: achieved occupacy dropped from 41.28% to 40.6%
 
 * **Scan scatter (stream compaction)**
-  * Pre-cache data in shared memory:
-    * Reduced global memory replay overhead: dropped from 50% to 24.3%
-    * L1 cache hitrate increased dramatically: from 1% to 86.7%
-    * Slight execution time speed up on larger array.
-    * Trade-off:
-      * Reduced occupacy due to increased register count: count goes from 7 to 23, occupacy from 66.6% to 33.3%
-      * Slower execution on smaller arrays (~200 microsec).
+  * Changed block size based on prediction:
+    * Occupacy goes from 33.3% to 100%
+  * Put extra temporary variables to hold
+    * Successfully utilized larger number of warps and hid memory access latency
+    * In issue stall reasons, reduced proportion of memory dependency from 70% to 26.4%
+    * 92% execution time speed up
+    * Trade-off: occupacy dropped to 83.3% 
 * **Intersection test**
   * Block size left unchanged as it's optimal.
   * Pre-cache geometries in shared memory:
@@ -175,7 +175,7 @@ A GPU based path tracer that supports several common material effects. Stream co
 * Cache vs. direct access:
   * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, sometimes directly passing the array element around results in much better performance in terms of both exec time and memory access.
   * For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple and short kernels like pixel painting.
-  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. This effectively cancelled out the reduction in memory access. For short kernels the memory access time is more significant, therefore making a cache is profitable.
+  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. This effectively cancelled out the reduction in memory access. For short kernels, a cache variable sometimes can successfully hide memory access latency by carefully ordering operation orders.
 
 * Stream compaction, open scenes vs. closed scenes:
   * Stream compaction greatly reduces input size in open scenes.

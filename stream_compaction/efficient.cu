@@ -47,19 +47,12 @@ namespace Efficient {
 	__global__ void scatter(PathRay *odata, const PathRay *idata, const int *filter, const int *idx, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 
-		__shared__ int scatterBlock[BLOCKSIZE];
-		__shared__ PathRay rayBlock[BLOCKSIZE];
-
 		if (k < n){
-			scatterBlock[threadIdx.x] = idx[k];
-			rayBlock[threadIdx.x] = idata[k];
-		}
-
-		__syncthreads();
-
-		if (k < n){
-			if (filter[k] == 1){
-				odata[scatterBlock[threadIdx.x]] = rayBlock[threadIdx.x];
+			int f = filter[k];
+			int i = idx[k];
+			PathRay p = idata[k];
+			if (f == 1){
+				odata[i] = p;
 			}
 		}
 	}
@@ -228,7 +221,7 @@ void compact(int n, int* f, int* idx, PathRay *dv_out, PathRay *idata, int* c) {
 	scan(n, idx, f);
 
 	// Scatter
-	scatter << <tsize, BLOCKSIZE>> >(dv_out, idata, f, idx, n);
+	scatter << <tsize /2, BLOCKSIZE * 2>> >(dv_out, idata, f, idx, n);
 	checkCUDAError1("SC scatter");
 
 	// Get new array size

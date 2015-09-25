@@ -159,7 +159,7 @@ __global__ void initRayGrid(PathRay *oGrid, const Camera cam){
 }
 
 
-__global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, const int grid_size, const int geomcount){
+__global__ void interesect(PathRay * grid, const Geom * iGeoms, const Camera cam, const int grid_size, const int geomcount){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -179,12 +179,11 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 		// Intersection test
 		//PathRay pr = grid[index];
 		grid[index].hasIntersect = false;
-		glm::vec3 iPoint(0.0f);
-		glm::vec3 iNormal(0.0f);
+		glm::vec3 iPoint;
+		glm::vec3 iNormal;
 
 		float rayLength = 0.0f;
 		float oldLength = -1.0f;
-		int idx = 0;
 		bool outside = false;
 		for (int i = 0; i < geomcount; ++i){
 			if (geoms[i].type == SPHERE){
@@ -200,8 +199,8 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 					grid[index].intersect = iPoint;
 					grid[index].normal = iNormal;
 					grid[index].outside = outside;
+					grid[index].matId = geoms[i].materialid;
 					oldLength = rayLength;
-					idx = i;
 				}
 			}
 			/*
@@ -224,7 +223,6 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 			}
 			*/
 		}
-		grid[index].matId = geoms[idx].materialid;
 		//grid[index] = pr;
 	}
 };
