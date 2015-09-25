@@ -95,6 +95,10 @@ A GPU based path tracer that supports several common material effects. Stream co
 * Scan
   * Occupacy with block size
     * Block size needs to be `2^n`: pick 128 based on graph prediction, occupacy goes from 33.3% to 41.28%
+
+###### Occupacy as a function of block size.
+![](img/scan_occupacy.png)
+
   * Occupacy with register counts: wasn't able to reduce register count, but reduced execution time.
     * Remove shorthand variable for `threadIdx.x`:
       * No effect (should have used one less register).
@@ -154,6 +158,12 @@ A GPU based path tracer that supports several common material effects. Stream co
   * Remove temporary variable for `(ray, color)` pair:
     * 49.5% execution time speed up.
 
+###### Optimization baseline.
+![](img/baseline.png)
+
+###### Optimized result.
+![](img/optimized.png)
+
 ## Analysis
 
 * Cache vs. direct access:
@@ -167,10 +177,16 @@ A GPU based path tracer that supports several common material effects. Stream co
   * Closed scene renders much slower. Less rays got terminated because all rays will hit at least a wall, if not a light source.
     * As a result, closed scene is much brighter.
 
+###### Open vs. closed scene. Closed scene has many more active (unterminated) rays in each depth.
+![](img/ray_count.png)
+
 * Thrust vs. custom work-efficient compaction:
   * Thrust is still faster performance-wise.
   * Custom implementation only loosely match the performance of Thrust.
-  * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that's sub-optimal.
+  * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that are sub-optimal.
+
+###### Stream compaction performance.
+![](img/comparison.png)
 
 ## Appendix
 
