@@ -1,7 +1,9 @@
 #include <cstdio>
 #include <cuda.h>
 #include <cmath>
+
 #include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
 
@@ -108,18 +110,22 @@ void pathtraceFree() {
     checkCUDAError("pathtraceFree");
 }
 
-__global__ void generateCameraRays(Camera cam, Pixel *pixels) {
+__global__ void generateCameraRays(Camera cam, Pixel *pixels, int iter,
+        glm::vec3 cam_right, glm::vec3 cam_up) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
 
-        float screen_x = -1 * (((float) x * 2.f / (float)cam.resolution.x) - 1.f);
-        float screen_y = -1 * (((float) y * 2.f / (float)cam.resolution.y) - 1.f);
+        // Jitter screen coordinates for anti-aliasing
+        thrust::default_random_engine rng = random_engine(iter, index, 0);
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        float jit_x = x + u01(rng);
+        float jit_y = y + u01(rng);
 
-        glm::vec3 cam_right = glm::cross(cam.view, cam.up);
-        glm::vec3 cam_up = glm::cross(cam_right, cam.view);
+        float screen_x = -1 * (((float) jit_x * 2.f / (float)cam.resolution.x) - 1.f);
+        float screen_y = -1 * (((float) jit_y * 2.f / (float)cam.resolution.y) - 1.f);
 
         glm::vec3 img_point = (cam.position + cam.view)
             + (cam_right * screen_x) + (cam_up * screen_y);
@@ -172,12 +178,11 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
         int index = px.index;
 
         if (px.terminated == false) {
-            Ray r = px.ray;
-
             glm::vec3 intersection = glm::vec3(0, 0, 0);
             glm::vec3 normal = glm::vec3(0, 0, 0);
             Geom nearest;
-            float t = nearestIntersectionGeom(r, geoms, geomCount, nearest, intersection, normal);
+            float t = nearestIntersectionGeom(px.ray, geoms, geomCount, nearest,
+                    intersection, normal);
 
             if (t > 0) {
                 Material m = mats[nearest.materialid];
@@ -188,11 +193,11 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
                 if (m.emittance > 0) {
                     pixels[index].terminated = true;
                 }
-                //pixels[index].color = glm::abs(intersection/5.f);
-                //pixels[index].color = glm::vec3(index, index, index);
 
-                //pixels[index].color = glm::abs(pixels[index].ray.direction);
+                // Debug
                 //pixels[index].terminated = true;
+                //pixels[index].color = glm::abs(pixels[index].ray.direction);
+                //pixels[index].color = glm::abs(intersection/5.f);
             } else {
                 pixels[index].color = glm::vec3(0, 0, 0);
                 pixels[index].terminated = true;
@@ -214,12 +219,10 @@ __global__ void debugCameraRays(Camera cam, glm::vec3 *image, Pixel *pixels) {
 
 __global__ void killNonterminatedRays(Camera cam, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        Pixel px = pixels[index];
+    if (x < (cam.resolution.x * cam.resolution.y)) {
+        Pixel px = pixels[x];
+        int index = px.index;
         if (px.terminated == false) {
             pixels[index].terminated = true;
             pixels[index].color = glm::vec3(0, 0, 0);
@@ -227,16 +230,43 @@ __global__ void killNonterminatedRays(Camera cam, Pixel *pixels) {
     }
 }
 
-__global__ void outputPixelColors(Camera cam, glm::vec3 *image, Pixel *pixels) {
+__global__ void storePixels(Camera cam, glm::vec3 *image, Pixel *pixels) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if (x < (cam.resolution.x * cam.resolution.y)) {
         Pixel px = pixels[x];
-        int index = px.index;
         if (px.terminated == true) {
+            int index = px.index;
             image[index] += px.color;
         }
     }
+}
+
+void shootCameraRays(Camera cam, Pixel *pixels, int iter,
+        dim3 blockSize, dim3 blocksPerGrid) {
+    float fovy = glm::radians(cam.fov.y);
+    float aspectRatio = (float)cam.resolution.x / (float)cam.resolution.y;
+    float tanPhi = glm::tan(fovy);
+    float fovx = glm::atan(tanPhi * aspectRatio);
+    float tanTheta = glm::tan(fovx);
+
+    glm::vec3 cam_right = glm::cross(cam.view, cam.up) * tanTheta;
+    glm::vec3 cam_up = glm::cross(cam_right, cam.view) * tanPhi;
+
+    generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, pixels, iter, cam_right, cam_up);
+    checkCUDAError("shootCameraRays");
+}
+
+struct terminator {
+    __device__ bool operator()(const Pixel px) {
+        return px.terminated == true;
+    }
+};
+
+int reapPixels(Camera cam, Pixel *pixels, int n) {
+    Pixel *new_end = pixels + n;
+    new_end = thrust::remove_if(thrust::device, pixels, pixels+n, terminator());
+    return (new_end - pixels);
 }
 
 /**
@@ -279,25 +309,32 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    generateCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_pixels);
-    checkCUDAError("rays");
-
+    shootCameraRays(cam, dev_pixels, iter, blockSize, blocksPerGrid);
     //debugCameraRays<<<blocksPerGrid, blockSize>>>(cam, dev_image, dev_pixels);
 
-    int dBlockSize = 128;
-    int dGridSize = (pixelcount + blockSideLength - 1) / dBlockSize;
+    int dBlockSize = 64;
+    int dGridSize = (pixelcount + dBlockSize - 1) / dBlockSize;
+    int count = pixelcount;
 
-    for (int i = 0; i < traceDepth; i++) {
+    for (int d = 0; d < traceDepth; d++) {
         intersect<<<dGridSize, dBlockSize>>>(
                 cam, dev_image, dev_pixels,
-                iter, i,
+                d, iter,
                 dev_geom, hst_scene->geoms.size(), dev_mats);
+        checkCUDAError("intersection");
 
-        //outputPixelColors<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
+//        storePixels<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
+//        checkCUDAError("store");
+//
+//        count = reapPixels(cam, dev_pixels, count);
+//        if (count == 0) { break; }
+//        dGridSize = (count + dBlockSize - 1) / dBlockSize;
     }
 
-    killNonterminatedRays<<<blocksPerGrid, blockSize>>>(cam, dev_pixels);
-    outputPixelColors<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
+    killNonterminatedRays<<<dGridSize, dBlockSize>>>(cam, dev_pixels);
+    storePixels<<<dGridSize, dBlockSize>>>(cam, dev_image, dev_pixels);
+
+    checkCUDAError("end");
 
     ///////////////////////////////////////////////////////////////////////////
 
