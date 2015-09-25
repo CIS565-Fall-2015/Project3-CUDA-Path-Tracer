@@ -81,6 +81,22 @@ void scatterRay(
 		ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
 		color *= m.color;
 	}
+	else if (m.hasRefractive == 1) {
+		float angle;
+		glm::vec3 refractionPoint;
+		angle = acos(glm::dot(ray.direction, normal) / (glm::length(ray.direction)*glm::length(normal)));
+		angle *= (180.0f / (TWO_PI * .5f));
+		if (angle >= 90.0f){
+			refractionPoint = glm::refract(ray.direction, normal, 1.0f / m.indexOfRefraction);//asin(1.0f/isx.node->Mat.ior));
+		}
+		else{
+			refractionPoint = glm::refract(ray.direction, -normal, m.indexOfRefraction);
+		}
+		ray.direction = refractionPoint;
+		ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
+		color *= m.color;
+
+	}
 	//DIFFUSE
 	else {
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);

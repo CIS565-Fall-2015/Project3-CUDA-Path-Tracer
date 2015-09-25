@@ -130,10 +130,13 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 }
 
 //Create ray to be shot at a pixel in the image
-__global__ void kernRayGenerate(Camera cam, Ray *ray){
+__global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dop){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	
+	int index = x + (y*cam.resolution.x);
+	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+    thrust::uniform_real_distribution<float> unitDistrib(-.5f, .5f);
+	thrust::uniform_real_distribution<float> dopDistrib(-1.0f, 1.0f);
 	//Calculate camera's world position
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		glm::vec3 A = glm::cross(cam.view, cam.up);
@@ -150,18 +153,30 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray){
 		glm::vec3 V = (B*lenC*tan((float)glm::radians(cam.fov[1]))) / lenB;
 
 		//Create ray with direction and origin
-
-		float sx = (float)x / ((float)cam.resolution.x - 1.0f);
-		float sy = (float)y / ((float)cam.resolution.y - 1.0f);
+		//Jitter rays with uniform distribution
+		//printf("%f ", unitDistrib(rng));
+		float sx = ((float)x + unitDistrib(rng)) / ((float)cam.resolution.x - 1.0f);
+		float sy = ((float)y + unitDistrib(rng)) / ((float)cam.resolution.y - 1.0f);
 		//Get world coordinates of pixel
 		glm::vec3 WC = M - (2.0f*sx - 1.0f)*H - (2.0f*sy - 1.0f)*V;
 		//Get direction of ray
 		glm::vec3 dir = glm::normalize(WC - cam.position);
 
-		ray[x + (y*cam.resolution.x)].origin = cam.position;
-		ray[x + (y*cam.resolution.x)].direction = dir;
-		ray[x + (y*cam.resolution.x)].color = glm::vec3(1.0, 1.0, 1.0);
-		ray[x + (y*cam.resolution.x)].index = -1*(x + (y*cam.resolution.x));
+		ray[index].origin = cam.position;
+		ray[index].direction = dir;
+		ray[index].color = glm::vec3(1.0, 1.0, 1.0);
+		ray[index].index = -1*(index);
+
+		if (dop == true) {
+			glm::vec3 apOff = glm::vec3(dopDistrib(rng), dopDistrib(rng), 0.0f);
+			glm::vec3 new_E = cam.position + apOff;
+			float focal = 11.587f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
+			dir *= focal;
+			dir -= apOff;
+			dir = glm::normalize(dir);
+			ray[index].origin = new_E;
+			ray[index].direction = dir;
+		}
 	}
 }
 
@@ -180,13 +195,12 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 			dist = sphereIntersectionTest(geoms[i], ray, interPoint, norm, out);
 		}
 		if ((dist != -1 && dist < t) || t == -1) {
-			if (out){
-				t = dist;
-				intersectionPoint = interPoint;
-				normal = norm;
-				outside = out;
-				objIndex = i;
-			}
+			t = dist;
+			intersectionPoint = interPoint;
+			normal = norm;
+			outside = out;
+			objIndex = i;
+		
 		}
 	}
 	return t;
@@ -194,13 +208,16 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 }
 
 //Function to find next ray
-__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth){
+__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth, int traceDepth){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * cam.resolution.x);
 	//find closest intersection
 	if (x < cam.resolution.x && y < cam.resolution.y && rayArray[index].index < 0) {
-		thrust::default_random_engine rng = makeSeededRandomEngine(depth, iter, index);
+		if (depth == traceDepth) {
+			dev_image[index] == glm::vec3(0.0f, 0.0f, 0.0f);
+		}
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, depth);
 		glm::vec3 interPoint;
 		glm::vec3 norm;
 		bool out;
@@ -272,10 +289,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     
     // TODO: perform one iteration of path tracing
-	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray);
+	bool dop = true;
+	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dop);
 
-	for (int i = 0; i < traceDepth; i++) {
-		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i);
+	for (int i = 0; i < traceDepth + 1; i++) {
+		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth);
 	}
 	
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
