@@ -11,7 +11,8 @@
 #include <thrust/scan.h>
 #include <thrust/device_vector.h>
 
-#define BLOCKSIZE 64
+#define BLOCKSIZE 128
+#define CEILING 7
 
 #define FILENAME1 (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError1(msg) checkCUDAErrorFn1(msg, FILENAME1, __LINE__)
@@ -61,47 +62,76 @@ namespace Efficient {
 	*/
 	__global__ void smallScan(int *small_scan, const int *idata, const int n){
 		__shared__ int scanBlock[BLOCKSIZE];
+		__shared__ int dArray[CEILING+1];
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
-		int t = threadIdx.x;
 
-		int ceiling = ilog2ceil(BLOCKSIZE);
+		//int ceiling = ilog2ceil(BLOCKSIZE);
+
+		if (threadIdx.x <= CEILING){
+			dArray[threadIdx.x] = lround(pow((double)2, (double)(threadIdx.x)));
+		}
+
+		__syncthreads();
 
 		if (k < n){
-			scanBlock[t] = idata[k];
+			scanBlock[threadIdx.x] = idata[k];
 		}
 		else {
-			scanBlock[t] = 0;
+			scanBlock[threadIdx.x] = 0;
 		}
 
 		// Up sweep
+		/*
 		int p1, p2;
 		for (int d = 0; d < ceiling; d++){
 			__syncthreads();
 			p1 = lround(pow((double)2, (double)(d + 1)));
 			p2 = lround(pow((double)2, (double)d));
-			if (t % p1 == 0){
-				scanBlock[t - 1 + p1] += scanBlock[t - 1 + p2];
+			if (threadIdx.x % p1 == 0){
+				scanBlock[threadIdx.x - 1 + p1] += scanBlock[threadIdx.x - 1 + p2];
+			}
+		}
+		*/
+		int p1, p2, tminus = threadIdx.x - 1, d;
+		for (d = 0; d < CEILING; d++){
+			__syncthreads();
+			if (threadIdx.x %  dArray[d + 1] == 0){
+				p2 = tminus + dArray[d];
+				p1 = tminus + dArray[d+1];
+				scanBlock[p1] += scanBlock[p2];
 			}
 		}
 
 		// Reset root
-		if (t == 0){
+		if (threadIdx.x == 0){
 			scanBlock[BLOCKSIZE-1] = 0;
 		}
 
+		/*
 		for (int d = ceiling - 1; d >= 0; d--){
 			__syncthreads();
 			p1 = lround(pow((double)2, (double)(d + 1)));
 			p2 = lround(pow((double)2, (double)d));
-			if (t % p1 == 0){
-				int tmp = scanBlock[t - 1 + p2];
-				scanBlock[t - 1 + p2] = scanBlock[t - 1 + p1];
-				scanBlock[t - 1 + p1] += tmp;
+			if (threadIdx.x % p1 == 0){
+				int tmp = scanBlock[threadIdx.x - 1 + p2];
+				scanBlock[threadIdx.x - 1 + p2] = scanBlock[threadIdx.x - 1 + p1];
+				scanBlock[threadIdx.x - 1 + p1] += tmp;
+			}
+		}
+		*/
+		for (d = CEILING - 1; d >= 0; d--){
+			__syncthreads();
+			if (threadIdx.x % dArray[d + 1] == 0){
+				p2 = tminus + dArray[d];
+				p1 = tminus + dArray[d+1];
+				int tmp = scanBlock[p2];
+				scanBlock[p2] = scanBlock[p1];
+				scanBlock[p1] += tmp;
 			}
 		}
 		__syncthreads();
 
-		small_scan[k] = scanBlock[t];
+		small_scan[k] = scanBlock[threadIdx.x];
 	}
 
 	__global__ void getBlockTotal(int *block_total, const int *scans, const int * data_in, const int B, const int n){
@@ -140,7 +170,7 @@ void scan(int n, int *odata, const int *idata) {
 		int gridSize = lround(ceil((double)n / (double)BLOCKSIZE));
 
 		int *scan_out;
-		int *block_total, *block_scan;
+		int *block_total;
 
 		// Padding zero
 		cudaMalloc((void**)&scan_out, gridSize * BLOCKSIZE * sizeof(int));

@@ -110,7 +110,30 @@ Depth: 7 / Grid size: 141986
   * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall; theoretical 3x more slower with 3 passes; about 2x slower perceived. Closed scene is much brighter.
 
 ## Performance
-* Baseline: `cornell6`, 200*200
+* Baseline: `cornell6`, 200*200, scan block size 64
+* Scan:
+  * Optimize occupacy: block size
+    * Block size needs to be 2^n: pick 128, 33.3% -> 41.28%
+  * Optimize occupacy: register counts (44)
+    * Wasn't able to reduce register count, but reduced execution time
+      * Remove shorthand variable for `threadIdx.x`: no effect (should have used one less register)
+      * Store `threadIdx-1` to avoid repetitive calculations: no effect on registers, but reduced execution time from ~7700 to ~4000 microsec
+      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant: no effect, since only two less calculations per thread
+      * Pre-populate `2^d` values into an array in shared memory: no effect on registers, but reduced execution time from ~4000 to ~330 microsec
+    * Conclusion: achieved occupacy 41.28% -> 40.6%; exec time: ~7700 -> ~330 microsec; 2300% speed up
+    * A Google search suggests that on a Fermi GPU, pipeline latency is ~21 cycles and therefore ~43% occupancy is enough to cover the latency
+* Intersection test:
+  * Block size left unchanged as optimal
+  * Pre-cache geometries in shared memory
+    * Reduced access to device memory by 30% in data size, without obvious change in exec time
+      * More access to L1 cache as a result
+      * In some cases exec becomes faster but not consistent
+    * LIMITATION: Current code allows only 64 geometries can be efficiently loaded, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work
+  * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference
+    * On top of above memory improvement, further reduced access to device memory by 30% in data size
+    * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size
+    * 14.5% speed up on exec time (reduce by ~200 microsec)
+    * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all their parameters passed by reference
 
 
 ## Submit

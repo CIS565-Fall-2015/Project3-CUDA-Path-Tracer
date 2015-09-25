@@ -142,29 +142,52 @@ __global__ void initRayGrid(PathRay *oGrid, Camera cam){
 }
 
 
-__global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int grid_size, const int geomcount){
+__global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, const int grid_size, const int geomcount){
 	// From camera as single point, to image grid with FOV
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
 	int index = x + (y * cam.resolution.x);
 
-	// Memory access 2GB+
-	// __shared__ memory variables can reduce by ~300MB
-	// Dynamic blocksPerGrid can further reduce by ~700MB
-	// Weird memory access violations and arbitrary incorrect materialid
+	extern __shared__ Geom geoms[];
+
+	int bIndex = threadIdx.x + threadIdx.y * blockDim.x;
+	if (bIndex < geomcount){
+		geoms[bIndex] = iGeoms[bIndex];
+	}
+
+	__syncthreads();
 
 	if (index < grid_size) {
 		// Intersection test
 		PathRay pr = grid[index];
 		pr.hasIntersect = false;
+		glm::vec3 iPoint(0.0f);
+		glm::vec3 iNormal(0.0f);
 
+		float rayLength = 0.0f;
 		float oldLength = -1.0f;
+		int idx = 0;
+		bool outside = false;
 		for (int i = 0; i < geomcount; ++i){
-			float rayLength = 0.0f;
-			glm::vec3 iPoint(0.0f);
-			glm::vec3 iNormal(0.0f);
-			bool outside = false;
+			if (geoms[i].type == SPHERE){
+				rayLength = sphereIntersectionTest(geoms[i], pr.ray, iPoint, iNormal, outside);
+			}
+			else {
+				rayLength = boxIntersectionTest(geoms[i], pr.ray, iPoint, iNormal, outside);
+			}
+			// Find the nearest intersection
+			if (rayLength != -1.0f){
+				pr.hasIntersect = true;
+				if (oldLength == -1.0f || rayLength < oldLength){
+					oldLength = rayLength;
+					idx = i;
+					pr.intersect = iPoint;
+					pr.normal = iNormal;
+					pr.outside = outside;
+				}
+			}
+			/*
 			Geom g = iGeoms[i];
 			if (g.type == SPHERE){
 				rayLength = sphereIntersectionTest(g, pr.ray, iPoint, iNormal, outside);
@@ -182,7 +205,9 @@ __global__ void interesect(PathRay *grid, Geom *iGeoms, Camera cam, const int gr
 					pr.outside = outside;
 				}
 			}
+			*/
 		}
+		pr.matId = geoms[idx].materialid;
 		grid[index] = pr;
 	}
 };
@@ -291,9 +316,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    const int blockSideLength = 8;
+	const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
-    const dim3 blocksPerGrid(
+    dim3 blocksPerGrid(
             (cam.resolution.x + blockSize.x - 1) / blockSize.x,
             (cam.resolution.y + blockSize.y - 1) / blockSize.y);
 
@@ -344,7 +369,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	// For each traceDepth
 	for (int d = 0; d < traceDepth; d++){
 		// Intersection test
-		interesect << <blocksPerGrid, blockSize >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
+		interesect << <blocksPerGrid, blockSize, geomcount*sizeof(Geom) >> >(dev_grid_ptr, dev_geoms, cam, grid_size, geomcount);
 		checkCUDAError("intersect");
 
 		// Mark all terminated paths
