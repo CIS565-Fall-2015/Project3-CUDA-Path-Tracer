@@ -165,6 +165,11 @@ A GPU based path tracer that supports several common material effects. Stream co
 ###### Optimized result.
 ![](img/optimized.png)
 
+* `nvprof`
+  * Some thoughts were put on reducing overall execution time of stream compaction by working on the methods outside of kernels.
+  * More analysis on API calls showed that calls to `cudaMalloc` and `cudaFree` are the most time consuming ones. Removing excessive calls to these APIs in the stream compaction method reduces overall execution time by ~15 ms (first trace depth).
+  * Performance is improved by a considerable amount by simply reducing calls to CUDA memory operations.
+
 ## Analysis
 
 * Cache vs. direct access:
