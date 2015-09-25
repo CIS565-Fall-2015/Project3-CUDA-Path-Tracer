@@ -160,8 +160,8 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 
 	if (index < grid_size) {
 		// Intersection test
-		PathRay pr = grid[index];
-		pr.hasIntersect = false;
+		//PathRay pr = grid[index];
+		grid[index].hasIntersect = false;
 		glm::vec3 iPoint(0.0f);
 		glm::vec3 iNormal(0.0f);
 
@@ -171,20 +171,20 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 		bool outside = false;
 		for (int i = 0; i < geomcount; ++i){
 			if (geoms[i].type == SPHERE){
-				rayLength = sphereIntersectionTest(geoms[i], pr.ray, iPoint, iNormal, outside);
+				rayLength = sphereIntersectionTest(geoms[i], grid[index].ray, iPoint, iNormal, outside);
 			}
 			else {
-				rayLength = boxIntersectionTest(geoms[i], pr.ray, iPoint, iNormal, outside);
+				rayLength = boxIntersectionTest(geoms[i], grid[index].ray, iPoint, iNormal, outside);
 			}
 			// Find the nearest intersection
 			if (rayLength != -1.0f){
-				pr.hasIntersect = true;
+				grid[index].hasIntersect = true;
 				if (oldLength == -1.0f || rayLength < oldLength){
+					grid[index].intersect = iPoint;
+					grid[index].normal = iNormal;
+					grid[index].outside = outside;
 					oldLength = rayLength;
 					idx = i;
-					pr.intersect = iPoint;
-					pr.normal = iNormal;
-					pr.outside = outside;
 				}
 			}
 			/*
@@ -207,8 +207,8 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 			}
 			*/
 		}
-		pr.matId = geoms[idx].materialid;
-		grid[index] = pr;
+		grid[index].matId = geoms[idx].materialid;
+		//grid[index] = pr;
 	}
 };
 

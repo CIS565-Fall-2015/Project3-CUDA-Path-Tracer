@@ -112,9 +112,9 @@ Depth: 7 / Grid size: 141986
 ## Performance
 * Baseline: `cornell6`, 200*200, scan block size 64
 * Scan:
-  * Optimize occupacy: block size
-    * Block size needs to be 2^n: pick 128, 33.3% -> 41.28%
-  * Optimize occupacy: register counts (44)
+  * Occupacy with block size
+    * Block size needs to be 2^n: pick 128, occupacy 33.3% -> 41.28%
+  * Occupacy with register counts
     * Wasn't able to reduce register count, but reduced execution time
       * Remove shorthand variable for `threadIdx.x`: no effect (should have used one less register)
       * Store `threadIdx-1` to avoid repetitive calculations: no effect on registers, but reduced execution time from ~7700 to ~4000 microsec
@@ -134,6 +134,13 @@ Depth: 7 / Grid size: 141986
     * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size
     * 14.5% speed up on exec time (reduce by ~200 microsec)
     * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all their parameters passed by reference
+  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
+    * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better
+    * Further reduced device memory access by 40%
+    * Further reduced exec time by ~150 microsec
+    * Reduced register count by 1
+    * Increased access to L1 cache: 65% -> 85%
+    * Increased global memory replay overhead: 25% -> 34.7%
 
 
 ## Submit
