@@ -3,159 +3,154 @@ CUDA Path Tracer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Tongbo Sui
+* Tested on: Windows 10, i5-3320M @ 2.60GHz 8GB, NVS 5400M 2GB (Personal)
 
-### (TODO: Your README)
+## Overview
+A GPU based path tracer that supports several common material effects. Stream compaction performance is optimized to loosely match that of Thrust.
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
-
-Instructions (delete me)
-========================
-
-## Requirements
-
-* Features:
-  * Work-efficient stream compaction using shared memory
-  * Raycasting from the camera into the scene through an imaginary grid of pixels
-    * Casting to plane at distance based on FOV
-  * Diffuse surfaces
-    * Cosine weighted
-  * (E) Non-perfect specular surfaces
-    * Cosine weighted, restricted by specular exponent
-    * Perfectly specular-reflective (mirrored) surfaces would be a non-perfect surface with very large (toward positive infinity) specular exponent
-    * http://www.cs.cornell.edu/courses/cs4620/2012fa/lectures/37raytracing.pdf
-  * (E) Refraction (ice / diamond) with Frensel effects using Schlick's approximation
+## Features
+* Work-efficient stream compaction using shared memory
+  * Work-efficient stream compaction for arbitrary input size.
+* Raycasting
+  * Cast rays for each pixel from the camera into the scene through an imaginary grid of pixels
+  * Casting to image plane at a distance calculated from camera FOV.
+* Diffuse surfaces
+  * Cosine weighted diffuse reflection.
+* Non-perfect specular surfaces
+  * Cosine weighted reflection restricted by specular exponent. Perfectly specular-reflective (mirrored) surfaces would be a non-perfect surface with very large (toward positive infinity) specular exponent.
+  * Reference: http://www.cs.cornell.edu/courses/cs4620/2012fa/lectures/37raytracing.pdf
+    * Instead of trying to find a biased function, simply jitter the reflection normal.
+  * Performance impact: about twice as many as computations needed. Execution time almost doubled.
+  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect will increase `c` by at least 2x.
+  * Possible further optimization: faster method for randomizing bounce direction; a better weight function for combining all possible effects.
+* Refraction with Frensel effects
+  * Refraction based on Index of Refraction (IOR), with reflection intensity approximated using Schlick's approximation.
     * https://en.wikipedia.org/wiki/Schlick's_approximation
-  * (E) Subsurface scattering
-    * Simplified version of Dipole
+  * Performance impact: extra calculations are needed as it calculates all possible effects for the material.
+  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` dramatically, as it calculates both reflection and refraction, and split the iteration among diffuse, SSS, reflection, refraction.
+  * Possible further optimization: faster method for randomizing bounce direction.
+* Subsurface scattering (SSS)
+  * Propagates light under object skin and send them off in randomized directions with an offset.
+  * SSS for reflective material is also implemented.
+  * Optimization:
+    * Implementation is a simplified version of Dipole approximation.
       * https://graphics.stanford.edu/papers/bssrdf/bssrdf.pdf
-      * Reduced memory overhead by approximating ray-out position without passing geometry all the way into scatter function
-      * Passing geometry slows the entire rendering process by a factor of ~3
-    * SSS for reflective material (split on specular and diffuse, then further split on diffuse)
-  * Antialiasing
-    * Oversampling at each iteration
-    * Effectively increases render time; proportional to # of oversampling passes
-  * (E) Physically-based depth-of-field (by jittering rays within an aperture)
-    * Using antialiasing routines but with different jittering method
-    * Find focal plane
-    * Jitter each ray on its origin
-    * Keep ray end point intact so it always focuses on focal plane; equivalent to jittering camera itself around focal plane
+    * Actual accurate SSS calculation would involve passing geometry object into the function and performing multiple extra intersection tests. This slows the entire rendering process by a factor of ~3. Major reason is that the geometry object is big in memory, and intersection tests are slow.
+    * Reduced memory overhead by guessing ray-out position. Therefore intersection tests are not performed within the scatter method. Passing geometry all the way into scatter function is avoided.
+    * If the guessed position is still inside the object (when it should be outside), it will be catched at the next trace depth, where the intersection point is automatically available. Color is multiplied by a factor to cancel out guessing failures.
+  * Performance impact: like other material effects, it increases color calculation by a constant time due to extra computation on each pixel. Moreover, all extra material effects add execution time for the kernel. Due to the fact that warps can only execute all codes then mask out unwanted results, each additional effect equally add more tasks to each thread. Taking all effects (specular, refraction, SSS) in to account, the execution time increased by about 400% compared to a diffuse-only implementation.
+  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` over the loop.
+  * Possible further optimization: a better weight function rather than split 50/50.
+* Antialiasing
+  * Oversampling at each iteration to smooth out jagged edges in the render.
+  * Performance impact: Effectively increases render time; proportional to # of oversampling passes. At each sampling pass, the jittering kernel takes ~440 microsec to finish. Plus oversampling needs averaging, which takes ~140 microseconds For a 3-pass render the overhead will be ~1460 microseconds per iteration. Furthermore, each pass runs the entire tracing once, therefore the final execution time for a 3-pass render will be at least 3x the normal tracing time plus overhead.
+  * If on CPU: aside from initializing each ray in the beginning, a CPU version would loop again at each pixel to randomize the ray, which is `O(n)`. On a GPU each thread takes care of one pixel, which makes the process run in constant time.
+  * Possible further optimization: same as antialiasing since they use the same routine.
+* Physically-based depth-of-field
+  * Depth-of-field effect using antialiasing routines but with different jittering radius and method.
+  * Performance impact: same as antialiasing since they use the same routine.
+  * If on CPU: same as antialiasing since they use the same routine.
+  * Possible further optimization: same as antialiasing since they use the same routine.
 
-* Scenes:
-  * `cornell1`: mixed objects (specular, refraction, diffuse, caustic)
-  * `cornell2`: SSS, same size spheres, mixed distances to light
-  * `cornell3`: SSS + specular
-  * `cornell4`: SSS, same size cubes, mixed distances to light
-  * `cornell5`: mixed objects, closed scene, camera inside box
-  * `cornell6`: single sphere, for performance testing
+## Optimization
 
-For each extra feature, you must provide the following analysis:
+**Baseline: `cornell6`, 200*200, scan block size 64**
 
-* Overview write-up of the feature
-* Performance impact of the feature
-* If you did something to accelerate the feature, what did you do and why?
-* Compare your GPU version of the feature to a HYPOTHETICAL CPU version
-  (you don't have to implement it!) Does it benefit or suffer from being
-  implemented on the GPU?
-* How might this feature be optimized beyond your current implementation?
-
-## README
-
-Please see: [**TIPS FOR WRITING AN AWESOME README**](https://github.com/pjcozzi/Articles/blob/master/CIS565/GitHubRepo/README.md)
-
-* Sell your project.
-* Assume the reader has a little knowledge of path tracing - don't go into
-  detail explaining what it is. Focus on your project.
-* Don't talk about it like it's an assignment - don't say what is and isn't
-  "extra" or "extra credit." Talk about what you accomplished.
-* Use this to document what you've done.
-* *DO NOT* leave the README to the last minute! It is a crucial part of the
-  project, and we will not be able to grade you without a good README.
-
-In addition:
-
-* This is a renderer, so include images that you've made!
-* Be sure to back your claims for optimization with numbers and comparisons.
-* If you reference any other material, please provide a link to it.
-* You wil not be graded on how fast your path tracer runs, but getting close to
-  real-time is always nice!
-* If you have a fast GPU renderer, it is very good to show case this with a
-  video to show interactivity. If you do so, please include a link!
-
-## Performance
-* Baseline: `cornell6`, 200*200, scan block size 64
-* Scan:
+* Scan
   * Occupacy with block size
-    * Block size needs to be 2^n: pick 128, occupacy 33.3% -> 41.28%
+    * Block size needs to be 2^n: pick 128 based on graph prediction, occupacy goes from 33.3% to 41.28%
   * Occupacy with register counts
-    * Wasn't able to reduce register count, but reduced execution time
-      * Remove shorthand variable for `threadIdx.x`: no effect (should have used one less register)
-      * Store `threadIdx-1` to avoid repetitive calculations: no effect on registers, but reduced execution time from ~7700 to ~4000 microsec
-      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant: no effect, since only two less calculations per thread
-      * Pre-populate `2^d` values into an array in shared memory: no effect on registers, but reduced execution time from ~4000 to ~330 microsec
-    * Conclusion: achieved occupacy 41.28% -> 40.6%; exec time: ~7700 -> ~330 microsec; 2300% speed up
-* Scan scatter (stream compaction):
-  * Pre-cache data in shared memory
-    * Reduced global memory replay overhead 50% -> 24.3%
-    * L1 cache 1% -> 86.7%
-    * Slight exec time speed up on larger array
+    * Wasn't able to reduce register count, but reduced execution time.
+      * Remove shorthand variable for `threadIdx.x`:
+        * No effect (should have used one less register).
+      * Store `threadIdx-1` to avoid repetitive calculations:
+        * No effect on registers
+        * Reduced execution time from ~7700 to ~4000 microsec.
+      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant:
+        * No visible effect, but two less calculations per thread.
+      * Pre-populate `2^d` values in shared memory:
+        * No effect on registers
+        * Reduced execution time from ~4000 to ~330 microsec.
+    * Conclusion:
+      * Execution time: dropped from ~7700 to ~330 microsec; 2300% speed up.
+      * Trade-off on achieved occupacy: dropped from 41.28% to 40.6%
+* Scan scatter (stream compaction)
+  * Pre-cache data in shared memory:
+    * Reduced global memory replay overhead: dropped from 50% to 24.3%
+    * L1 cache hitrate increased dramatically: from 1% to 86.7%
+    * Slight execution time speed up on larger array.
     * Trade-off:
-      * Reduced occupacy due to increased register count: 7 -> 23, 66.6% -> 33.3%
-      * Minimal exec time loss on small arrays ~200 microsec
-* Intersection test:
-  * Block size left unchanged as optimal
-  * Pre-cache geometries in shared memory
-    * Reduced access to device memory by 30% in data size, without obvious change in exec time
-      * More access to L1 cache as a result
-      * In some cases exec becomes faster but not consistent
-    * LIMITATION: Current code allows only 64 geometries can be efficiently loaded, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work
-  * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference
-    * On top of above memory improvement, further reduced access to device memory by 30% in data size
-    * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size
-    * 14.5% speed up on exec time (reduce by ~200 microsec)
-    * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all their parameters passed by reference
-  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
-    * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better
+      * Reduced occupacy due to increased register count: count goes from 7 to 23, occupacy from 66.6% to 33.3%
+      * Slower execution on smaller arrays (~200 microsec).
+* Intersection test
+  * Block size left unchanged as it's optimal.
+  * Pre-cache geometries in shared memory:
+    * Reduced access to device memory by 30% in data size, without obvious change in exec time.
+      * More access to L1 cache as a result.
+      * In some cases execution becomes faster but the improvement is not consistent.
+    * LIMITATION: Current code allows only 64 geometries in the shared memory, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work. The extra codes shouldn't be hard, but would have an obvious impact on the performance due to more memory access.
+  * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference:
+    * On top of above memory improvement, further reduced access to device memory by 30% in data size.
+      * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size.
+    * 14.5% speed up on execution time (~200 microsec).
+      * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all of their parameters passed by reference.
+  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct:
+    * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better.
     * Further reduced device memory access by 40%
-    * Further reduced exec time by ~150 microsec
-    * Reduced register count by 1
-    * Increased access to L1 cache: 65% -> 85%
-    * Increased global memory replay overhead: 25% -> 34.7%
-* Ray scatter:
-  * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct
-    * Reduced register count: 63 -> 55
-    * 63% exec time speed up
-    * 50% less device memory access (data size)
-    * L2 cache 31.6% -> 40.6%
-    * Global memory replay overhead 49.2% -> 39.3%
-  * Refactor `scatterRay` to remove redundant parameters
-    * Minor improvements regarding items above
+    * Further reduced execution time by ~150 microsec.
+    * Reduced register count by 1.
+    * Increased L1 cache hitrate: from 65% to 85%
+    * Trade-off:
+      * Increased global memory replay overhead: 25% -> 34.7%
+* Ray scatter
+  * Remove temporary variable that stores `(ray, color)` pair:
+    * Reduced register count: from 63 to 55.
+    * 63% execution time speed up.
+    * 50% less device memory access (data size).
+    * Increased L2 cache hitrate: from 31.6% to 40.6%
+    * Reduced global memory replay overhead: from 49.2% to 39.3%
+  * Refactor `scatterRay` to remove redundant parameters:
+    * Minor improvements regarding items above.
 * Path termination
-  * Remove temporary variable for `(ray, color)` pair and material
-    * Reduced register count: 29 -> 12
-    * 586% exec time speed up
-    * Trade-off: high global memory replay overhead (47.5%)
+  * Remove temporary variable for `(ray, color)` pair and material:
+    * Reduced register count: from 29 to 12.
+    * 586% execution time speed up.
+    * Trade-off:
+      * High global memory replay overhead (47.5%)
 * Camera raycasting
-  * Remove temporary variable for `(ray, color)` pair
-    * 49.5% speed up
-
+  * Remove temporary variable for `(ray, color)` pair:
+    * 49.5% execution time speed up.
 
 ## Analysis
 
-* Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, directly passing the array element around results in much better performance in terms of both exec time and memory access. For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple kernels like pixel painting.
+* Cache vs. direct access:
+  * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, sometimes directly passing the array element around results in much better performance in terms of both exec time and memory access.
+  * For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple and short kernels like pixel painting.
+  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. This effectively cancelled out the reduction in memory access. For short kernels the memory access time is more significant, therefore making a cache is profitable.
 
-* Compare scenes which are open (like the given cornell box) and closed
-  (i.e. no light can escape the scene). Again, compare the performance effects
-  of stream compaction! Remember, stream compaction only affects rays which
-  terminate, so what might you expect?
-  * Open scene much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits
-  * Closed scene much slower. Less rays got terminated because all rays will hit at least a wall
-    * Theoretical 3x more slower with 3 passes, with ray jittering and averaging overheads; about 2x slower perceived
-    * Closed scene is much brighter.
+* Stream compaction, open scenes vs. closed scenes:
+  * Stream compaction greatly reduces input size in open scenes.
+  * Open scene renders much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits.
+  * Closed scene renders much slower. Less rays got terminated because all rays will hit at least a wall, if not a light source.
+    * As a result, closed scene is much brighter.
 
-* Evaluate the benefits you get from stream compaction.
+* Thrust vs. custom work-efficient compaction
+  * Thrust is still faster performance-wise.
+  * Custom implementation only loosely match the performance of Thrust.
+  * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that's sub-optimal.
+
+## Appendix
+
+### Scenes list
+* `cornell1`: mixed objects (specular, refraction, diffuse, caustic)
+* `cornell2`: SSS, same size spheres, mixed distances to light
+* `cornell3`: SSS + specular
+* `cornell4`: SSS, same size cubes, mixed distances to light
+* `cornell5`: mixed objects, closed scene, camera inside box
+* `cornell6`: single sphere, very small window size, for performance testing
+
+### Performance test data
 ```
 Open scene
 800 * 800 cornell1
@@ -180,8 +175,6 @@ Depth: 5 / Grid size: 558072
 Depth: 6 / Grid size: 547953
 Depth: 7 / Grid size: 538102
 ```
-
-* Thrust vs. custom work-efficient compaction
 ```
 Custom work-efficient stream compaction
 800 * 800 cornell1
@@ -206,15 +199,3 @@ Depth: 5 / Grid size: 214766 / Time: 51.932480
 Depth: 6 / Grid size: 174670 / Time: 43.936127
 Depth: 7 / Grid size: 142211 / Time: 37.708385
 ```
-
-## Submit
-
-1. Open a GitHub pull request so that we can see that you have finished.
-   The title should be "Submission: YOUR NAME".
-2. Send an email to the TA (gmail: kainino1+cis565@) with:
-   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
-   * Direct link to your pull request on GitHub.
-   * Estimate the amount of time you spent on the project.
-   * If there were any outstanding problems, or if you did any extra
-     work, *briefly* explain.
-   * Feedback on the project itself, if any.
