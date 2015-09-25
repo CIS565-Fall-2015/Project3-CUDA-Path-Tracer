@@ -88,10 +88,10 @@ int Scene::loadGeom(string objectid) {
             }
             else if (strcmp(tokens[0].c_str(), "OBJFILE") == 0)
             {
-//            	Mesh m;
-//            	m.LoadMesh(tokens[1].c_str());
+            	Mesh m;
+            	m.LoadMesh(tokens[1].c_str());
 
-//            	meshes.push_back(m);
+            	meshes.push_back(m);
             }
 
             utilityCore::safeGetline(fp_in, line);
@@ -180,7 +180,7 @@ int Scene::loadMaterial(string materialid) {
         Material newMaterial;
 
         //load static properties
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 8; i++) {
             string line;
             utilityCore::safeGetline(fp_in, line);
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -192,6 +192,8 @@ int Scene::loadMaterial(string materialid) {
             } else if (strcmp(tokens[0].c_str(), "SPECRGB") == 0) {
                 glm::vec3 specColor(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
                 newMaterial.specular.color = specColor;
+            } else if (strcmp(tokens[0].c_str(), "SSS") == 0) {
+                newMaterial.hasTranslucence = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "REFL") == 0) {
                 newMaterial.hasReflective = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "REFR") == 0) {

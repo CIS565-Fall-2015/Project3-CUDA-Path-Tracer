@@ -79,6 +79,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     src
     #stream_compaction  # TODO: uncomment if using your stream compaction
     ${CORELIBS}
+    assimp
     )
 
 add_custom_command(

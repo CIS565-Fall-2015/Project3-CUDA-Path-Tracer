@@ -1,6 +1,7 @@
 #pragma once
 
 #include "intersections.h"
+#include <glm/gtc/matrix_inverse.hpp>
 
 //Taken from CIS 560 code
 __host__ __device__
@@ -176,7 +177,59 @@ void scatterRay(
 
 	Ray &r = ray.ray;
 
-	if(m.hasReflective == 0 && m.hasRefractive == 0)
+	if(m.hasTranslucence > 0)
+	{
+		ray.rayColor *= (m.color);
+
+//		printf ("%f\n", m.hasTranslucence);
+
+		//Sub Surface Scattering
+		r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
+
+		//Create the hemisphere to intersect
+		Geom hemisphere;
+		hemisphere.translation = intersect;
+		hemisphere.rotation = glm::vec3(0.0f);
+		hemisphere.scale = glm::vec3(m.hasTranslucence);
+
+		hemisphere.transform = utilityCore::buildTransformationMatrix(
+					hemisphere.translation, hemisphere.rotation, hemisphere.scale);
+		hemisphere.inverseTransform = glm::inverse(hemisphere.transform);
+		hemisphere.invTranspose = glm::inverseTranspose(hemisphere.transform);
+
+		glm::vec3 hemiIntersect, hemiNormal;
+		sphereIntersectionTest(hemisphere, r, hemiIntersect, hemiNormal);
+
+		//Intersect the ray with the geometry again to get a point on the geom
+		Ray newR;
+		newR.origin = hemiIntersect;
+		newR.direction = -normal;
+		int t;
+
+		if(g[geomIndex].type == SPHERE)
+		{
+			t = sphereIntersectionTest(g[geomIndex], newR, hemiIntersect, hemiNormal);//, outside);
+		}
+
+		else if(g[geomIndex].type == CUBE)
+		{
+			t = boxIntersectionTest(g[geomIndex], newR, hemiIntersect, hemiNormal);//, outside);
+		}
+
+		if(t > 0)
+		{
+			hemiIntersect -= 0.0001f * hemiNormal;
+			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(hemiNormal, rng) - hemiIntersect);
+			r.origin = hemiIntersect + 0.01f * r.direction;
+		}
+
+		else
+		{
+			r.origin = intersect + 0.001f * r.direction;
+		}
+	}
+
+	else if(m.hasReflective == 0 && m.hasRefractive == 0)
 	{
 		//Diffused material
 
@@ -219,10 +272,10 @@ void scatterRay(
 	else if (m.hasReflective > 0 && m.hasRefractive > 0)
 	{
 		//Do frenels reflection
+		//REFERENCE : PBRT Page 435
 		thrust::uniform_real_distribution<float> u01(0, 1);
 
 		//Do refraction to get refracted ray dir
-//		float IOR = m.indexOfRefraction;
 		glm::vec3 transmittedDir = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
 
 		float cos_t = glm::dot(transmittedDir, -normal),
@@ -231,7 +284,6 @@ void scatterRay(
 		float r_parallel = (m.indexOfRefraction * cos_i - cos_t) / (m.indexOfRefraction * cos_i + cos_t),
 			r_perpendicular = (cos_i - m.indexOfRefraction * cos_t) / (cos_i + m.indexOfRefraction * cos_t);
 
-//		printf("%f\n", 0.5f * (r_parallel * r_parallel + r_perpendicular * r_perpendicular));
 		if(u01(rng) < 0.5f * (r_parallel * r_parallel + r_perpendicular * r_perpendicular))
 		{
 			//do reflection
@@ -249,16 +301,16 @@ void scatterRay(
 			r.origin = intersect + 0.001f * r.direction;
 
 			//Intersect with the object again
-			float t;
-			bool outside;
+			//float t;
+			//bool outside;
 			if(g[geomIndex].type == SPHERE)
 			{
-				t = sphereIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+				/*t = */sphereIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
 			}
 
 			else if(g[geomIndex].type == CUBE)
 			{
-				t = boxIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+				/*t = */boxIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
 			}
 
 			r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
@@ -283,16 +335,16 @@ void scatterRay(
 		r.origin = intersect + 0.001f * r.direction;
 
 		//Intersect with the object again
-		float t;
-		bool outside;
+//		float t;
+//		bool outside;
 		if(g[geomIndex].type == SPHERE)
 		{
-			t = sphereIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+			/*t = */sphereIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
 		}
 
 		else if(g[geomIndex].type == CUBE)
 		{
-			t = boxIntersectionTest(g[geomIndex], r, intersect, normal, outside);
+			/*t = */boxIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
 		}
 
 //		if (t > 0)

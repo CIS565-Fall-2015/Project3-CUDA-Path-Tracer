@@ -239,19 +239,19 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 			 RayState &r = ray[index];
 			 int nearestIndex = -1;
 			 glm::vec3 nearestIntersectionPoint = glm::vec3(0), nearestNormal = glm::vec3(0);
-			 bool outside = false;
+//			 bool outside = false;
 
 			 //Find geometry intersection
 			 for(int i=0; i<(*geomCount); ++i)
 			 {
 				 if(geoms[i].type == CUBE)
 				 {
-					 t = boxIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+					 t = boxIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);//, outside);
 				 }
 
 				 else if(geoms[i].type == SPHERE)
 				 {
-					 t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+					 t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);//, outside);
 				 }
 
 				 if(t < min_t && t > 0)//&& !outside)
@@ -312,13 +312,13 @@ __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms
 
 			RayState &r = ray[index];
 			int i;
-			bool outside;
+			//bool outside;
 			thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, currDepth);
 
 			glm::vec3 pointOnLight = getRandomPointOnLight(geoms, lightIndices, lightCount, rng, i);
 
 			r.ray.direction = glm::normalize(pointOnLight - r.ray.origin);
-			t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal, outside);
+			t = sphereIntersectionTest(geoms[i], r.ray, intersectionPoint, normal);
 
 			if(t > 0)
 			{

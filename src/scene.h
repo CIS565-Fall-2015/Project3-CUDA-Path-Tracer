@@ -7,7 +7,7 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
-//#include "Mesh.h"
+#include "Mesh.h"
 
 using namespace std;
 
@@ -24,7 +24,7 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
-//    std::vector<Mesh> meshes;
+    std::vector<Mesh> meshes;
     RenderState state;
 
     void configureCamera();
