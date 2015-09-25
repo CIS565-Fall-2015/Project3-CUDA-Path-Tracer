@@ -505,11 +505,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		int bs=128;
 		dim3 gs((remain+bs-1)/bs);
 		pathTraceKernel<<<gs, bs>>>(dev_origin, dev_direction, dev_pixes,dev_inside,dev_terminated,dev_geom, geomNum, dev_material,iter,i,remain);
-		int *idata=new int[remain];
-		cudaMemcpy(idata,dev_terminated,remain*sizeof(int),cudaMemcpyDeviceToHost);
-		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,idata,bs);
-		delete(idata);
-		cudaMemcpy(dev_terminated,terminated,remain*sizeof(int),cudaMemcpyHostToDevice);
+		//int *idata=new int[remain];
+		//cudaMemcpy(idata,dev_terminated,remain*sizeof(int),cudaMemcpyDeviceToHost);
+		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,dev_terminated,bs);
+		//delete(idata);
+		//cudaMemcpy(dev_terminated,terminated,remain*sizeof(int),cudaMemcpyHostToDevice);
 	}
 	removeUnterminatedRay<<<(remain+127)/128,128>>>(dev_copyImage,dev_terminated,dev_pos,remain);
 	copyImageToRecord<<<(cam.resolution.x*cam.resolution.y+255)/256,256>>>(dev_image,dev_copyImage,cam.resolution.x*cam.resolution.y);
@@ -611,17 +611,14 @@ __global__ void addOffset(int *idata,int n,int *sum){
 /**
  * Performs prefix-sum (aka scan) on idata, storing the result into odata.
  */
-void scan(int n, int *odata, const int *idata,int blockSize) {
-	int newN=pow(2,ilog2ceil(n));
-	int *dev_idata,*dev_sum;
+void scan(int n, int newN,int *odata,int blockSize) {
+	int *dev_sum;
 	dim3 blockPerGrid=((newN+blockSize-1)/blockSize);
-	cudaMalloc(&dev_idata, newN * sizeof(int));
-	cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
 	cudaMalloc(&dev_sum, blockPerGrid.x*sizeof(int));
 	cudaMemset(dev_sum,0,blockPerGrid.x*sizeof(int));
 
-	SwapOnGPU<<<blockPerGrid,blockSize,blockSize*sizeof(int)>>>(dev_idata,n,newN,dev_sum);
-
+	SwapOnGPU<<<blockPerGrid,blockSize,blockSize*sizeof(int)>>>(odata,n,newN,dev_sum);
+	
 	int *dev_tmp;
 	int newN1=pow(2,ilog2ceil(blockPerGrid.x));
 	dim3 blockPerGrid1=((blockPerGrid.x+blockSize-1)/blockSize);
@@ -631,7 +628,6 @@ void scan(int n, int *odata, const int *idata,int blockSize) {
 	if(blockPerGrid.x>blockSize){//do another Swap if the current dev_sum cannot hold blockSize element
 		int *dev_tmp1;
 		cudaMalloc(&dev_tmp1, sizeof(int));
-		cudaMemcpy(odata,dev_tmp,blockPerGrid1.x*sizeof(int),cudaMemcpyDeviceToHost);
 		
 		SwapOnGPU<<<1,blockSize,blockSize*sizeof(int)>>>(dev_tmp,blockPerGrid1.x,128,dev_tmp1);
 
@@ -639,7 +635,7 @@ void scan(int n, int *odata, const int *idata,int blockSize) {
 
 		cudaFree(dev_tmp1);
 	}
-	addOffset<<<blockPerGrid,blockSize>>>(dev_idata,n,dev_sum);
+	addOffset<<<blockPerGrid,blockSize>>>(odata,n,dev_sum);
 	cudaFree(dev_tmp);
 	
 	/*int step=1;
@@ -653,11 +649,23 @@ void scan(int n, int *odata, const int *idata,int blockSize) {
 		step/=2;
 	}*/
 	
-	cudaMemcpy(odata,dev_idata,n*sizeof(int),cudaMemcpyDeviceToHost);
-	//for(int i=120;i<=128;++i) cout<<odata[i]<<endl;
-	//getchar();
-	cudaFree(dev_idata);
 	cudaFree(dev_sum);
+}
+
+__global__ void compactAll(int *idata,int *scanned,glm::vec3 *origin,glm::vec3 *origin_copy,
+						   glm::vec3 *direction,glm::vec3 *direction_copy,glm::vec3 *pixes,glm::vec3 *pixes_copy,
+						   bool *inside, bool *inside_copy, int *pos,int *pos_copy,int N){
+	int index=blockIdx.x*blockDim.x+threadIdx.x;
+	if(index<N){
+		if(idata[index]==1){
+			origin[scanned[index]]=origin_copy[index];
+			direction[scanned[index]]=direction_copy[index];
+			inside[scanned[index]]=inside_copy[index];
+			pixes[scanned[index]]=pixes_copy[index];
+			pos[scanned[index]]=pos_copy[index];
+		}
+		idata[index]=1;
+	}
 }
 
 __global__ void compactOrigin(int *idata,int *scanned, glm::vec3 *origin,glm::vec3 *origin_copy,int N){
@@ -715,18 +723,17 @@ __global__ void multiplyColor(int *idata,glm::vec3 *pixes,glm::vec3 *images,int 
 }
 
 int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *pixes,
-			glm::vec3 *image,bool *inside,int *idata,int blockSize) {
-    int *scanned=new int[n];
-	scan(n,scanned,idata,blockSize);
-	int *dev_idata,*dev_scanned;
+			glm::vec3 *image,bool *inside,int *dev_idata,int blockSize) {
+    int *scanned=new int[n],*idata=new int[n];
+	int newN=pow(2,ilog2ceil(n));
+	int *dev_scanned;
 	glm::vec3 *origin_copy,*direction_copy,*pixes_copy;
 	int *pos_copy;
 	bool *inside_copy;
 
-	cudaMalloc(&dev_idata,n*sizeof(int));
-	cudaMalloc(&dev_scanned,n*sizeof(int));
-	cudaMemcpy(dev_idata,idata,n*sizeof(int),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_scanned,scanned,n*sizeof(int),cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_scanned,newN*sizeof(int));
+	cudaMemcpy(dev_scanned,dev_idata,n*sizeof(int),cudaMemcpyDeviceToDevice);
+	scan(n,newN,dev_scanned,blockSize);
 
 	cudaMalloc(&origin_copy,n*sizeof(glm::vec3));
 	cudaMalloc(&direction_copy,n*sizeof(glm::vec3));
@@ -741,13 +748,17 @@ int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *
 
 	dim3 gridSize((n+blockSize-1)/blockSize);
 	multiplyColor<<<gridSize,blockSize>>>(dev_idata,pixes,image,pos,n);
-	compactOrigin<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,n);
+	/*compactOrigin<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,n);
 	compactDirection<<<gridSize,blockSize>>>(dev_idata,dev_scanned,direction,direction_copy,n);
 	compactPos<<<gridSize,blockSize>>>(dev_idata,dev_scanned,pos,pos_copy,n);
 	compactInside<<<gridSize,blockSize>>>(dev_idata,dev_scanned,inside,inside_copy,n);
 	compactPixes<<<gridSize,blockSize>>>(dev_idata,dev_scanned,pixes,pixes_copy,n);
-
-	cudaFree(dev_idata);
+	*/
+	compactAll<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,direction,direction_copy,pixes,pixes_copy,inside,inside_copy,
+		pos,pos_copy,n);
+	cudaMemcpy(idata,dev_idata,n*sizeof(int),cudaMemcpyDeviceToHost);
+	cudaMemcpy(scanned,dev_scanned,n*sizeof(int),cudaMemcpyDeviceToHost);
+	
 	cudaFree(dev_scanned);
 	cudaFree(origin_copy);
 	cudaFree(direction_copy);
@@ -757,6 +768,7 @@ int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *
 
 	int count=scanned[n-1]+idata[n-1];
 	delete(scanned);
+	delete(idata);
 
 	return count;
 }
