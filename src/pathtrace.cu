@@ -232,6 +232,8 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 		float m_t;
 		int m_geo_index; //which geom intersect
 
+		bool is_total_internalReflection = false;
+
 		m_t = kern_IntersectionTest(cur_ray, m_geoms, num_of_geom, m_intersectionPoint, m_normal, m_outside, m_geo_index);
 
 		if (m_t == -1) //no intersection
@@ -261,7 +263,7 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 
 				glm::vec3 tmp_color;
 				thrust::default_random_engine m_rng = makeSeededRandomEngine(cur_iter, index, cur_depth);
-				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_rng);
+				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_outside, is_total_internalReflection, m_rng);
 				//udpate ray dir in the scatterRay
 				//update the ray
 				cur_ray.origin = m_intersectionPoint;
@@ -271,7 +273,28 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 			}
 			else if (m_materials[m_mat_id].hasRefractive)  //refract material
 			{
+				//update cultimativeColor
+				cumulativeColor[index] *= m_materials[m_mat_id].color;
 
+
+
+				glm::vec3 tmp_color;
+				thrust::default_random_engine m_rng = makeSeededRandomEngine(cur_iter, index, cur_depth);
+				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_outside, is_total_internalReflection, m_rng);
+				//udpate ray dir in the scatterRay
+				//update the ray
+				if (is_total_internalReflection)
+				{
+					cur_ray.origin = m_intersectionPoint;
+				}
+				else
+				{
+					cur_ray.origin = m_intersectionPoint - m_normal * 0.001f ; //go to the other side of the object
+				}
+				
+				m_rays[index] = cur_ray;
+
+				return;
 			}
 			else //diffuse material
 			{
@@ -282,7 +305,7 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 
 				glm::vec3 tmp_color;
 				thrust::default_random_engine m_rng = makeSeededRandomEngine(cur_iter, index, cur_depth);
-				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_rng);
+				scatterRay(cur_ray, tmp_color, m_intersectionPoint, m_normal, m_materials[m_mat_id], m_outside, is_total_internalReflection, m_rng);
 				//udpate ray dir in the scatterRay
 				//update the ray
 				cur_ray.origin = m_intersectionPoint;
