@@ -47,19 +47,9 @@ namespace Efficient {
 	__global__ void scatter(PathRay *odata, const PathRay *idata, const int *filter, const int *idx, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 
-		__shared__ int scatterBlock[BLOCKSIZE];
-		__shared__ PathRay rayBlock[BLOCKSIZE];
-
-		if (k < n){
-			scatterBlock[threadIdx.x] = idx[k];
-			rayBlock[threadIdx.x] = idata[k];
-		}
-
-		__syncthreads();
-
 		if (k < n){
 			if (filter[k] == 1){
-				odata[scatterBlock[threadIdx.x]] = rayBlock[threadIdx.x];
+				odata[idx[k]] = idata[k];
 			}
 		}
 	}
