@@ -137,10 +137,13 @@ In addition:
     * Reduced register count: 29 -> 12
     * 586% exec time speed up
     * Trade-off: high global memory replay overhead (47.5%)
+* Camera raycasting
+  * Remove temporary variable for `(ray, color)` pair
+    * 49.5% speed up
 
 ### Analysis
 
-* Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, directly passing the array element around results in much better performance in terms of both exec time and memory access. For example, caching a `(ray, color)` pair for later computation only reduces performance. On the other hand, caching geometries for repetitive access across different threads increases performance.
+* Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, directly passing the array element around results in much better performance in terms of both exec time and memory access. For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple kernels like pixel painting.
 
 * Stream compaction helps most after a few bounces. Print and plot the
   effects of stream compaction within a single iteration (i.e. the number of

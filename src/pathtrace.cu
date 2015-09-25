@@ -116,24 +116,25 @@ __global__ void initRayGrid(PathRay *oGrid, const Camera cam){
 
 	if (x < cam.resolution.x && y < cam.resolution.y) {
 		int index = x + (y * cam.resolution.x);
-		PathRay pr;
-		pr.index = index;
-		pr.color = glm::vec3(1.0f);
+		//PathRay pr;
+		oGrid[index].index = index;
+		oGrid[index].color = glm::vec3(1.0f);
 
-		pr.ray.origin = cam.position;
-		pr.terminate = false;
-		pr.matId = -1;
+		oGrid[index].ray.origin = cam.position;
+		oGrid[index].terminate = false;
+		oGrid[index].matId = -1;
 
 		// Grid center to pixel
 		float pX = x - cam.resolution.x / 2;
 		float pY = cam.resolution.y / 2 - y;
 
 		// Vector: grid center to pixel
-		glm::vec3 o2px = glm::vec3(cam.right.x*pX + cam.up.x*pY, cam.right.y*pX + cam.up.y*pY, cam.right.z*pX + cam.up.z*pY);
+		glm::vec3 o2px = cam.right*pX + cam.up*pY;
+		//glm::vec3 o2px = glm::vec3(cam.right.x*pX + cam.up.x*pY, cam.right.y*pX + cam.up.y*pY, cam.right.z*pX + cam.up.z*pY);
 		// Ray vector
-		pr.ray.direction = glm::vec3(cam.toGrid.x + o2px.x, cam.toGrid.y + o2px.y, cam.toGrid.z + o2px.z);
+		oGrid[index].ray.direction = cam.toGrid + o2px;
 
-		oGrid[index] = pr;
+		//oGrid[index] = pr;
 
 		// Ray direction debug
 		//float l = glm::length(ray.ray.direction);
