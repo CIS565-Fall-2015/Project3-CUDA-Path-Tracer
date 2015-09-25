@@ -18,12 +18,6 @@ struct Ray {
 	int index;
 };
 
-struct BounceRay {
-	Ray ray;
-	glm::vec3 color;
-	int index;
-};
-
 struct Geom {
     enum GeomType type;
     int materialid;

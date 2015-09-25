@@ -9,7 +9,7 @@
  */
 __host__ __device__
 glm::vec3 calculateRandomDirectionInHemisphere(
-        glm::vec3 normal, thrust::default_random_engine &rng) {
+        const glm::vec3 normal, thrust::default_random_engine &rng) {
     thrust::uniform_real_distribution<float> u01(0, 1);
 
     float up = sqrt(u01(rng)); // cos(theta)
@@ -67,9 +67,8 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 __device__
 void scatterRay(
         Ray &ray,
-        glm::vec3 &color,
-        glm::vec3 intersect,
-        glm::vec3 normal,
+        const glm::vec3 intersect,
+        const glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
     // A basic implementation of pure-diffuse shading will just call the
@@ -80,7 +79,7 @@ void scatterRay(
 
 	// Light
 	if (m.emittance > 0.0f){
-		color = color * m.emittance;
+		ray.color = ray.color * m.emittance;
 		ray.isAlive = false;
 		return;
 	}
@@ -90,15 +89,19 @@ void scatterRay(
 	float total = specProb + diffuseProb;
 	specProb = specProb / total;
 
+	//if (specProb < 0.00001f){
+	//	specProb = 0.00001f;
+	//}
+
 	// Specular
 	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
-		color = color * m.specular.color * (1.0f/specProb);
+		ray.color = ray.color * m.specular.color * (1.0f/specProb);
 	}
 	// Diffuse
 	else{
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color = color * m.color * (1.0f/(1.0f-specProb));
+		ray.color = ray.color * m.color * (1.0f/(1.0f-specProb));
 	}
 	ray.origin = intersect;
 }
