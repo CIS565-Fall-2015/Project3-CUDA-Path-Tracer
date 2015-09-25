@@ -10,48 +10,48 @@ CUDA Path Tracer
 A GPU based path tracer that supports several common material effects. Stream compaction performance is optimized to loosely match that of Thrust.
 
 ## Features
-* Work-efficient stream compaction using shared memory
+* **Work-efficient stream compaction using shared memory**
   * Work-efficient stream compaction for arbitrary input size.
-* Raycasting
+* **Raycasting**
   * Cast rays for each pixel from the camera into the scene through an imaginary grid of pixels
   * Casting to image plane at a distance calculated from camera FOV.
-* Diffuse surfaces
+* **Diffuse surfaces**
   * Cosine weighted diffuse reflection.
-* Non-perfect specular surfaces
+* **Non-perfect specular surfaces**
   * Cosine weighted reflection restricted by specular exponent. Perfectly specular-reflective (mirrored) surfaces would be a non-perfect surface with very large (toward positive infinity) specular exponent.
-  * Reference: http://www.cs.cornell.edu/courses/cs4620/2012fa/lectures/37raytracing.pdf
-    * Instead of trying to find a biased function, simply jitter the reflection normal.
-  * Performance impact: about twice as many as computations needed. Execution time almost doubled.
-  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect will increase `c` by at least 2x.
-  * Possible further optimization: faster method for randomizing bounce direction; a better weight function for combining all possible effects.
-* Refraction with Frensel effects
+  * Instead of trying to find a biased function, simply jitter the reflection normal.
+    * http://www.cs.cornell.edu/courses/cs4620/2012fa/lectures/37raytracing.pdf
+  * *Performance impact*: about twice as many as computations needed. Execution time almost doubled.
+  * *If on CPU*: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect will increase `c` by at least 2x.
+  * *Possible further optimization*: faster method for randomizing bounce direction; a better weight function for combining all possible effects.
+* **Refraction with Frensel effects**
   * Refraction based on Index of Refraction (IOR), with reflection intensity approximated using Schlick's approximation.
     * https://en.wikipedia.org/wiki/Schlick's_approximation
-  * Performance impact: extra calculations are needed as it calculates all possible effects for the material.
-  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` dramatically, as it calculates both reflection and refraction, and split the iteration among diffuse, SSS, reflection, refraction.
-  * Possible further optimization: faster method for randomizing bounce direction.
-* Subsurface scattering (SSS)
+  * *Performance impact*: extra calculations are needed as it calculates all possible effects for the material.
+  * *If on CPU*: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` dramatically, as it calculates both reflection and refraction, and split the iteration among diffuse, SSS, reflection, refraction.
+  * *Possible further optimization*: faster method for randomizing bounce direction.
+* **Subsurface scattering (SSS)**
   * Propagates light under object skin and send them off in randomized directions with an offset.
   * SSS for reflective material is also implemented.
-  * Optimization:
+  * *Optimization*:
     * Implementation is a simplified version of Dipole approximation.
       * https://graphics.stanford.edu/papers/bssrdf/bssrdf.pdf
     * Actual accurate SSS calculation would involve passing geometry object into the function and performing multiple extra intersection tests. This slows the entire rendering process by a factor of ~3. Major reason is that the geometry object is big in memory, and intersection tests are slow.
     * Reduced memory overhead by guessing ray-out position. Therefore intersection tests are not performed within the scatter method. Passing geometry all the way into scatter function is avoided.
     * If the guessed position is still inside the object (when it should be outside), it will be catched at the next trace depth, where the intersection point is automatically available. Color is multiplied by a factor to cancel out guessing failures.
-  * Performance impact: like other material effects, it increases color calculation by a constant time due to extra computation on each pixel. Moreover, all extra material effects add execution time for the kernel. Due to the fact that warps can only execute all codes then mask out unwanted results, each additional effect equally add more tasks to each thread. Taking all effects (specular, refraction, SSS) in to account, the execution time increased by about 400% compared to a diffuse-only implementation.
-  * If on CPU: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` over the loop.
-  * Possible further optimization: a better weight function rather than split 50/50.
-* Antialiasing
+  * *Performance impact*: like other material effects, it increases color calculation by a constant time due to extra computation on each pixel. Moreover, all extra material effects add execution time for the kernel. Due to the fact that warps can only execute all codes then mask out unwanted results, each additional effect equally add more tasks to each thread. Taking all effects (specular, refraction, SSS) in to account, the execution time increased by about 400% compared to a diffuse-only implementation.
+  * *If on CPU*: looping through each pixel would have `O(n)` time with some constant `c`. This extra effect increases the constant `c` over the loop.
+  * *Possible further optimization*: a better weight function rather than split 50/50.
+* **Antialiasing**
   * Oversampling at each iteration to smooth out jagged edges in the render.
-  * Performance impact: Effectively increases render time; proportional to # of oversampling passes. At each sampling pass, the jittering kernel takes ~440 microsec to finish. Plus oversampling needs averaging, which takes ~140 microseconds For a 3-pass render the overhead will be ~1460 microseconds per iteration. Furthermore, each pass runs the entire tracing once, therefore the final execution time for a 3-pass render will be at least 3x the normal tracing time plus overhead.
-  * If on CPU: aside from initializing each ray in the beginning, a CPU version would loop again at each pixel to randomize the ray, which is `O(n)`. On a GPU each thread takes care of one pixel, which makes the process run in constant time.
-  * Possible further optimization: same as antialiasing since they use the same routine.
-* Physically-based depth-of-field
+  * *Performance impact*: Effectively increases render time; proportional to # of oversampling passes. At each sampling pass, the jittering kernel takes ~440 microsec to finish. Plus oversampling needs averaging, which takes ~140 microseconds For a 3-pass render the overhead will be ~1460 microseconds per iteration. Furthermore, each pass runs the entire tracing once, therefore the final execution time for a 3-pass render will be at least 3x the normal tracing time plus overhead.
+  * *If on CPU*: aside from initializing each ray in the beginning, a CPU version would loop again at each pixel to randomize the ray, which is `O(n)`. On a GPU each thread takes care of one pixel, which makes the process run in constant time.
+  * *Possible further optimization*: same as antialiasing since they use the same routine.
+* **Physically-based depth-of-field**
   * Depth-of-field effect using antialiasing routines but with different jittering radius and method.
-  * Performance impact: same as antialiasing since they use the same routine.
-  * If on CPU: same as antialiasing since they use the same routine.
-  * Possible further optimization: same as antialiasing since they use the same routine.
+  * *Performance impact*: same as antialiasing since they use the same routine.
+  * *If on CPU*: same as antialiasing.
+  * *Possible further optimization*: same as antialiasing.
 
 ## Optimization
 
@@ -59,22 +59,21 @@ A GPU based path tracer that supports several common material effects. Stream co
 
 * Scan
   * Occupacy with block size
-    * Block size needs to be 2^n: pick 128 based on graph prediction, occupacy goes from 33.3% to 41.28%
-  * Occupacy with register counts
-    * Wasn't able to reduce register count, but reduced execution time.
-      * Remove shorthand variable for `threadIdx.x`:
-        * No effect (should have used one less register).
-      * Store `threadIdx-1` to avoid repetitive calculations:
-        * No effect on registers
-        * Reduced execution time from ~7700 to ~4000 microsec.
-      * Change loop ceiling `ilog2ceil(n)` to a compile-time constant:
-        * No visible effect, but two less calculations per thread.
-      * Pre-populate `2^d` values in shared memory:
-        * No effect on registers
-        * Reduced execution time from ~4000 to ~330 microsec.
-    * Conclusion:
+    * Block size needs to be `2^n`: pick 128 based on graph prediction, occupacy goes from 33.3% to 41.28%
+  * Occupacy with register counts: wasn't able to reduce register count, but reduced execution time.
+    * Remove shorthand variable for `threadIdx.x`:
+      * No effect (should have used one less register).
+    * Store `threadIdx-1` to avoid repetitive calculations:
+      * No effect on registers
+      * Reduced execution time from ~7700 to ~4000 microsec.
+    * Change loop ceiling `ilog2ceil(n)` to a compile-time constant:
+      * No visible effect, but two less calculations per thread.
+    * Pre-populate `2^d` values in shared memory:
+      * No effect on registers
+      * Reduced execution time from ~4000 to ~330 microsec.
+    * *Conclusion*:
       * Execution time: dropped from ~7700 to ~330 microsec; 2300% speed up.
-      * Trade-off on achieved occupacy: dropped from 41.28% to 40.6%
+      * Trade-off: achieved occupacy dropped from 41.28% to 40.6%
 * Scan scatter (stream compaction)
   * Pre-cache data in shared memory:
     * Reduced global memory replay overhead: dropped from 50% to 24.3%
@@ -86,8 +85,8 @@ A GPU based path tracer that supports several common material effects. Stream co
 * Intersection test
   * Block size left unchanged as it's optimal.
   * Pre-cache geometries in shared memory:
-    * Reduced access to device memory by 30% in data size, without obvious change in exec time.
-      * More access to L1 cache as a result.
+    * Reduced access to device memory by 30% in data size, without obvious change in execution time.
+      * Higher L1 cache hitrate as a result.
       * In some cases execution becomes faster but the improvement is not consistent.
     * LIMITATION: Current code allows only 64 geometries in the shared memory, which is equal to the block size; this is fine for non-mesh geometries and less than 64 geometries. For bigger scenes, extra codes for loading more geometries will be needed for it to work. The extra codes shouldn't be hard, but would have an obvious impact on the performance due to more memory access.
   * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference:
@@ -101,8 +100,7 @@ A GPU based path tracer that supports several common material effects. Stream co
     * Further reduced execution time by ~150 microsec.
     * Reduced register count by 1.
     * Increased L1 cache hitrate: from 65% to 85%
-    * Trade-off:
-      * Increased global memory replay overhead: 25% -> 34.7%
+    * Trade-off: increased global memory replay overhead from 25% to 34.7%
 * Ray scatter
   * Remove temporary variable that stores `(ray, color)` pair:
     * Reduced register count: from 63 to 55.
@@ -116,8 +114,7 @@ A GPU based path tracer that supports several common material effects. Stream co
   * Remove temporary variable for `(ray, color)` pair and material:
     * Reduced register count: from 29 to 12.
     * 586% execution time speed up.
-    * Trade-off:
-      * High global memory replay overhead (47.5%)
+    * Trade-off: high global memory replay overhead (47.5%)
 * Camera raycasting
   * Remove temporary variable for `(ray, color)` pair:
     * 49.5% execution time speed up.
@@ -135,7 +132,7 @@ A GPU based path tracer that supports several common material effects. Stream co
   * Closed scene renders much slower. Less rays got terminated because all rays will hit at least a wall, if not a light source.
     * As a result, closed scene is much brighter.
 
-* Thrust vs. custom work-efficient compaction
+* Thrust vs. custom work-efficient compaction:
   * Thrust is still faster performance-wise.
   * Custom implementation only loosely match the performance of Thrust.
   * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that's sub-optimal.
