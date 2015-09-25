@@ -415,7 +415,7 @@ __global__ void test(glm::vec3 *pixes, glm::vec3 * copyImage,int *terminated,int
 	}
 }
 
-__global__ void test1(glm::vec3 * copyImage,int *terminated,int *pos,int N){
+__global__ void removeUnterminatedRay(glm::vec3 * copyImage,int *terminated,int *pos,int N){
 	int index=blockIdx.x*blockDim.x+threadIdx.x;
 	if(index<N){
 		copyImage[pos[index]]=glm::vec3(0);
@@ -427,6 +427,17 @@ __global__ void copyImageToRecord(glm::vec3 *image,glm::vec3 *copy,int N){
 	int index=blockIdx.x*blockDim.x+threadIdx.x;
 	if(index<N){
 		image[index]+=copy[index];
+	}
+}
+
+__global__ void initDeviceValue(glm::vec3 *image,glm::vec3 *pixes,int *pos,int *terminated,bool *inside,int N){
+	int index=blockIdx.x*blockDim.x+threadIdx.x;
+	if(index<N){
+		image[index]=glm::vec3(1);
+		pixes[index]=glm::vec3(1);
+		pos[index]=index;
+		terminated[index]=1;
+		inside[index]=false;
 	}
 }
 
@@ -482,11 +493,13 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_copyImage,copyImage,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
+	/*cudaMemcpy(dev_copyImage,copyImage,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_inside,inside,pixelcount*sizeof(bool),cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_terminated,terminated,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_pixes,pixes,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_pos,pos,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
+	*/
+	initDeviceValue<<<(remain+127)/128,128>>>(dev_copyImage,dev_pixes,dev_pos,dev_terminated,dev_inside,remain);
 
 	for(int i=0;i<depth;++i){
 		int bs=128;
@@ -497,11 +510,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,idata,bs);
 		delete(idata);
 		cudaMemcpy(dev_terminated,terminated,remain*sizeof(int),cudaMemcpyHostToDevice);
-		//test<<<gs,bs>>>(dev_pixes,dev_copyImage,dev_terminated,remain);
 	}
-	test1<<<(remain+127)/128,128>>>(dev_copyImage,dev_terminated,dev_pos,remain);
+	removeUnterminatedRay<<<(remain+127)/128,128>>>(dev_copyImage,dev_terminated,dev_pos,remain);
 	copyImageToRecord<<<(cam.resolution.x*cam.resolution.y+255)/256,256>>>(dev_image,dev_copyImage,cam.resolution.x*cam.resolution.y);
-	//getchar();
+	
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid, blockSize>>>(pbo, cam.resolution, iter, dev_image);
 
@@ -549,18 +561,88 @@ __global__ void downSwapOnGPU(int *idata,int step,int n,int newN){
 	}
 }
 
+__global__ void SwapOnGPU(int *idata,int n,int newN,int *sum){
+	int bx=blockIdx.x;
+	int tx=threadIdx.x;
+	int index=bx*blockDim.x+tx;
+	int step=1;
+	extern __shared__ int data[];
+	if(index<n){
+		data[tx]=idata[index];
+	}
+	__syncthreads();
+	while(step<blockDim.x){
+		if(index<newN){
+			if(step==1&&index>=n) data[tx]=0;
+			if((tx+1)%(step*2)==0) data[tx]+=data[tx-step];
+		}
+		step*=2;
+		__syncthreads();
+	}
+	step/=2;
+	while(step!=0){
+		if(index<newN){
+			if(step*2==blockDim.x&&tx==blockDim.x-1) data[tx]=0;
+			if((tx+1)%(step*2)==0){
+				int tmp=data[tx-step];
+				data[tx-step]=data[tx];
+				data[tx]+=tmp;
+			}
+		}
+		step/=2;
+		__syncthreads();
+	}
+	if(tx==blockDim.x-1) sum[bx]=data[tx]+idata[index];
+	if(index<n){
+		idata[index]=data[tx];
+	}
+	__syncthreads();
+}
+
+__global__ void addOffset(int *idata,int n,int *sum){
+	int bx=blockIdx.x;
+	int tx=threadIdx.x;
+	int index=bx*blockDim.x+tx;
+	if(index<n){
+		idata[index]+=sum[bx];
+	}
+}
+
 /**
  * Performs prefix-sum (aka scan) on idata, storing the result into odata.
  */
 void scan(int n, int *odata, const int *idata,int blockSize) {
 	int newN=pow(2,ilog2ceil(n));
-	int *dev_idata;
-	cudaMalloc((void**)&dev_idata, newN * sizeof(int));
-	cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
-
+	int *dev_idata,*dev_sum;
 	dim3 blockPerGrid=((newN+blockSize-1)/blockSize);
+	cudaMalloc(&dev_idata, newN * sizeof(int));
+	cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_sum, blockPerGrid.x*sizeof(int));
+	cudaMemset(dev_sum,0,blockPerGrid.x*sizeof(int));
+
+	SwapOnGPU<<<blockPerGrid,blockSize,blockSize*sizeof(int)>>>(dev_idata,n,newN,dev_sum);
+
+	int *dev_tmp;
+	int newN1=pow(2,ilog2ceil(blockPerGrid.x));
+	dim3 blockPerGrid1=((blockPerGrid.x+blockSize-1)/blockSize);
+	cudaMalloc(&dev_tmp, blockPerGrid1.x*sizeof(int));
+	SwapOnGPU<<<blockPerGrid1,blockSize,blockSize*sizeof(int)>>>(dev_sum,blockPerGrid.x,newN1,dev_tmp);
 	
-	int step=1;
+	if(blockPerGrid.x>blockSize){//do another Swap if the current dev_sum cannot hold blockSize element
+		int *dev_tmp1;
+		cudaMalloc(&dev_tmp1, sizeof(int));
+		cudaMemcpy(odata,dev_tmp,blockPerGrid1.x*sizeof(int),cudaMemcpyDeviceToHost);
+		
+		SwapOnGPU<<<1,blockSize,blockSize*sizeof(int)>>>(dev_tmp,blockPerGrid1.x,128,dev_tmp1);
+
+		addOffset<<<blockPerGrid1,blockSize>>>(dev_sum,blockPerGrid.x,dev_tmp);
+
+		cudaFree(dev_tmp1);
+	}
+	addOffset<<<blockPerGrid,blockSize>>>(dev_idata,n,dev_sum);
+	cudaFree(dev_tmp);
+	
+	/*int step=1;
 	while(step<newN){
 		upSwapOnGPU<<<blockPerGrid,blockSize>>>(dev_idata,step,n,newN);
 		step*=2;
@@ -569,10 +651,13 @@ void scan(int n, int *odata, const int *idata,int blockSize) {
 	while(step!=0){
 		downSwapOnGPU<<<blockPerGrid,blockSize>>>(dev_idata,step,n,newN);
 		step/=2;
-	}
+	}*/
 	
 	cudaMemcpy(odata,dev_idata,n*sizeof(int),cudaMemcpyDeviceToHost);
+	//for(int i=120;i<=128;++i) cout<<odata[i]<<endl;
+	//getchar();
 	cudaFree(dev_idata);
+	cudaFree(dev_sum);
 }
 
 __global__ void compactOrigin(int *idata,int *scanned, glm::vec3 *origin,glm::vec3 *origin_copy,int N){

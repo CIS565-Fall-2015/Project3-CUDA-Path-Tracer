@@ -167,8 +167,7 @@ SCALE       .01 10 10
 
 // Sphere
 OBJECT 6
-mesh
-../scenes/dragon.obj
+cube
 material 4
 frame 0
 TRANS       0 2 -0.5
