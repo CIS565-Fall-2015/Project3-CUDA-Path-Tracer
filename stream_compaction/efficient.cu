@@ -37,23 +37,34 @@ void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
 namespace StreamCompaction {
 namespace Efficient {
 
-	__global__ void filter(int *odata, PathRay *idata, const int n){
+	__global__ void filter(int *odata, const PathRay *idata, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 		if (k < n){
 			odata[k] = (int)!idata[k].terminate;
 		}
 	}
 
-	__global__ void scatter(PathRay *odata, PathRay *idata, int *filter, int *idx, const int n){
+	__global__ void scatter(PathRay *odata, const PathRay *idata, const int *filter, const int *idx, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
+
+		__shared__ int scatterBlock[BLOCKSIZE];
+		__shared__ PathRay rayBlock[BLOCKSIZE];
+
+		if (k < n){
+			scatterBlock[threadIdx.x] = idx[k];
+			rayBlock[threadIdx.x] = idata[k];
+		}
+
+		__syncthreads();
+
 		if (k < n){
 			if (filter[k] == 1){
-				odata[idx[k]] = idata[k];
+				odata[scatterBlock[threadIdx.x]] = rayBlock[threadIdx.x];
 			}
 		}
 	}
 
-	__global__ void countF(int *c, int *f, int *idx, const int n){
+	__global__ void countF(int *c, const int *f, const int *idx, const int n){
 		c[0] = f[n - 1] + idx[n - 1];
 	}
 
@@ -144,7 +155,7 @@ namespace Efficient {
 		}
 	}
 
-	__global__ void blockIncrement(int *odata, int *block_incr, int *small_scan, const int n){
+	__global__ void blockIncrement(int *odata, const int *block_incr, const int *small_scan, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 		if (k < n){
 			odata[k] = block_incr[blockIdx.x] + small_scan[k];

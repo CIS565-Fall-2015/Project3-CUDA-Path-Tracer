@@ -121,7 +121,13 @@ Depth: 7 / Grid size: 141986
       * Change loop ceiling `ilog2ceil(n)` to a compile-time constant: no effect, since only two less calculations per thread
       * Pre-populate `2^d` values into an array in shared memory: no effect on registers, but reduced execution time from ~4000 to ~330 microsec
     * Conclusion: achieved occupacy 41.28% -> 40.6%; exec time: ~7700 -> ~330 microsec; 2300% speed up
-    * A Google search suggests that on a Fermi GPU, pipeline latency is ~21 cycles and therefore ~43% occupancy is enough to cover the latency
+* Scan scatter (stream compaction):
+  * Pre-cache data in shared memory to reduce global memory replay overhead 50% -> 24.3%
+  * L1 cache 1% -> 86.7%
+  * Slight exec time speed up on larger array
+  * Trade-off:
+    * Reduced occupacy due to increased register count: 7 -> 23, 66.6% -> 33.3%
+    * Minimal exec time loss on small arrays ~200 microsec
 * Intersection test:
   * Block size left unchanged as optimal
   * Pre-cache geometries in shared memory
@@ -141,6 +147,7 @@ Depth: 7 / Grid size: 141986
     * Reduced register count by 1
     * Increased access to L1 cache: 65% -> 85%
     * Increased global memory replay overhead: 25% -> 34.7%
+* Ray scatter:
 
 
 ## Submit
