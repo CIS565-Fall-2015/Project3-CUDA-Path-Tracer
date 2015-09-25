@@ -197,7 +197,7 @@ A GPU based path tracer that supports several common material effects. Stream co
 * `cornell3`: SSS + specular
 * `cornell4`: SSS, same size cubes, mixed distances to light
 * `cornell5`: mixed objects, closed scene, camera inside box
-* `cornell6`: single sphere, very small window size, for performance testing
+* `cornell6`: single sphere, very small window size, for optimization testing
 
 ### Performance test data
 ```
