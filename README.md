@@ -92,7 +92,7 @@ A GPU based path tracer that supports several common material effects. Stream co
 
 **Baseline: `cornell6`, 200*200, scan block size 64**
 
-* Scan
+* **Scan**
   * Occupacy with block size
     * Block size needs to be `2^n`: pick 128 based on graph prediction, occupacy goes from 33.3% to 41.28%
 
@@ -114,7 +114,7 @@ A GPU based path tracer that supports several common material effects. Stream co
       * Execution time: dropped from ~7700 to ~330 microsec; 2300% speed up.
       * Trade-off: achieved occupacy dropped from 41.28% to 40.6%
 
-* Scan scatter (stream compaction)
+* **Scan scatter (stream compaction)**
   * Pre-cache data in shared memory:
     * Reduced global memory replay overhead: dropped from 50% to 24.3%
     * L1 cache hitrate increased dramatically: from 1% to 86.7%
@@ -122,7 +122,7 @@ A GPU based path tracer that supports several common material effects. Stream co
     * Trade-off:
       * Reduced occupacy due to increased register count: count goes from 7 to 23, occupacy from 66.6% to 33.3%
       * Slower execution on smaller arrays (~200 microsec).
-* Intersection test
+* **Intersection test**
   * Block size left unchanged as it's optimal.
   * Pre-cache geometries in shared memory:
     * Reduced access to device memory by 30% in data size, without obvious change in execution time.
@@ -141,7 +141,7 @@ A GPU based path tracer that supports several common material effects. Stream co
     * Reduced register count by 1.
     * Increased L1 cache hitrate: from 65% to 85%
     * Trade-off: increased global memory replay overhead from 25% to 34.7%
-* Ray scatter
+* **Ray scatter**
   * Remove temporary variable that stores `(ray, color)` pair:
     * Reduced register count: from 63 to 55.
     * 63% execution time speed up.
@@ -150,12 +150,12 @@ A GPU based path tracer that supports several common material effects. Stream co
     * Reduced global memory replay overhead: from 49.2% to 39.3%
   * Refactor `scatterRay` to remove redundant parameters:
     * Minor improvements regarding items above.
-* Path termination
+* **Path termination**
   * Remove temporary variable for `(ray, color)` pair and material:
     * Reduced register count: from 29 to 12.
     * 586% execution time speed up.
     * Trade-off: high global memory replay overhead (47.5%)
-* Camera raycasting
+* **Camera raycasting**
   * Remove temporary variable for `(ray, color)` pair:
     * 49.5% execution time speed up.
 
