@@ -289,11 +289,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 		cudaEventCreate(&start);
 		cudaEventCreate(&stop);*/
 
-		cudaEventRecord(start);
+		//cudaEventRecord(start);
 		TraceBounce<<<thread_blocksPerGrid, blockSize>>>(iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
-		cudaEventRecord(stop);
-		cudaEventSynchronize(stop);
-		cudaEventElapsedTime(&ms_time, start, stop);
+		//cudaEventRecord(stop);
+		//cudaEventSynchronize(stop);
+		//cudaEventElapsedTime(&ms_time, start, stop);
 		checkCUDAError("TraceBounce");
 
 		rayCount = StreamCompaction::Efficient::Compact(rayCount, dev_compactionOutput, dev_rays);
