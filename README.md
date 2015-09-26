@@ -28,9 +28,17 @@ CUDA Path Tracer
 
 
 ## Analysis
+### Stream Compaction: Open vs. Closed Scenes
+
+#### Active Threads Remaining at Each Trace Depth
+
 ![](img/Project 3 Analysis 1.png "Active Threads Remaining at Trace Depth (Open vs. Closed Scene")
 
+#### Trace Execution Time at Each Trace Depth
+
 ![](img/Project 3 Analysis 2.png "Trace Execution Time at Trace Depth (Open vs. Closed Scene")
+
+### Stream Compaction: Compaction vs. No Compaction
 
 ![](img/Project 3 Analysis 3.png "Trace Execution Time at Trace Depth for an Open Scene (Compaction vs. No Compaction")
 
@@ -39,3 +47,4 @@ CUDA Path Tracer
 ## Interactive Controls
 
 ## Scene File Format 
+Add something on included scenes
