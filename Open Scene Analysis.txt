@@ -1,0 +1,21 @@
+Open Scene Analysis
+
+Stream compaction:
+Depth 0: Trace took 4.58256ms and 447407 out of 640000 rays remain.
+Depth 1: Trace took 3.39939ms and 258788 out of 640000 rays remain.
+Depth 2: Trace took 2.05389ms and 184010 out of 640000 rays remain.
+Depth 3: Trace took 1.51395ms and 138638 out of 640000 rays remain.
+Depth 4: Trace took 1.16778ms and 109147 out of 640000 rays remain.
+Depth 5: Trace took 0.98333ms and 87256 out of 640000 rays remain.
+Depth 6: Trace took 0.83344ms and 70458 out of 640000 rays remain.
+Depth 7: Trace took 0.66774ms and 56732 out of 640000 rays remain.
+
+No stream compaction:
+Depth 0: Trace took 4.66154ms and 640000 out of 640000 rays remain.
+Depth 1: Trace took 3.53600ms and 640000 out of 640000 rays remain.
+Depth 2: Trace took 2.62701ms and 640000 out of 640000 rays remain.
+Depth 3: Trace took 2.29034ms and 640000 out of 640000 rays remain.
+Depth 4: Trace took 2.06243ms and 640000 out of 640000 rays remain.
+Depth 5: Trace took 1.90163ms and 640000 out of 640000 rays remain.
+Depth 6: Trace took 1.77546ms and 640000 out of 640000 rays remain.
+Depth 7: Trace took 1.66707ms and 640000 out of 640000 rays remain.

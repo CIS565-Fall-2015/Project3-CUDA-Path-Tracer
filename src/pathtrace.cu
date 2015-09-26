@@ -283,11 +283,24 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 	int currentDepth = 0, rayCount = pixelcount;
 	while (rayCount > 0 && currentDepth < traceDepth) {
 		dim3 thread_blocksPerGrid = (rayCount + blockSideLengthSquare - 1) / blockSideLengthSquare;
+		/*cudaEvent_t start, stop;
+		float ms_time = 0.0f;
 
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);*/
+
+		cudaEventRecord(start);
 		TraceBounce<<<thread_blocksPerGrid, blockSize>>>(iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&ms_time, start, stop);
 		checkCUDAError("TraceBounce");
 
 		rayCount = StreamCompaction::Efficient::Compact(rayCount, dev_compactionOutput, dev_rays);
+		/*if (iter == 1) {
+			printf("Depth %d: Trace took %.5fms and %d out of %d rays remain.\n", currentDepth, ms_time, rayCount, pixelcount);
+		}*/
+		
 		cudaMemcpy(dev_rays, dev_compactionOutput, rayCount * sizeof(Ray), cudaMemcpyDeviceToDevice);
 		currentDepth++;
 	}
