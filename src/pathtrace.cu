@@ -11,12 +11,11 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
-#include "../stream_compaction/thrust.h"
+#include "../stream_compaction/efficient.h"
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-// TODO: Why did this start throwing a multi define error?
-#define checkCUDAError(msg) checkCUDAErrorFn1(msg, FILENAME, __LINE__)
-void checkCUDAErrorFn1(const char *msg, const char *file, int line) {
+#define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 	cudaError_t err = cudaGetLastError();
 	if (cudaSuccess == err) {
 		return;
@@ -62,6 +61,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Ray* dev_rays = NULL;
+static Ray* dev_compactionOutput = NULL;
 static Geom* dev_geoms = NULL;
 static MovingGeom* hst_mgeoms = NULL;
 static MovingGeom* dev_mgeoms = NULL;
@@ -82,6 +82,9 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
 	cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
 
+	cudaMalloc(&dev_compactionOutput, pixelcount * sizeof(Ray));
+	cudaMemset(dev_compactionOutput, 0, pixelcount * sizeof(Ray));
+
 	cudaMalloc(&dev_materials, pixelcount * sizeof(Material));
 	cudaMemcpy(dev_materials, materials, hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
@@ -91,7 +94,9 @@ void pathtraceInit(Scene *scene) {
 void pathtraceFree() {
 	cudaFree(dev_image); // no-op if dev_image is null
 	cudaFree(dev_rays);
+	cudaFree(dev_compactionOutput);
 	cudaFree(dev_geoms);
+	cudaFree(dev_mgeoms);
 	cudaFree(dev_materials);
 
 	checkCUDAError("pathtraceFree");
@@ -199,7 +204,8 @@ __global__ void TraceBounce(int iter, int depth, glm::vec3 *image, Ray *rays, co
 			t = sphereIntersectionTest(geoms[i], rays[index], intersectionPoint, normal);
 		}
 		else {
-			// Error. will add triangles later
+			printf("Invalid geometry.");
+			continue;
 		}
 
 		// Find the closest intersection
@@ -298,20 +304,17 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 	InitializeRays<<<blocksPerGrid, blockSize>>>(cam, iter, dev_rays);
 	checkCUDAError("InitializeRays");
 
-	int currentDepth = 0;
-	Ray *dev_raysEnd = dev_rays + pixelcount;
-	while (dev_raysEnd != dev_rays && currentDepth < traceDepth) {
-		int threadsRemaining = dev_raysEnd - dev_rays;
-		dim3 thread_blocksPerGrid = (threadsRemaining + blockSideLengthSquare - 1) / blockSideLengthSquare;
+	int currentDepth = 0, rayCount = pixelcount;
+	while (rayCount > 0 && currentDepth < traceDepth) {
+		dim3 thread_blocksPerGrid = (rayCount + blockSideLengthSquare - 1) / blockSideLengthSquare;
 
 		TraceBounce<<<thread_blocksPerGrid, blockSize>>>(iter, currentDepth, dev_image, dev_rays, dev_geoms, numberOfObjects, dev_materials);
 		checkCUDAError("TraceBounce");
 
-		dev_raysEnd = StreamCompaction::Thrust::compact(dev_rays, dev_raysEnd);
+		rayCount = StreamCompaction::Efficient::Compact(rayCount, dev_compactionOutput, dev_rays);
+		cudaMemcpy(dev_rays, dev_compactionOutput, rayCount * sizeof(Ray), cudaMemcpyDeviceToDevice);
 		currentDepth++;
 	}
-
-	// TODO: If you add a background color that is not black, you will need to make sure to add it to any non terminated rays here.
 
 	///////////////////////////////////////////////////////////////////////////
 
@@ -327,3 +330,4 @@ void pathtrace(uchar4 *pbo, int frame, int iter, int maxIter) {
 	// Free geoms here because we are going to keep allocating it on each iteration atm
 	free(geoms);
 }
+

@@ -1,169 +1,191 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include "common.h"
 #include "efficient.h"
+
+#define blockSize 128
 
 namespace StreamCompaction {
 namespace Efficient {
 
-__global__ void up_sweep(int n, int d, int *data) {
-	int k = threadIdx.x + (blockIdx.x * blockDim.x);
-
-	if (k < n) {
-		int p2d = pow(2.0, (double)d);
-		int p2da1 = pow(2.0, (double)(d + 1));
-
-		if (k % p2da1 == 0) {
-			data[k + p2da1 - 1] += data[k + p2d - 1];
-		}
-	}	
-}
-
-__global__ void down_sweep(int n, int d, int *data) {
-	int k = threadIdx.x + (blockIdx.x * blockDim.x);
-
-	if (k < n) {
-		int p2d = pow(2.0, (double)d);
-		int p2da1 = pow(2.0, (double)(d + 1));
-
-		if (k % p2da1 == 0) {
-			int temp = data[k + p2d - 1];
-			data[k + p2d - 1] = data[k + p2da1 - 1];
-			data[k + p2da1 - 1] += temp;
-		}
-	}
-}
-
-void padArrayRange(int start, int end, int *a) {
-	for (int i = start; i < end; i++) {
-		a[i] = 0;
-	}
-}
 /**
- * Performs prefix-sum (aka scan) on idata, storing the result into odata.
+ * Check for CUDA errors; print and exit if there was a problem.
  */
-float scan(int n, int *odata, const int *idata) {
-	int m = pow(2, ilog2ceil(n));
-	int *new_idata = (int*)malloc(m * sizeof(int));
-	dim3 fullBlocksPerGrid((m + blockSize - 1) / blockSize);
-	dim3 threadsPerBlock(blockSize);
+void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+    cudaError_t err = cudaGetLastError();
+    if (cudaSuccess == err) {
+        return;
+    }
 
-	cudaEvent_t start, stop;
-	float ms_time = 0.0f;
-	float ms_total_time = 0.0f;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-
-	// Expand array to next power of 2 size
-	for (int i = 0; i < n; i++) {
-		new_idata[i] = idata[i];
-	}
-	padArrayRange(n, m, new_idata);
-
-	// Can use one array for input and output in this implementation
-	int *dev_data;
-	cudaMalloc((void**)&dev_data, m * sizeof(int));
-	cudaMemcpy(dev_data, new_idata, m * sizeof(int), cudaMemcpyHostToDevice);
-
-	// Execute scan on device
-	cudaEventRecord(start);
-	for (int d = 0; d < ilog2ceil(n); d++) {
-		up_sweep<<<fullBlocksPerGrid, threadsPerBlock>>>(n, d, dev_data);
-	}
-	cudaEventRecord(stop);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&ms_time, start, stop);
-	ms_total_time += ms_time;
-	ms_time = 0.0f;
-
-	cudaMemset((void*)&dev_data[m - 1], 0, sizeof(int));
-	cudaEventRecord(start);
-	for (int d = ilog2ceil(n) - 1; d >= 0; d--) {
-		down_sweep<<<fullBlocksPerGrid, threadsPerBlock>>>(n, d, dev_data);
-	}
-	cudaEventRecord(stop);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&ms_time, start, stop);
-	ms_total_time += ms_time;
-
-	cudaMemcpy(odata, dev_data, n * sizeof(int), cudaMemcpyDeviceToHost);
-
-	cudaFree(dev_data);
-	free(new_idata);
-
-	return ms_total_time;
+    fprintf(stderr, "CUDA error");
+    if (file) {
+        fprintf(stderr, " (%s:%d)", file, line);
+    }
+    fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+    exit(EXIT_FAILURE);
 }
 
 /**
- * Performs stream compaction on idata, storing the result into odata.
- * All zeroes are discarded.
- *
- * @param n      The number of elements in idata.
- * @param odata  The array into which to store elements.
- * @param idata  The array of elements to compact.
- * @returns      The number of elements remaining after compaction.
- */
-int compact(int n, int *odata, const int *idata) {
-	int *bools = (int*)malloc(n * sizeof(int));
-	int *scan_data = (int*)malloc(n * sizeof(int));
-	int num_remaining = -1;
-	dim3 fullBlocksPerGrid((n + blockSize - 1) / blockSize);
-	dim3 threadsPerBlock(blockSize);
+* Maps an array to an array of 0s and 1s for stream compaction. Elements
+* which map to 0 will be removed, and elements which map to 1 will be kept.
+*/
+__global__ void KernMapToBoolean(int n, int *bools, const Ray *idata) {
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	bools[index] = !!idata[index].alive;
+}
 
-	cudaEvent_t start, stop;
-	float ms_time = 0.0f;
-	float ms_total_time = 0.0f;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
+/**
+* Performs scatter on an array. That is, for each element in idata,
+* if bools[idx] == 1, it copies idata[idx] to odata[indices[idx]].
+*/
+__global__ void KernScatter(int n, Ray *odata, const Ray *idata, const int *bools, const int *indices) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-	int *dev_bools;
-	int *dev_idata;
-	int *dev_odata;
-	int *dev_scan_data;
+	if (bools[index] == 1) {
+		odata[indices[index]] = idata[index];
+	}
+}
 
-	cudaMalloc((void**)&dev_bools, n * sizeof(int));
-	cudaMalloc((void**)&dev_idata, n * sizeof(int));
-	cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+/**
+* Accumulates the new count of threads for a block with the original.
+*/
+__global__ void KernGetBlockCount(int n, int *odata, const int *idata1, const int *idata2) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	odata[index] = idata1[(index + 1) * blockSize - 1] + idata2[(index + 1) * blockSize - 1];
+}
 
-	cudaMalloc((void**)&dev_odata, n * sizeof(int));
-	cudaMalloc((void**)&dev_scan_data, n * sizeof(int));
+/**
+* Increments the block count.
+*/
+__global__ void KernIncrementBlock(int n, int *data, const int *increments) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	data[index] = data[index] + increments[blockIdx.x];
+}
 
-	// Map to boolean
-	cudaEventRecord(start);
-	StreamCompaction::Common::kernMapToBoolean<<<fullBlocksPerGrid, threadsPerBlock>>>(n, dev_bools, dev_idata);
-	cudaEventRecord(stop);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&ms_time, start, stop);
-	ms_total_time += ms_time;
-	ms_time = 0.0f;
+/*
+* Performs work efficient scan on data in a single GPU block using shared memory.
+* Based on the GPU Gems 3 Code found here:
+* http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html
+*/
+__global__ void KernScan(int n, int *odata, const int *idata) {
+	int index = threadIdx.x;
+	int offset = 1;
+	extern __shared__ int temp[];
 
-	cudaMemcpy(bools, dev_bools, n * sizeof(int), cudaMemcpyDeviceToHost);
+	// Copy input data to shared memory
+	temp[2 * index] = idata[2 * index + (blockIdx.x * blockDim.x * 2)];
+	temp[2 * index + 1] = idata[2 * index + 1 + (blockIdx.x * blockDim.x * 2)];
 
-	// Execute the scan
-	ms_total_time += scan(n, scan_data, bools);
-	num_remaining = scan_data[n - 1] + bools[n - 1];
+	// Up sweep
+	for (int d = n >> 1; d > 0; d >>= 1) {
+		__syncthreads();
 
-	// Execute the scatter
-	cudaMemcpy(dev_scan_data, scan_data, n * sizeof(int), cudaMemcpyHostToDevice);
-	cudaEventRecord(start);
-	StreamCompaction::Common::kernScatter<<<fullBlocksPerGrid, threadsPerBlock>>>(n, dev_odata, dev_idata, dev_bools, dev_scan_data);
-	cudaEventRecord(stop);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&ms_time, start, stop);
-	ms_total_time += ms_time;
-	printf("CUDA execution time for stream compaction: %.5fms\n", ms_total_time);
+		if (index < d) {
+			int ai = offset * (2 * index + 1) - 1;
+			int bi = offset * (2 * index + 2) - 1;
+			temp[bi] += temp[ai];
+		}
+		offset *= 2;
+	}
 
-	cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+	// Clear the root
+	if (index == 0) {
+		temp[n - 1] = 0;
+	}
 
-	cudaFree(dev_bools);
+	// Down sweep
+	for (int d = 1; d < n; d *= 2) {
+		offset >>= 1;
+		__syncthreads();
+
+		if (index < d) {
+			int ai = offset * (2 * index + 1) - 1;
+			int bi = offset * (2 * index + 2) - 1;
+			int t = temp[ai];
+			temp[ai] = temp[bi];
+			temp[bi] += t;
+		}
+	}
+	__syncthreads();
+
+	// Write to output array
+	odata[2 * index + (blockIdx.x * blockDim.x * 2)] = temp[2 * index];
+	odata[2 * index + 1 + (blockIdx.x * blockDim.x * 2)] = temp[2 * index + 1];
+}
+
+void Scan(int n, int *odata, int *idata) {
+	int blocksPerGrid = (n - 1) / blockSize + 1;
+	int *dev_idata, *dev_odata; // Padded device memory to handle non power of 2 cases
+
+	cudaMalloc((void**)&dev_idata, blocksPerGrid * blockSize * sizeof(int));
+	cudaMemset(dev_idata, 0, blocksPerGrid * blockSize * sizeof(int));
+	cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyDeviceToDevice);
+
+	cudaMalloc((void**)&dev_odata, blocksPerGrid * blockSize * sizeof(int));
+
+	if (blocksPerGrid == 1) {
+		KernScan<<<1, blockSize / 2, blockSize * sizeof(int)>>>(blockSize, dev_odata, dev_idata);
+		checkCUDAError("KernScan");
+
+		cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToDevice);
+	}
+	else {
+		int *dev_increments, *dev_scannedIncrements;
+
+		cudaMalloc((void**)&dev_increments, blocksPerGrid * sizeof(int));
+		cudaMalloc((void**)&dev_scannedIncrements, blocksPerGrid * sizeof(int));
+
+		KernScan<<<blocksPerGrid, blockSize / 2, blockSize * sizeof(int)>>>(blockSize, dev_odata, dev_idata);
+		checkCUDAError("KernScan");
+
+		int tempBlocksPerGrid = (blocksPerGrid - 1) / blockSize + 1;
+		KernGetBlockCount<<<tempBlocksPerGrid, blockSize>>>(blocksPerGrid, dev_increments, dev_odata, dev_idata);
+		checkCUDAError("KernGetBlockCount");
+
+		// Recursive scan call until we can fit on a single block
+		Scan(blocksPerGrid, dev_scannedIncrements, dev_increments);
+
+		KernIncrementBlock<<<blocksPerGrid, blockSize>>>(blocksPerGrid * blockSize, dev_odata, dev_scannedIncrements);
+		checkCUDAError("KernIncrementBlock");
+
+		cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToDevice);
+
+		cudaFree(dev_increments);
+		cudaFree(dev_scannedIncrements);
+	}
+
 	cudaFree(dev_idata);
 	cudaFree(dev_odata);
-	cudaFree(dev_scan_data);
-	free(bools);
-	free(scan_data);
-
-	return num_remaining;
 }
 
+int Compact(int n, Ray *odata, Ray *idata) {
+	int blocksPerGrid = (n - 1) / blockSize + 1;
+	int rayCount = 0;
+	int *dev_bools, *dev_scanData;
+
+	cudaMalloc((void**)&dev_bools, n * sizeof(int));
+	cudaMalloc((void**)&dev_scanData, blocksPerGrid * blockSize * sizeof(int));
+
+	// Map input to boolean values
+	KernMapToBoolean<<<blocksPerGrid, blockSize>>>(n, dev_bools, idata);
+	checkCUDAError("KernMapToBoolean");
+
+	// Scan
+	Scan(n, dev_scanData, dev_bools);
+
+	// Scatter
+	KernScatter<<<blocksPerGrid, blockSize>>>(n, odata, idata, dev_bools, dev_scanData);
+	checkCUDAError("KernScatter");
+
+	// Get number of rays remaining
+	int lastScanDataElem, lastBoolElem;
+	cudaMemcpy(&lastScanDataElem, dev_scanData + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpy(&lastBoolElem, dev_bools + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
+	rayCount = lastScanDataElem + lastBoolElem;
+
+	cudaFree(dev_bools);
+	cudaFree(dev_scanData);
+
+	return rayCount;
+}
 }
 }

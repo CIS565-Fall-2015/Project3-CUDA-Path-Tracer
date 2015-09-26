@@ -71,7 +71,7 @@ int Scene::loadGeom(string objectid) {
 		int numFrames = 0;
 		utilityCore::safeGetline(fp_in, line);
 		vector<glm::vec3> tempTranslations, tempRotations, tempScales;
-		bool tempBlur;
+		bool tempBlur = false;
 		while (!line.empty() && fp_in.good()) {
 			vector<string> tokens = utilityCore::tokenizeString(line);
 
