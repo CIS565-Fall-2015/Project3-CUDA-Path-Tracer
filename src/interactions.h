@@ -71,6 +71,7 @@ void scatterRay(
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
+		bool out,
         thrust::default_random_engine &rng) {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
@@ -80,25 +81,39 @@ void scatterRay(
 	if (m.hasRefractive == 1) {
 		thrust::uniform_real_distribution<float> probDistrib(0.0f, 1.0f);
 		float prob = probDistrib(rng);
-		if (0.5f < prob) {
-			float angle;
-			glm::vec3 refractionPoint;
-			angle = acos(glm::dot(ray.direction, normal) / (glm::length(ray.direction)*glm::length(normal)));
-			angle *= (180.0f / PI);
-			if (angle >= 90.0f){
-				refractionPoint = glm::refract(ray.direction, normal, 1.0f / m.indexOfRefraction);//asin(1.0f/isx.node->Mat.ior));
+		float angle;
+		glm::vec3 refractionPoint;
+		
+		
+		float R_0;
+		if (out) {
+			R_0 = ((1.0f - m.indexOfRefraction) / (1.0f + m.indexOfRefraction))*((1.0f - m.indexOfRefraction) / (1.0f + m.indexOfRefraction));
+			float n_12 = glm::pow(1.0f / m.indexOfRefraction, 2);
+			angle = 1.0f - n_12 * (1.0f - glm::pow(glm::dot(normal, ray.direction), 2));
+		}
+		else {
+			R_0 = ((m.indexOfRefraction - 1.0f) / (m.indexOfRefraction + 1.0f)) * ((m.indexOfRefraction - 1.0f) / (m.indexOfRefraction + 1.0f));
+			angle = 1.0f - glm::pow(m.indexOfRefraction, 2) * (1.0f - glm::pow(glm::dot(normal, ray.direction), 2));
+		}
+		float reflCoeff = R_0 + (1.0f - R_0) * glm::pow(1.0f - glm::dot(normal, -ray.direction), 5); 
+		if ((1.0f - reflCoeff) > prob && angle > 0.0f) {
+			if (out == true){ //if ray is coming from air to geom
+				refractionPoint = glm::refract(ray.direction, normal, 1.0f / m.indexOfRefraction);
+				ray.out = false;
 			}
-			else{
-				refractionPoint = glm::refract(ray.direction, -normal, m.indexOfRefraction);
+			else{ //if ray is coming out of geom into air
+				refractionPoint = glm::refract(ray.direction, normal, m.indexOfRefraction);
+				ray.out = true;
 			}
 			ray.direction = refractionPoint;
 			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
-			color *= m.color;
+			color *= m.color;// *(1.0f / reflCoeff);
+			
 		}
 		else {
 			ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
 			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
-			color *= m.color;
+			color *= m.color;// *(1.0f / reflCoeff);
 		}
 
 	}
@@ -106,6 +121,20 @@ void scatterRay(
 		ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
 		ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
 		color *= m.color;
+	}
+	else if (m.specular.exponent > 0) {
+		thrust::uniform_real_distribution<float> probDistrib(0.0f, 1.0f);
+		float prob = probDistrib(rng);
+		if (.2f > prob) {
+			ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
+			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
+			color *= m.specular.color;
+		}
+		else {
+			ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
+			color *= m.color;
+		}
 	}
 	//DIFFUSE
 	else {

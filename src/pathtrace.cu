@@ -175,7 +175,7 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dof){
 		ray[index].color = glm::vec3(1.0, 1.0, 1.0);
 		ray[index].index = index;
 		ray[index].terminated = false;
-
+		ray[index].out = true;
 		if (dof == true) {
 			glm::vec3 apOff = glm::vec3(dofDistrib(rng), dofDistrib(rng), 0.0f);
 			glm::vec3 new_E = cam.position + apOff;
@@ -327,7 +327,7 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 		int objIndex;
 		if (depth == traceDepth) {
 			dev_image[rayArray[index].index] == glm::vec3(0.0f, 0.0f, 0.0f);
-			for (int i = 0; i < numGeoms; i++) {
+			/*for (int i = 0; i < numGeoms; i++) {
 				if (mats[geoms[i].materialid].emittance > 0 && mats[geoms[rayArray[index].geomid].materialid].emittance == 0 && mats[geoms[rayArray[index].geomid].materialid].hasReflective == 0 && mats[geoms[rayArray[index].geomid].materialid].hasRefractive == 0) {
 					glm::vec3 new_pt = getRandomPointOnCube(geoms[i], iter, index);
 					rayArray[index].direction = rayArray[index].origin + glm::normalize(new_pt - rayArray[index].origin);
@@ -338,10 +338,11 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 						dev_image[index] += rayArray[index].color;
 					}
 				}
-			}
+			}*/
 			
 		}
 		float t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+
 		rayArray[index].geomid = objIndex;
 		//get direction of next ray and compute new color
 		if (t >= 0.0f) {
@@ -351,7 +352,7 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 				rayArray[index].terminated = true;
 			}
 			else {
-				scatterRay(rayArray[index], rayArray[index].color, interPoint, norm, mats[geoms[objIndex].materialid], rng);
+				scatterRay(rayArray[index], rayArray[index].color, interPoint, norm, mats[geoms[objIndex].materialid], out, rng);
 			}
 		}
 		else {

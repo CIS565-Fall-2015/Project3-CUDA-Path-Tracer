@@ -17,6 +17,7 @@ struct Ray {
 	int index;
 	bool terminated;
 	int geomid;
+	bool out;
 };
 
 struct Geom {
