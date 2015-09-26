@@ -376,6 +376,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		//TODO:self work efficient
 		num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
+		checkCUDAError("stream compaction");
 	}
 
     ///////////////////////////////////////////////////////////////////////////

@@ -151,20 +151,20 @@ namespace StreamCompaction {
 			//}
 
 			//test
-			printf("%d : %d\n", ai + blockOffset, s_idata[ai + bankOffsetA]);
-			printf("%d : %d\n", bi + blockOffset, s_idata[bi + bankOffsetB]);
+			//printf("%d : %d\n", ai + blockOffset, s_idata[ai + bankOffsetA]);
+			//printf("%d : %d\n", bi + blockOffset, s_idata[bi + bankOffsetB]);
 		}
 
 
 
 
-		__global__ void kernCopyToBlockSumArray(int N,int blockArraySize, int * g_sum ,const int * g_idata)
+		__global__ void kernCopyToBlockSumArray(int N,int blockArraySize, int * g_sum ,const int * g_bools,const int * g_idata)
 		{
 			int k = threadIdx.x + blockDim.x * blockIdx.x;
 
 			if (k < N)
 			{
-				g_sum[k] = g_idata[(k)*blockArraySize + blockArraySize - 1];
+				g_sum[k] = g_idata[(k)*blockArraySize + blockArraySize - 1] + g_bools[(k)*blockArraySize + blockArraySize - 1];
 			}
 		}
 
@@ -262,11 +262,14 @@ namespace StreamCompaction {
 			cudaMalloc(&block_sum_array, size_sum * sizeof(int));
 
 			cudaDeviceSynchronize();
-			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, scans);
+			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, bools, scans);
 			cudaDeviceSynchronize();
 
+			//if (numBlocks_2.x == 1)
+			//{
+				scan(size_sum, block_sum_array, block_sum_array);
+			//}
 			
-			scan(size_sum, block_sum_array, block_sum_array);
 			
 
 			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2 * blockSize, scans, block_sum_array);
@@ -302,35 +305,6 @@ namespace StreamCompaction {
 			
 
 			scan(size, scans, exist);
-
-			/*
-
-			//per block scan
-			kernScan << <fullBlocksPerGrid_2, blockSize, 2*blockSize*sizeof(int) >> >(size,scan, exist);
-
-
-			//int ceil_log2n_sum = ilog2ceil(fullBlocksPerGrid.x);
-			//int size_sum = 1 << ceil_log2n_sum;
-			int size_sum = fullBlocksPerGrid_2.x;
-
-			dim3 numBlocks_2((size_sum/2 + blockSize - 1) / blockSize);
-			dim3 numBlocks((size_sum + blockSize - 1) / blockSize);
-
-			cudaMalloc(&block_sum_array, size_sum * sizeof(int));
-
-			cudaDeviceSynchronize();
-			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2*blockSize, block_sum_array, exist);
-			cudaDeviceSynchronize();
-
-			//this should be one block
-			kernScan << <numBlocks_2, blockSize, 2*blockSize*sizeof(int) >> >(size_sum, block_sum_array, block_sum_array);
-			cudaDeviceSynchronize();
-			//////////////////////
-			
-			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2*blockSize, scans, block_sum_array);
-			cudaDeviceSynchronize();
-			
-			*/
 
 
 			//compact
