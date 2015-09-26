@@ -158,13 +158,19 @@ namespace StreamCompaction {
 
 
 
-		__global__ void kernCopyToBlockSumArray(int N,int blockArraySize, int * g_sum ,const int * g_bools,const int * g_idata)
+		__global__ void kernCopyToBlockSumArray(int N,int blockArraySize, int * g_sum ,const int * g_bools,const int * g_scans)
 		{
+			//turn from exclusive result to inclusive
 			int k = threadIdx.x + blockDim.x * blockIdx.x;
 
 			if (k < N)
 			{
-				g_sum[k] = g_idata[(k)*blockArraySize + blockArraySize - 1] + g_bools[(k)*blockArraySize + blockArraySize - 1];
+				int this_block_last_id = (k)*blockArraySize + blockArraySize - 1;
+				g_sum[k] = g_scans[this_block_last_id] + g_bools[this_block_last_id];
+			}
+			else
+			{
+				g_sum[k] = 0;
 			}
 		}
 
@@ -176,10 +182,9 @@ namespace StreamCompaction {
 			{
 
 				//all element after the first block array
-				//if (k >= blockArraySize)
-				//{
-					g_odata[k] += g_sum[k / blockArraySize];
-				//}
+				
+				g_odata[k] += g_sum[(k / blockArraySize)];
+				
 			}
 			
 		}
@@ -246,6 +251,7 @@ namespace StreamCompaction {
 
 			//multiblock scan
 			int * block_sum_array;
+			int * block_sum_array_bools;
 
 			//per block scan
 			kernScan << <fullBlocksPerGrid_2, blockSize, 2 * blockSize*sizeof(int) >> >(size, scans, bools);
@@ -265,15 +271,23 @@ namespace StreamCompaction {
 			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, bools, scans);
 			cudaDeviceSynchronize();
 
+
+			cudaMalloc(&block_sum_array_bools, size_sum * sizeof(int));
+			cudaMemcpy(block_sum_array_bools, block_sum_array, size_sum * sizeof(int), cudaMemcpyDeviceToDevice);
+
 			//if (numBlocks_2.x == 1)
 			//{
-				scan(size_sum, block_sum_array, block_sum_array);
+			scan(size_sum, block_sum_array, block_sum_array_bools);
 			//}
 			
 			
 
 			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2 * blockSize, scans, block_sum_array);
 			cudaDeviceSynchronize();
+
+
+			cudaFree(block_sum_array);
+			cudaFree(block_sum_array_bools);
 		}
 
 
@@ -319,7 +333,7 @@ namespace StreamCompaction {
 			cudaMemcpy(&hos_sum, scans + size - 1, sizeof(int), cudaMemcpyDeviceToHost);
 
 			int hos_last;
-			cudaMemcpy(&hos_last, exist + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
+			cudaMemcpy(&hos_last, exist + size - 1, sizeof(int), cudaMemcpyDeviceToHost);
 
 
 			cudaFree(tmp_path);

@@ -32,6 +32,76 @@ int main(int argc, char** argv) {
 	//std::cout<<sizeof(Material)<<std::endl;
 	
 
+	//test stream compaction
+	int num = 80;
+	//int num = 30;
+	std::vector<Path> hos_paths(num);
+	std::vector<Path> hos_paths_cmp(num);
+
+
+	//init
+	int ii = 0;
+	for (Path& p : hos_paths)
+	{
+		p.terminated = (ii%11!=0);
+		p.image_index = ii;
+		ii++;
+	}
+	hos_paths.at(num - 1).terminated = false;;
+	//hos_paths.at(0).terminated = false;
+	//hos_paths.at(1).terminated = false;
+	//hos_paths.at(5).terminated = false;
+	//hos_paths.at(10).terminated = false;
+	//hos_paths.at(13).terminated = false;
+	//hos_paths.at(16).terminated = false;
+	//hos_paths.at(21).terminated = false;
+
+	//hos_paths.at(38).terminated = false;
+	//hos_paths.at(99).terminated = false;
+	//hos_paths.at(177).terminated = false;
+	//hos_paths.at(199).terminated = false;
+
+	////////
+
+	int cpu_compact_num = StreamCompaction::Efficient::compactWithoutScan(num, hos_paths_cmp.data(), hos_paths.data());
+	std::cout << "input:" << std::endl;
+	StreamCompaction::Efficient::printArray(num, hos_paths.data());
+	std::cout << "cpu:" << std::endl;
+	StreamCompaction::Efficient::printArray(cpu_compact_num, hos_paths_cmp.data());
+
+
+	Path * dev_paths;
+	cudaMalloc(&dev_paths, num*sizeof(Path));
+	cudaMemcpy(dev_paths, hos_paths.data(), num*sizeof(Path), cudaMemcpyHostToDevice);
+
+	num = StreamCompaction::Efficient::compact(num, dev_paths);
+
+
+	cudaMemcpy(hos_paths.data(), dev_paths, num*sizeof(Path), cudaMemcpyDeviceToHost);
+
+
+	cudaFree(dev_paths);
+
+	//StreamCompaction::Efficient::printArray(cpu_compact_num, hos_paths_cmp.data());
+	
+	std::cout << "gpu:" << std::endl;
+	StreamCompaction::Efficient::printArray(num, hos_paths.data());
+
+
+	
+	if (cpu_compact_num != num)
+	{
+		printf("fail,num not equal... cpu:%d       gpu:%d\n",cpu_compact_num,num);
+	}
+	else if (StreamCompaction::Efficient::cmpArrays(num, hos_paths_cmp.data(), hos_paths.data()))
+	{
+		printf("fail\n");
+	}
+
+	return 0;
+	////////////////////////////////////
+
+
     startTimeString = currentTimeString();
 
     if (argc < 2) {

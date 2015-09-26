@@ -16,8 +16,8 @@
 
 
 //const int blockSize = 192;
-const int blockSize = 128;
-//const int blockSize = 8;
+//const int blockSize = 128;
+const int blockSize = 4;
 
 /**
  * Check for CUDA errors; print and exit if there was a problem.
