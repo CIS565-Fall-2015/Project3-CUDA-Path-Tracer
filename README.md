@@ -7,26 +7,24 @@ CUDA Path Tracer
 * Tested on: Windows 10, i7-3770K @ 3.50GHz 16GB, 2 x GTX 980 4096MB (Personal Computer)
 
 ## Description
-================
 
 ## Features
-================
 
-# Raycasting
+### Raycasting
 
-# Diffuse Surfaces
+### Diffuse Surfaces
 
-# Perfectly Specular Reflective Surfaces
+### Perfectly Specular Reflective Surfaces
 
-# Work Efficient Stream Compaction
+### Work Efficient Stream Compaction
 
-# Refractive Surfaces??
+### Refractive Surfaces??
 
-# Depth of Field
+### Depth of Field
 
-# Non-Perfect Specular Surfaces
+### Non-Perfect Specular Surfaces
 
-# Motion Blur
+### Motion Blur
 
 ![](img/Project 3 Analysis 1.png "Active Threads Remaining at Trace Depth (Open vs. Closed Scene")
 
