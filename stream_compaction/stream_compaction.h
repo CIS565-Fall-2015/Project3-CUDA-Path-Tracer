@@ -12,7 +12,7 @@
 
 namespace StreamCompaction {
 namespace Efficient {
-    void scan(int n, int *idata);	//scan the terminated bool ray
+	void scan(int size, int * scans, const int * bools);
 
 	int compact(int n, Path* path);
 

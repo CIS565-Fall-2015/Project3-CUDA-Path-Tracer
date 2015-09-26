@@ -36,15 +36,18 @@ int main(int argc, char** argv) {
 	
 	//test stream compaction
 	//int num = 200;
-	int num = 14;
+	int num = 30;
 	std::vector<Path> hos_paths(num);
 	std::vector<Path> hos_paths_cmp(num);
 
 
 	//init
+	int ii = 0;
 	for (auto p : hos_paths)
 	{
 		p.terminated = true;
+		p.image_index = ii;
+		ii++;
 	}
 
 	hos_paths.at(0).terminated = false;
@@ -52,9 +55,9 @@ int main(int argc, char** argv) {
 	hos_paths.at(5).terminated = false;
 	hos_paths.at(10).terminated = false;
 	hos_paths.at(13).terminated = false;
+	hos_paths.at(16).terminated = false;
+	hos_paths.at(21).terminated = false;
 	
-	//hos_paths.at(16).terminated = false;
-	//hos_paths.at(21).terminated = false;
 	//hos_paths.at(38).terminated = false;
 	//hos_paths.at(99).terminated = false;
 	//hos_paths.at(177).terminated = false;

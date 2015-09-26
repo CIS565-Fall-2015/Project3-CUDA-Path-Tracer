@@ -58,16 +58,18 @@ namespace StreamCompaction {
 
 		//combine upsweep, downsweep ... -> one kernel function
 		//one block
+		//g_odata can = g_idata
 		__global__ void kernScan(int N , int * g_odata, const int *g_idata)
 		{
 			extern __shared__ int s_idata[];
 
-			int blockOffset = blockDim.x * blockIdx.x;
+			int n = blockDim.x * 2;		//data size
+			int blockOffset = n * blockIdx.x;
 			int thid = threadIdx.x;	// +blockDim.x * blockIdx.x;
 
 			//if (thid + blockOffset < N)
 			//{
-			int n = blockDim.x ;		
+				
 			//int n_data = n * 2;
 			int offset = 1;
 
@@ -127,7 +129,7 @@ namespace StreamCompaction {
 
 
 			//DownSweep
-			for (int d = 1; d < n; d >>= 1)
+			for (int d = 1; d < n; d <<= 1)
 			{
 				offset >>= 1;
 				__syncthreads();
@@ -169,10 +171,12 @@ namespace StreamCompaction {
 			int k = threadIdx.x + blockDim.x * blockIdx.x;
 			if (k < N)
 			{
-				if (k >= blockArraySize)
-				{
-					g_odata[k] = g_sum[k / blockArraySize];
-				}
+
+				//all element after the first block array
+				//if (k >= blockArraySize)
+				//{
+					g_odata[k] += g_sum[k / blockArraySize];
+				//}
 			}
 			
 		}
@@ -214,41 +218,57 @@ namespace StreamCompaction {
 		* input g_idata is on global memory on device
 		*/
 
-		//wrapper function
-		void scan(int n, int *g_idata) {
-			
-			int ceil_log2n = ilog2ceil(n);
-			int size = 1 << ceil_log2n;
+		
 
+
+
+		/**
+		* N - size of the bools, has already been extended to 2^c
+		* scans, bools - device memory, memory has been allocated
+		*/
+		void scan(int size, int * scans, const int * bools)
+		{
+			dim3 fullBlocksPerGrid_2((size / 2 + blockSize - 1) / blockSize);
 			dim3 fullBlocksPerGrid((size + blockSize - 1) / blockSize);
 
 
-			
-
-
-			//UpSweep
-			for (int d = 0; d < ceil_log2n - 1; d++)
+			if (fullBlocksPerGrid_2.x == 1)
 			{
-				kernUpSweep << < fullBlocksPerGrid, blockSize >> > (size, 1 << (d + 1), g_idata);
+				// one block scan
+				kernScan << <fullBlocksPerGrid_2, blockSize, 2 * blockSize*sizeof(int) >> >(size, scans, bools);
 				cudaDeviceSynchronize();
+				return;
 			}
 
-			kernSetRootZero << < fullBlocksPerGrid, blockSize >> > (size - 1, g_idata);
+
+			//multiblock scan
+			int * block_sum_array;
+
+			//per block scan
+			kernScan << <fullBlocksPerGrid_2, blockSize, 2 * blockSize*sizeof(int) >> >(size, scans, bools);
+
+
+
+			//int ceil_log2n_sum = ilog2ceil(fullBlocksPerGrid.x);
+			//int size_sum = 1 << ceil_log2n_sum;
+			int size_sum = fullBlocksPerGrid_2.x;
+
+			dim3 numBlocks_2((size_sum / 2 + blockSize - 1) / blockSize);
+			dim3 numBlocks((size_sum + blockSize - 1) / blockSize);
+
+			cudaMalloc(&block_sum_array, size_sum * sizeof(int));
+
+			cudaDeviceSynchronize();
+			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, bools);
 			cudaDeviceSynchronize();
 
-			for (int d = ceil_log2n - 1; d >= 0; d--)
-			{
-				kernDownSweep << < fullBlocksPerGrid, blockSize >> > (size, 1 << (d + 1), g_idata);
-				cudaDeviceSynchronize();
-			}
+			
+			scan(size_sum, block_sum_array, block_sum_array);
+			
 
-
+			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2 * blockSize, exist, block_sum_array);
+			cudaDeviceSynchronize();
 		}
-
-
-
-
-
 
 
 
@@ -258,7 +278,7 @@ namespace StreamCompaction {
 		{
 			int * block_sum_array;	//global
 			int * exist;
-			int * scan;
+			int * scans;
 			Path * tmp_path;
 
 			cudaMalloc(&tmp_path, n * sizeof(Path));
@@ -267,47 +287,57 @@ namespace StreamCompaction {
 			int ceil_log2n = ilog2ceil(n);
 			int size = 1 << ceil_log2n;
 
-			//dim3 fullBlocksPerGrid_2((size / 2 + blockSize - 1) / blockSize);
-			dim3 fullBlocksPerGrid((size + blockSize - 1) / blockSize);
-
 			cudaMalloc(&exist, size*sizeof(int));
 			kernAssignBool << <fullBlocksPerGrid, blockSize >> >(n, exist, path);
-
-			cudaMalloc(&scan, size*sizeof(int));
+			cudaMalloc(&scans, size*sizeof(int));
 
 			
 
+			
+
+			scan(size, scans, exist);
+
+			/*
+
 			//per block scan
-			kernScan << <fullBlocksPerGrid, blockSize, blockSize*sizeof(int) >> >(size,scan, exist);
+			kernScan << <fullBlocksPerGrid_2, blockSize, 2*blockSize*sizeof(int) >> >(size,scan, exist);
 
 
+			//int ceil_log2n_sum = ilog2ceil(fullBlocksPerGrid.x);
+			//int size_sum = 1 << ceil_log2n_sum;
+			int size_sum = fullBlocksPerGrid_2.x;
 
-
-
-			int ceil_log2n_sum = ilog2ceil(fullBlocksPerGrid.x);	//plus 1 to get the last sum of the exclusive scan
-			int size_sum = 1 << ceil_log2n_sum;
-
-			//dim3 numBlocks_2((size_sum/2 + blockSize - 1) / blockSize);
+			dim3 numBlocks_2((size_sum/2 + blockSize - 1) / blockSize);
 			dim3 numBlocks((size_sum + blockSize - 1) / blockSize);
 
 			cudaMalloc(&block_sum_array, size_sum * sizeof(int));
 
 			cudaDeviceSynchronize();
-			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, blockSize, block_sum_array, exist);
+			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2*blockSize, block_sum_array, exist);
 			cudaDeviceSynchronize();
-			kernScan << <numBlocks, blockSize, blockSize*sizeof(int) >> >(size_sum, block_sum_array, block_sum_array);
+
+			//this should be one block
+			kernScan << <numBlocks_2, blockSize, 2*blockSize*sizeof(int) >> >(size_sum, block_sum_array, block_sum_array);
 			cudaDeviceSynchronize();
-			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, blockSize, exist, block_sum_array);
+			//////////////////////
+			
+			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2*blockSize, exist, block_sum_array);
 			cudaDeviceSynchronize();
+			
+			*/
 
 
 			//compact
+
+			dim3 fullBlocksPerGrid_2((size / 2 + blockSize - 1) / blockSize);
+			dim3 fullBlocksPerGrid((size + blockSize - 1) / blockSize);
+
 			kernScatter << <fullBlocksPerGrid, blockSize >> >(size, path,
-				tmp_path, exist, scan);
+				tmp_path, exist, scans);
 
 
 			int hos_sum;
-			cudaMemcpy(&hos_sum, scan + size - 1, sizeof(int), cudaMemcpyDeviceToHost);
+			cudaMemcpy(&hos_sum, scans + size - 1, sizeof(int), cudaMemcpyDeviceToHost);
 
 			int hos_last;
 			cudaMemcpy(&hos_last, exist + n - 1, sizeof(int), cudaMemcpyDeviceToHost);
@@ -316,7 +346,7 @@ namespace StreamCompaction {
 			cudaFree(tmp_path);
 			cudaFree(block_sum_array);
 			cudaFree(exist);
-			cudaFree(scan);
+			cudaFree(scans);
 
 			return hos_sum + hos_last;
 		}
@@ -445,7 +475,8 @@ namespace StreamCompaction {
 					i = n - 2;
 					printf("... ");
 				}
-				printf("%d ", (int)a[i].terminated);
+				//printf("%d ", (int)a[i].terminated);
+				printf("%d ", a[i].image_index);
 			}
 			printf("]\n");
 		}
