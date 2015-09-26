@@ -16,6 +16,7 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
+#include <stream_compaction/stream_compaction.h>
 
 #define ERRORCHECK 1
 
@@ -357,10 +358,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	
 	Path* dev_path_end = dev_path + pixelcount;
+	int num_path = dev_path_end - dev_path;
 	//loop
 	while (dev_path_end != dev_path && depth < traceDepth)
 	{
-		int num_path = dev_path_end - dev_path;
+		
 		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
 			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size());
@@ -369,7 +371,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		depth ++;
 
 		//stream compaction
-		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		//dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		//num_path = dev_path_end - dev_path;
+
+		//TODO:self work efficient
+		num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
 	}
 
     ///////////////////////////////////////////////////////////////////////////
