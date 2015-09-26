@@ -4,6 +4,7 @@
 
 #include <stream_compaction/stream_compaction.h>
 
+//#define STREAM_COMPACTION_TEST
 
 static std::string startTimeString;
 static bool camchanged = false;
@@ -35,7 +36,7 @@ int main(int argc, char** argv) {
 
 
 
-	
+#ifdef STREAM_COMPACTION_TEST
 
 	//test stream compaction
 	int num = 15000;
@@ -106,7 +107,7 @@ int main(int argc, char** argv) {
 	return 0;
 	////////////////////////////////////
 
-	
+#endif
 
 
 
