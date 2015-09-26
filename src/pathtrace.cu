@@ -125,7 +125,6 @@ Geom *LoadGeoms(MovingGeom *mgeoms, int frame, int numberOfObjects) {
 	return geoms;
 }
 
-
 /**
  * Creates a ray through each pixel on the screen.
  * Depth of Field: http://mzshehzanayub.blogspot.com/2012/10/gpu-path-tracer.html
