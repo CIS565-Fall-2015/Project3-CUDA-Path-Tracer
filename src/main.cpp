@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
 
 	//init
 	int ii = 0;
-	for (auto p : hos_paths)
+	for (Path& p : hos_paths)
 	{
 		p.terminated = true;
 		p.image_index = ii;
@@ -66,7 +66,8 @@ int main(int argc, char** argv) {
 	////////
 
 	int cpu_compact_num = StreamCompaction::Efficient::compactWithoutScan(num, hos_paths_cmp.data(), hos_paths.data());
-	
+	StreamCompaction::Efficient::printArray(num, hos_paths.data());
+	StreamCompaction::Efficient::printArray(cpu_compact_num, hos_paths_cmp.data());
 
 
 	Path * dev_paths;

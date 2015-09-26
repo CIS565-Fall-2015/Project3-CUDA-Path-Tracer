@@ -142,7 +142,7 @@ namespace StreamCompaction {
 
 					int t = s_idata[ai];
 					s_idata[ai] = s_idata[bi];
-					s_idata[bi] = t;
+					s_idata[bi] += t;
 				}
 			}
 
@@ -150,6 +150,9 @@ namespace StreamCompaction {
 			g_odata[bi + blockOffset] = s_idata[bi + bankOffsetB];
 			//}
 
+			//test
+			printf("%d : %d\n", ai + blockOffset, s_idata[ai + bankOffsetA]);
+			printf("%d : %d\n", bi + blockOffset, s_idata[bi + bankOffsetB]);
 		}
 
 
@@ -223,7 +226,7 @@ namespace StreamCompaction {
 
 
 		/**
-		* N - size of the bools, has already been extended to 2^c
+		* size - size of the bools, has already been extended to 2^c
 		* scans, bools - device memory, memory has been allocated
 		*/
 		void scan(int size, int * scans, const int * bools)
@@ -246,7 +249,7 @@ namespace StreamCompaction {
 
 			//per block scan
 			kernScan << <fullBlocksPerGrid_2, blockSize, 2 * blockSize*sizeof(int) >> >(size, scans, bools);
-
+			
 
 
 			//int ceil_log2n_sum = ilog2ceil(fullBlocksPerGrid.x);
@@ -259,14 +262,14 @@ namespace StreamCompaction {
 			cudaMalloc(&block_sum_array, size_sum * sizeof(int));
 
 			cudaDeviceSynchronize();
-			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, bools);
+			kernCopyToBlockSumArray << <numBlocks, blockSize >> >(size_sum, 2 * blockSize, block_sum_array, scans);
 			cudaDeviceSynchronize();
 
 			
 			scan(size_sum, block_sum_array, block_sum_array);
 			
 
-			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2 * blockSize, exist, block_sum_array);
+			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2 * blockSize, scans, block_sum_array);
 			cudaDeviceSynchronize();
 		}
 
@@ -276,7 +279,7 @@ namespace StreamCompaction {
 		//multiple blocks, shared memory, resolve bank conflict
 		int compact(int n, Path* path)
 		{
-			int * block_sum_array;	//global
+			//int * block_sum_array;	//global
 			int * exist;
 			int * scans;
 			Path * tmp_path;
@@ -286,6 +289,9 @@ namespace StreamCompaction {
 
 			int ceil_log2n = ilog2ceil(n);
 			int size = 1 << ceil_log2n;
+
+			dim3 fullBlocksPerGrid_2((size / 2 + blockSize - 1) / blockSize);
+			dim3 fullBlocksPerGrid((size + blockSize - 1) / blockSize);
 
 			cudaMalloc(&exist, size*sizeof(int));
 			kernAssignBool << <fullBlocksPerGrid, blockSize >> >(n, exist, path);
@@ -321,7 +327,7 @@ namespace StreamCompaction {
 			cudaDeviceSynchronize();
 			//////////////////////
 			
-			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2*blockSize, exist, block_sum_array);
+			kernAddSumArrayBack << <fullBlocksPerGrid, blockSize >> >(size, 2*blockSize, scans, block_sum_array);
 			cudaDeviceSynchronize();
 			
 			*/
@@ -329,8 +335,7 @@ namespace StreamCompaction {
 
 			//compact
 
-			dim3 fullBlocksPerGrid_2((size / 2 + blockSize - 1) / blockSize);
-			dim3 fullBlocksPerGrid((size + blockSize - 1) / blockSize);
+			
 
 			kernScatter << <fullBlocksPerGrid, blockSize >> >(size, path,
 				tmp_path, exist, scans);
@@ -344,7 +349,7 @@ namespace StreamCompaction {
 
 
 			cudaFree(tmp_path);
-			cudaFree(block_sum_array);
+			//cudaFree(block_sum_array);
 			cudaFree(exist);
 			cudaFree(scans);
 
@@ -458,8 +463,8 @@ namespace StreamCompaction {
 
 		int cmpArrays(int n, Path *a, Path *b) {
 			for (int i = 0; i < n; i++) {
-				if (a[i].terminated != b[i].terminated) {
-					printf("    a[%d] = %d, b[%d] = %d\n", i, (int)a[i].terminated, i, (int)b[i].terminated);
+				if (a[i].image_index != b[i].image_index) {
+					printf("    a[%d] = %d, b[%d] = %d\n", i, (int)a[i].image_index, i, (int)b[i].image_index);
 					return 1;
 				}
 			}
