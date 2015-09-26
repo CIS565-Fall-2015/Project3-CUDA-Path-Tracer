@@ -13,6 +13,7 @@ CUDA Path Tracer
 ### Raycasting???
 
 ### Diffuse Surfaces
+Diffuse surfaces are supported 
 
 ### Perfectly Specular Reflective Surfaces
 
