@@ -78,6 +78,11 @@ __constant__ static Material* dev_materials = NULL;
 __constant__ static glm::vec3 *dev_oversample_image = NULL;
 static int geomcount = 0;
 static int oversampling_pass = 3;
+// Temp variables for stream compaction
+__constant__ static int *dv_f_tmp = NULL;
+__constant__ static int *dv_idx_tmp = NULL;
+__constant__ static PathRay *dv_out_tmp = NULL;
+__constant__ static int *dv_c_tmp = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -98,6 +103,12 @@ void pathtraceInit(Scene *scene) {
 	cudaMemcpy(dev_geoms, hst_geoms, hst_scene->geoms.size()*sizeof(Geom), cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_materials, hst_materials, hst_scene->materials.size()*sizeof(Material), cudaMemcpyHostToDevice);
 
+	// Allocate temp vars
+	cudaMalloc((void**)&dv_f_tmp, pixelcount*sizeof(int));
+	cudaMalloc((void**)&dv_idx_tmp, pixelcount*sizeof(int));
+	cudaMalloc((void**)&dv_out_tmp, pixelcount*sizeof(PathRay));
+	cudaMalloc((void**)&dv_c_tmp, sizeof(int));
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -106,6 +117,10 @@ void pathtraceFree() {
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
 	cudaFree(dev_oversample_image);
+	cudaFree(dv_f_tmp);
+	cudaFree(dv_idx_tmp);
+	cudaFree(dv_out_tmp);
+	cudaFree(dv_c_tmp);
 
     checkCUDAError("pathtraceFree");
 }
@@ -144,16 +159,14 @@ __global__ void initRayGrid(PathRay *oGrid, const Camera cam){
 }
 
 
-__global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, const int grid_size, const int geomcount){
+__global__ void interesect(PathRay * grid, const Geom * iGeoms, const Camera cam, const int grid_size, const int geomcount){
 	// From camera as single point, to image grid with FOV
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	int index = x + (y * cam.resolution.x);
-
 	extern __shared__ Geom geoms[];
 
 	int bIndex = threadIdx.x + threadIdx.y * blockDim.x;
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int index = x + (y * cam.resolution.x);
 	if (bIndex < geomcount){
 		geoms[bIndex] = iGeoms[bIndex];
 	}
@@ -164,13 +177,13 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 		// Intersection test
 		//PathRay pr = grid[index];
 		grid[index].hasIntersect = false;
-		glm::vec3 iPoint(0.0f);
-		glm::vec3 iNormal(0.0f);
-
-		float rayLength = 0.0f;
-		float oldLength = -1.0f;
-		int idx = 0;
+		glm::vec3 iPoint;
+		glm::vec3 iNormal;
 		bool outside = false;
+
+		float rayLength = 0;
+		float oldLength = -1;
+
 		for (int i = 0; i < geomcount; ++i){
 			if (geoms[i].type == SPHERE){
 				rayLength = sphereIntersectionTest(geoms[i], grid[index].ray, iPoint, iNormal, outside);
@@ -179,14 +192,14 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 				rayLength = boxIntersectionTest(geoms[i], grid[index].ray, iPoint, iNormal, outside);
 			}
 			// Find the nearest intersection
-			if (rayLength != -1.0f){
+			if (rayLength > -1){
 				grid[index].hasIntersect = true;
-				if (oldLength == -1.0f || rayLength < oldLength){
+				if (oldLength == -1 || rayLength < oldLength){
 					grid[index].intersect = iPoint;
 					grid[index].normal = iNormal;
 					grid[index].outside = outside;
+					grid[index].matId = geoms[i].materialid;
 					oldLength = rayLength;
-					idx = i;
 				}
 			}
 			/*
@@ -209,7 +222,6 @@ __global__ void interesect(PathRay *grid, const Geom *iGeoms, const Camera cam, 
 			}
 			*/
 		}
-		grid[index].matId = geoms[idx].materialid;
 		//grid[index] = pr;
 	}
 };
@@ -401,7 +413,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		dev_grid.erase(newGridEnd, dev_grid.end());
 		grid_size = dev_grid.size(); 
 #else
-		grid_size = StreamCompaction::Efficient::compact(grid_size, dev_grid_ptr);
+		StreamCompaction::Efficient::compact(grid_size, dv_f_tmp, dv_idx_tmp, dv_out_tmp, dev_grid_ptr, dv_c_tmp);
+		cudaMemcpy(&grid_size, dv_c_tmp, sizeof(int), cudaMemcpyDeviceToHost);
+		cudaMemcpy(dev_grid_ptr, dv_out_tmp, grid_size * sizeof(PathRay), cudaMemcpyDeviceToDevice);
 		checkCUDAError("efficientCompact");
 #endif USETHRUSTCOMPACTION
 

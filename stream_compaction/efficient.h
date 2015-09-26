@@ -17,6 +17,6 @@ namespace StreamCompaction {
 namespace Efficient {
     void scan(int n, int *odata, const int *idata);
 
-    int compact(int n, PathRay *idata);
+    void compact(int n, int *f, int *idx, PathRay *dv_out_tmp, PathRay *idata, int *c);
 }
 }

@@ -47,19 +47,12 @@ namespace Efficient {
 	__global__ void scatter(PathRay *odata, const PathRay *idata, const int *filter, const int *idx, const int n){
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 
-		__shared__ int scatterBlock[BLOCKSIZE];
-		__shared__ PathRay rayBlock[BLOCKSIZE];
-
 		if (k < n){
-			scatterBlock[threadIdx.x] = idx[k];
-			rayBlock[threadIdx.x] = idata[k];
-		}
-
-		__syncthreads();
-
-		if (k < n){
-			if (filter[k] == 1){
-				odata[scatterBlock[threadIdx.x]] = rayBlock[threadIdx.x];
+			PathRay p = idata[k];
+			int f = filter[k];
+			int i = idx[k];
+			if (f == 1){
+				odata[i] = p;
 			}
 		}
 	}
@@ -166,9 +159,9 @@ namespace Efficient {
  * Performs prefix-sum (aka scan) on idata, storing the result into odata.
  */
 void scan(int n, int *odata, const int *idata) {
+	int *scan_out;
 	if (n <= BLOCKSIZE){
 		// Base case
-		int *scan_out;
 		cudaMalloc((void**)&scan_out, BLOCKSIZE * sizeof(int));
 		// Scan on each block & get total sum
 		smallScan << <1, BLOCKSIZE >> >(scan_out, idata, n);
@@ -178,9 +171,9 @@ void scan(int n, int *odata, const int *idata) {
 	}
 	else {
 		// Divide into blocks and padding
-		int gridSize = lround(ceil((double)n / (double)BLOCKSIZE));
+		//int gridSize = lround(ceil((double)n / (double)BLOCKSIZE));
+		int gridSize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
 
-		int *scan_out;
 		int *block_total;
 
 		// Padding zero
@@ -199,9 +192,9 @@ void scan(int n, int *odata, const int *idata) {
 		blockIncrement << <gridSize, BLOCKSIZE >> >(odata, block_total, scan_out, n);
 		checkCUDAError1("SC block increment");
 
-		cudaFree(scan_out);
 		cudaFree(block_total);
 	}
+	cudaFree(scan_out);
 }
 
 /**
@@ -212,8 +205,7 @@ void scan(int n, int *odata, const int *idata) {
  * @param idata  The array of elements to compact.
  * @returns      The number of elements remaining after compaction.
  */
-int compact(int n, PathRay *idata) {
-	int *f;
+void compact(int n, int* f, int* idx, PathRay *dv_out, PathRay *idata, int* c) {
 	// Padding
 	//int gridSize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
 	//int m = (int)pow((double)2, (double)ilog2ceil(gridSize));
@@ -222,38 +214,18 @@ int compact(int n, PathRay *idata) {
 	int tsize = (n + BLOCKSIZE - 1) / BLOCKSIZE;
 
 	// Filter
-	cudaMalloc((void**)&f, n * sizeof(int));
 	filter << <tsize, BLOCKSIZE >> >(f, idata, n);
 	checkCUDAError1("SC filter");
 
 	// Scan
-	int *idx;
-	cudaMalloc((void**)&idx, n * sizeof(int));
 	scan(n, idx, f);
 
 	// Scatter
-	PathRay *dv_out;
-	cudaMalloc((void**)&dv_out, n * sizeof(PathRay));
-	cudaMemset(dv_out, 0, n*sizeof(PathRay));
-
-	scatter << <tsize, BLOCKSIZE >> >(dv_out, idata, f, idx, n);
+	scatter << <tsize /2, BLOCKSIZE * 2>> >(dv_out, idata, f, idx, n);
 	checkCUDAError1("SC scatter");
 
 	// Get new array size
-	int count = 0;
-	int *c;
-	cudaMalloc((void**)&c, sizeof(int));
 	countF<<<1, 1>>>(c, f, idx, n);
-	cudaMemcpy(&count, &c[0], sizeof(int), cudaMemcpyDeviceToHost);
-
-	cudaMemcpy(idata, dv_out, count*sizeof(PathRay), cudaMemcpyDeviceToDevice);
-
-	cudaFree(f);
-	cudaFree(idx);
-	cudaFree(dv_out);
-	cudaFree(c);
-
-	return count;
 }
 
 }

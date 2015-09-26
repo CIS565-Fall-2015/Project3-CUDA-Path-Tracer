@@ -111,17 +111,17 @@ A GPU based path tracer that supports several common material effects. Stream co
       * No effect on registers
       * Reduced execution time from ~4000 to ~330 microsec.
     * *Conclusion*:
-      * Execution time: dropped from ~7700 to ~330 microsec; 2300% speed up.
+      * Execution time: dropped from ~7700 to ~330 microsec; 23x speed up.
       * Trade-off: achieved occupacy dropped from 41.28% to 40.6%
 
 * **Scan scatter (stream compaction)**
-  * Pre-cache data in shared memory:
-    * Reduced global memory replay overhead: dropped from 50% to 24.3%
-    * L1 cache hitrate increased dramatically: from 1% to 86.7%
-    * Slight execution time speed up on larger array.
-    * Trade-off:
-      * Reduced occupacy due to increased register count: count goes from 7 to 23, occupacy from 66.6% to 33.3%
-      * Slower execution on smaller arrays (~200 microsec).
+  * Changed block size based on profiling tool prediction:
+    * Occupacy goes from 33.3% to 100%
+  * Put extra temporary variables to hold array elements to be used later
+    * Successfully utilized larger number of warps and hid memory access latency
+    * In issue stall reasons, reduced proportion of memory dependency from 70% to 26.4%
+    * 1.92x execution time speed up
+    * Trade-off: occupacy dropped to 83.3%
 * **Intersection test**
   * Block size left unchanged as it's optimal.
   * Pre-cache geometries in shared memory:
@@ -132,7 +132,7 @@ A GPU based path tracer that supports several common material effects. Stream co
   * Move temporary variable declarations out of for-loop; change all parameters of intersection test to pass by reference:
     * On top of above memory improvement, further reduced access to device memory by 30% in data size.
       * However, this only reduces access to thread's temporary variables. Therefore the reduction might not scale with scene window size.
-    * 14.5% speed up on execution time (~200 microsec).
+    * 1.15x speed up on execution time (~200 microsec).
       * The speed up and memory improvement are cancelled if the methods called by intersection tests also have all of their parameters passed by reference.
   * Remove temporary variable that stores `(ray, color)` pair, which is stored as a struct:
     * Contrary to the belief that the temporary variable is caching and is faster, direct access is actually better.
@@ -144,7 +144,7 @@ A GPU based path tracer that supports several common material effects. Stream co
 * **Ray scatter**
   * Remove temporary variable that stores `(ray, color)` pair:
     * Reduced register count: from 63 to 55.
-    * 63% execution time speed up.
+    * 1.63x execution time speed up.
     * 50% less device memory access (data size).
     * Increased L2 cache hitrate: from 31.6% to 40.6%
     * Reduced global memory replay overhead: from 49.2% to 39.3%
@@ -153,24 +153,29 @@ A GPU based path tracer that supports several common material effects. Stream co
 * **Path termination**
   * Remove temporary variable for `(ray, color)` pair and material:
     * Reduced register count: from 29 to 12.
-    * 586% execution time speed up.
+    * 5.86x execution time speed up.
     * Trade-off: high global memory replay overhead (47.5%)
 * **Camera raycasting**
   * Remove temporary variable for `(ray, color)` pair:
-    * 49.5% execution time speed up.
+    * 1.5x execution time speed up.
+* `nvprof`
+  * Some thoughts were put on reducing overall execution time of stream compaction by working on the methods outside of kernels.
+  * More analysis on API calls showed that calls to `cudaMalloc` and `cudaFree` are the most time consuming ones. Removing excessive calls to these APIs in the stream compaction method reduces overall execution time by ~15 ms (first trace depth).
+  * Overall performance is improved by a considerable amount by simply reducing calls to CUDA memory operations.
 
 ###### Optimization baseline.
 ![](img/baseline.png)
 
 ###### Optimized result.
-![](img/optimized.png)
+![](img/optimized_new.png)
 
 ## Analysis
 
 * Cache vs. direct access:
   * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, sometimes directly passing the array element around results in much better performance in terms of both exec time and memory access.
   * For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple and short kernels like pixel painting.
-  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. This effectively cancelled out the reduction in memory access. For short kernels the memory access time is more significant, therefore making a cache is profitable.
+  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. On the other hand, long kernels tend to fill up the register limitation, causing much less warps available to run in parallel. Less warps means less chance to hide memory access latency.
+  * This effectively cancelled out the reduction in memory access. For short kernels, a cache variable sometimes can successfully hide memory access latency by carefully ordering operation orders.
 
 * Stream compaction, open scenes vs. closed scenes:
   * Stream compaction greatly reduces input size in open scenes.
@@ -183,11 +188,11 @@ A GPU based path tracer that supports several common material effects. Stream co
 
 * Thrust vs. custom work-efficient compaction:
   * Thrust is still faster performance-wise.
-  * Custom implementation only loosely match the performance of Thrust.
+  * Custom implementation only loosely match the performance of Thrust (~5ms slower per trace depth).
   * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that are sub-optimal.
 
-###### Stream compaction performance.
-![](img/comparison.png)
+###### Stream compaction performance. Time is for a complete trace (intersection test, paint, stream compaction, scatter). Difference is the stream compaction performance difference.
+![](img/comparison_new.png)
 
 ## Appendix
 
@@ -227,24 +232,24 @@ Depth: 7 / Grid size: 538102
 ```
 Custom work-efficient stream compaction
 800 * 800 cornell1
-Depth: 0 / Grid size: 625107 / Time: 132.643494
-Depth: 1 / Grid size: 498811 / Time: 133.986755
-Depth: 2 / Grid size: 407180 / Time: 112.587265
-Depth: 3 / Grid size: 327055 / Time: 94.270851
-Depth: 4 / Grid size: 264812 / Time: 79.092445
-Depth: 5 / Grid size: 215045 / Time: 66.467293
-Depth: 6 / Grid size: 174998 / Time: 56.588383
-Depth: 7 / Grid size: 142055 / Time: 48.967999
+Depth: 0 / Grid size: 625107 / Time: 97.423164
+Depth: 1 / Grid size: 511896 / Time: 99.192924
+Depth: 2 / Grid size: 434527 / Time: 84.930527
+Depth: 3 / Grid size: 359734 / Time: 73.663490
+Depth: 4 / Grid size: 303851 / Time: 62.820320
+Depth: 5 / Grid size: 255227 / Time: 54.307522
+Depth: 6 / Grid size: 216026 / Time: 47.650337
+Depth: 7 / Grid size: 182477 / Time: 41.597088
 ```
 ```
 Thrust
 800 * 800 cornell1
-Depth: 0 / Grid size: 625107 / Time: 111.212959
-Depth: 1 / Grid size: 498366 / Time: 104.541763
-Depth: 2 / Grid size: 406945 / Time: 88.231812
-Depth: 3 / Grid size: 326726 / Time: 73.839684
-Depth: 4 / Grid size: 264647 / Time: 61.624031
-Depth: 5 / Grid size: 214766 / Time: 51.932480
-Depth: 6 / Grid size: 174670 / Time: 43.936127
-Depth: 7 / Grid size: 142211 / Time: 37.708385
+Depth: 0 / Grid size: 625107 / Time: 92.244354
+Depth: 1 / Grid size: 512883 / Time: 94.210144
+Depth: 2 / Grid size: 435087 / Time: 80.382782
+Depth: 3 / Grid size: 359297 / Time: 67.422592
+Depth: 4 / Grid size: 303702 / Time: 57.761951
+Depth: 5 / Grid size: 255254 / Time: 49.950497
+Depth: 6 / Grid size: 215942 / Time: 43.392319
+Depth: 7 / Grid size: 182385 / Time: 38.022335
 ```
