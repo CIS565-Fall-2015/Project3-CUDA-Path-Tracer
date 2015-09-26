@@ -141,8 +141,6 @@ A GPU based path tracer that supports several common material effects. Stream co
     * Reduced register count by 1.
     * Increased L1 cache hitrate: from 65% to 85%
     * Trade-off: increased global memory replay overhead from 25% to 34.7%
-  * Refactor test methods:
-    * Marginal improvements on execution time and register usage.
 * **Ray scatter**
   * Remove temporary variable that stores `(ray, color)` pair:
     * Reduced register count: from 63 to 55.

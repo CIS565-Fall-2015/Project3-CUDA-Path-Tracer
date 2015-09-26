@@ -36,39 +36,40 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
 
 // CHECKITOUT
 /**
- * Test intersection between a ray and a transformed cube. Untransformed,
- * the cube ranges from -0.5 to 0.5 in each axis and is centered at the origin.
- *
- * @param intersectionPoint  Output parameter for point of intersection.
- * @param normal             Output parameter for surface normal.
- * @return                   Ray parameter `t` value. -1 if no intersection.
- */
+* Test intersection between a ray and a transformed cube. Untransformed,
+* the cube ranges from -0.5 to 0.5 in each axis and is centered at the origin.
+*
+* @param intersectionPoint  Output parameter for point of intersection.
+* @param normal             Output parameter for surface normal.
+* @return                   Ray parameter `t` value. -1 if no intersection.
+*/
 __host__ __device__ float boxIntersectionTest(Geom &box, Ray &r,
 	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
 	Ray q;
-	glm::vec3 tmin_n;
-	glm::vec3 tmax_n;
-	float t1, t2, ta, tb;
-	glm::vec3 n;
-	float tmin = -1e38f;
-	float tmax = 1e38f;
-
 	q.origin = multiplyMV(box.inverseTransform, glm::vec4(r.origin, 1.0f));
 	q.direction = glm::normalize(multiplyMV(box.inverseTransform, glm::vec4(r.direction, 0.0f)));
 
+	float tmin = -1e38f;
+	float tmax = 1e38f;
+	glm::vec3 tmin_n;
+	glm::vec3 tmax_n;
 	for (int xyz = 0; xyz < 3; ++xyz) {
-		t1 = (-0.5f - q.origin[xyz]) / q.direction[xyz];
-		t2 = (+0.5f - q.origin[xyz]) / q.direction[xyz];
-		n[xyz] = t2 < t1 ? +1 : -1;
-		ta = glm::min(t1, t2);
-		tb = glm::max(t1, t2);
-		if (ta > 0 && ta > tmin) {
-			tmin = ta;
-			tmin_n = n;
-		}
-		if (tb < tmax) {
-			tmax = tb;
-			tmax_n = n;
+		float qdxyz = q.direction[xyz];
+		/*if (glm::abs(qdxyz) > 0.00001f)*/ {
+			float t1 = (-0.5f - q.origin[xyz]) / qdxyz;
+			float t2 = (+0.5f - q.origin[xyz]) / qdxyz;
+			float ta = glm::min(t1, t2);
+			float tb = glm::max(t1, t2);
+			glm::vec3 n;
+			n[xyz] = t2 < t1 ? +1 : -1;
+			if (ta > 0 && ta > tmin) {
+				tmin = ta;
+				tmin_n = n;
+			}
+			if (tb < tmax) {
+				tmax = tb;
+				tmax_n = n;
+			}
 		}
 	}
 
@@ -88,32 +89,36 @@ __host__ __device__ float boxIntersectionTest(Geom &box, Ray &r,
 
 // CHECKITOUT
 /**
- * Test intersection between a ray and a transformed sphere. Untransformed,
- * the sphere always has radius 0.5 and is centered at the origin.
- *
- * @param intersectionPoint  Output parameter for point of intersection.
- * @param normal             Output parameter for surface normal.
- * @return                   Ray parameter `t` value. -1 if no intersection.
- */
+* Test intersection between a ray and a transformed sphere. Untransformed,
+* the sphere always has radius 0.5 and is centered at the origin.
+*
+* @param intersectionPoint  Output parameter for point of intersection.
+* @param normal             Output parameter for surface normal.
+* @return                   Ray parameter `t` value. -1 if no intersection.
+*/
 __host__ __device__ float sphereIntersectionTest(Geom &sphere, Ray &r,
 	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
+	float radius = .5;
+
+	glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
+	glm::vec3 rd = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
 
 	Ray rt;
-	float t = 0;
-
-	rt.origin = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
-	rt.direction = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
+	rt.origin = ro;
+	rt.direction = rd;
 
 	float vDotDirection = glm::dot(rt.origin, rt.direction);
-	float radicand = vDotDirection * vDotDirection - (glm::dot(rt.origin, rt.origin) - pow(.5, 2));
+	float radicand = vDotDirection * vDotDirection - (glm::dot(rt.origin, rt.origin) - pow(radius, 2));
 	if (radicand < 0) {
 		return -1;
 	}
 
-	float squareRoot = sqrtf(radicand);
-	float t1 = -vDotDirection + squareRoot;
-	float t2 = -vDotDirection - squareRoot;
+	float squareRoot = sqrt(radicand);
+	float firstTerm = -vDotDirection;
+	float t1 = firstTerm + squareRoot;
+	float t2 = firstTerm - squareRoot;
 
+	float t = 0;
 	if (t1 < 0 && t2 < 0) {
 		return -1;
 	}

@@ -48,9 +48,9 @@ namespace Efficient {
 		int k = blockIdx.x*blockDim.x + threadIdx.x;
 
 		if (k < n){
+			PathRay p = idata[k];
 			int f = filter[k];
 			int i = idx[k];
-			PathRay p = idata[k];
 			if (f == 1){
 				odata[i] = p;
 			}
