@@ -5,8 +5,11 @@ CUDA Path Tracer
 
 * Bradley Crusco
 * Tested on: Windows 10, i7-3770K @ 3.50GHz 16GB, 2 x GTX 980 4096MB (Personal Computer)
-![](img/cornell_main_20k.png "Cornell Box")
+
 ## Description
+An interactive GPU accelorated path tracer with support for diffuse, specular, mirrored, and refractive surfaces. Additional features include depth of field and motion blur effects.
+
+![](img/cornell_main_20k.png "Cornell Box")
 
 ## Features
 
