@@ -32,8 +32,13 @@ int main(int argc, char** argv) {
 	//std::cout<<sizeof(Material)<<std::endl;
 	
 
+
+
+
+	
+
 	//test stream compaction
-	int num = 80;
+	int num = 15000;
 	//int num = 30;
 	std::vector<Path> hos_paths(num);
 	std::vector<Path> hos_paths_cmp(num);
@@ -100,6 +105,13 @@ int main(int argc, char** argv) {
 
 	return 0;
 	////////////////////////////////////
+
+	
+
+
+
+
+
 
 
     startTimeString = currentTimeString();
