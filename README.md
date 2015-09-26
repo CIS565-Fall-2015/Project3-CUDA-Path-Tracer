@@ -10,7 +10,7 @@ CUDA Path Tracer
 
 ## Features
 
-### Raycasting
+### Raycasting???
 
 ### Diffuse Surfaces
 
@@ -26,6 +26,8 @@ CUDA Path Tracer
 
 ### Motion Blur
 
+
+## Analysis
 ![](img/Project 3 Analysis 1.png "Active Threads Remaining at Trace Depth (Open vs. Closed Scene")
 
 ![](img/Project 3 Analysis 2.png "Trace Execution Time at Trace Depth (Open vs. Closed Scene")
@@ -34,15 +36,6 @@ CUDA Path Tracer
 
 ![](img/Project 3 Analysis 4.png "Trace Execution Time at Trace Depth for a Close Scene (Compaction vs. No Compaction")
 
-Features:
-ray casting/ antialiasing?
-Diffuse surfaces?
-Perfectly specular reflective surfaces?
-shared stream compaction?
-Refraction
-Depth of field
-Non-perfect specular surfaces
-motion blur
+## Interactive Controls
 
-Instructions on building / controlling
-Scene file format instructions
+## Scene File Format 
