@@ -25,6 +25,9 @@ Perfectly specular surfaces give a mirrored effect and are created by combining 
 
 
 ### Depth of Field
+* **Overview**: When depth of field is disabled, my path tracer acts line a "pinhole camera". All the arrays come from a single point and are shot into each pixel of an image plane. Depth of field integrates over a lense to achieve its effect, dropping the pinhole implementation. I added two new configuration options to the camera in my scene files, focal distance and aperture radius. Focal distance specifies how far away from the camera is the image in focus, and replaces the idea of the image plane. And the aperture radius determines the severity of the effect (the blur of everything not at the focal distance).
+* **Performance Impact**: Neglegable. There is a few more calculations for depth of field than the standard pinhole implementation, but they are not major and they only take place when the rays are being created for the first bounce. So the calculation will happen only once per iteration.
+* **GPU vs. CPU Implementation**: The calculations for depth of field take place during the creation of my rays. This is the part of the code where the GPU and CPU implementations are most similar (the only difference being we can do it in parallel on the GPU). So the specific depth of field calculations should be the same for either implementation, but it will just run faster on the GPU.
 
 ### Non-Perfect Specular Surfaces
 ![](img/cornell_np_spec.2015-09-26_23-41-17z.5000samp.png "Non-Perfect Specular Surface")
