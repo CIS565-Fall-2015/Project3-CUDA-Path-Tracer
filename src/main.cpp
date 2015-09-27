@@ -1,6 +1,7 @@
 #include "main.h"
 #include "preview.h"
 #include <cstring>
+#include <time.h>
 
 static std::string startTimeString;
 static bool camchanged = false;
@@ -110,8 +111,15 @@ void runCuda() {
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration);
 
+		//
+		clock_t t1, t2;
+		t1 = clock();
+        pathtrace(pbo_dptr, frame, iteration);
+		t2 = clock();
+		float diff((float)t2 - (float)t1);
+		diff = diff / CLOCKS_PER_SEC;
+		printf("time/iter: %f\t iters/sec %f\n", diff,1/diff);
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     } else {

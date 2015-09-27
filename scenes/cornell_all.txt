@@ -227,3 +227,11 @@ material 10
 TRANS       0 6 0
 ROTAT       0 0 0
 SCALE       2.5 2.5 2.5
+
+// Light Sphere (blue-green)
+OBJECT 12
+sphere
+material 0
+TRANS       0.5 3 0.5
+ROTAT       0 0 0
+SCALE       1 1 1

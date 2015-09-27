@@ -181,6 +181,7 @@ int Scene::loadMaterial(string materialid) {
 		if (newMaterial.emittance>0)
 		{
 			lightIdx = materials.size();
+			lightIdxs.push_back(lightIdx);
 		}
         materials.push_back(newMaterial);
         return 1;

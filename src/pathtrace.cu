@@ -73,7 +73,8 @@ static Geom *dev_geoms;
 static Material *dev_mats;
 bool doStreamCompact = false;
 Ray * dev_rays;
-int ligntObjIdx = 0;
+int ttlLights = 0;
+int * dev_lightIdxs;
 
 
 void pathtraceInit(Scene *scene,bool strCmpt) {
@@ -81,7 +82,6 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	doStreamCompact = strCmpt;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
-	ligntObjIdx = scene->lightIdx;
 
 	//(1) Initialize array of path rays
 	int raySize = pixelcount*sizeof(Ray);
@@ -105,6 +105,12 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 
 	cudaMalloc((void**)&dev_mats, matSize);
 	cudaMemcpy(dev_mats, hst_scene->materials.data(), matSize, cudaMemcpyHostToDevice);
+
+	//Copy lightIdxs to dev_lightIdxs
+	ttlLights = hst_scene->lightIdxs.size();
+	int lightSize = ttlLights *sizeof(int);
+	cudaMalloc((void**)&dev_lightIdxs, lightSize);
+	cudaMemcpy(dev_lightIdxs, hst_scene->lightIdxs.data(), lightSize, cudaMemcpyHostToDevice);
 
 	// dev_image initialize
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
@@ -278,7 +284,7 @@ __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *i
 
 }
 
-__global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int geoNum, int lightIndex)
+__global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int * dev_lightIdxs,int geoNum,int totalLights)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -289,60 +295,60 @@ __global__ void kernFinalImage(int iter, int raysNum, Camera cam, Ray * rays, gl
 		//(1) random point on light
 		// curently, only one box light source
 		// !!!later : a.multiply lights; b.sphere light
-		glm::vec4 pointOnLight(0,0,0,1);
-		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
-		thrust::uniform_real_distribution<float> u01(0, 1);
-		pointOnLight.x = u01(rng)-0.5;
-		pointOnLight.y = u01(rng)-0.5;
-		pointOnLight.z = u01(rng)-0.5;
-		pointOnLight = dev_geo[lightIndex].transform *pointOnLight; 
-		//(2) surface point (ray.origin) to light_point, anything in between?
-		glm::vec3 intrPoint;
-		glm::vec3 intrNormal;
-		float intrT = -1;
-		int intrMatIdx;
-		bool intrOutside;
-
-		Ray surToLight;
-		surToLight.origin = rays[index].origin;
-		surToLight.direction = glm::normalize((glm::vec3)pointOnLight - rays[index].origin);
-		//!!! later : Function this forloop into rayIntersection.
-		for (int i = 0; i<geoNum; i++)
+		glm::vec3 color(0, 0, 0);
+		for (int i = 0; i < totalLights; i++)
 		{
-			glm::vec3 temp_intrPoint;
-			glm::vec3 temp_intrNormal;
-			float temp_T;
-			int temp_MatIdx;
-			bool temp_outside;
-			temp_T = rayIntersection(dev_geo[i], surToLight, temp_intrPoint, temp_intrNormal, temp_MatIdx, temp_outside);
+			int lightIndex = dev_lightIdxs[i];
+			glm::vec4 pointOnLight(0, 0, 0, 1);
+			thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
+			thrust::uniform_real_distribution<float> u01(0, 1);
+			pointOnLight.x = u01(rng) - 0.5;
+			pointOnLight.y = u01(rng) - 0.5;
+			pointOnLight.z = u01(rng) - 0.5;
+			pointOnLight = dev_geo[lightIndex].transform *pointOnLight;
+			//(2) surface point (ray.origin) to light_point, anything in between?
+			glm::vec3 intrPoint;
+			glm::vec3 intrNormal;
+			float intrT = -1;
+			int intrMatIdx;
+			bool intrOutside;
 
-			if (temp_T < 0) continue;
-			if (intrT < 0 || temp_T < intrT && temp_T >0)
+			Ray surToLight;
+			surToLight.origin = rays[index].origin;
+			surToLight.direction = glm::normalize((glm::vec3)pointOnLight - rays[index].origin);
+			//!!! later : Function this forloop into rayIntersection.
+			for (int i = 0; i<geoNum; i++)
 			{
-				intrT = temp_T;
-				intrPoint = temp_intrPoint;
-				intrNormal = temp_intrNormal;
-				intrMatIdx = temp_MatIdx;
-				intrOutside = temp_outside;
+				glm::vec3 temp_intrPoint;
+				glm::vec3 temp_intrNormal;
+				float temp_T;
+				int temp_MatIdx;
+				bool temp_outside;
+				temp_T = rayIntersection(dev_geo[i], surToLight, temp_intrPoint, temp_intrNormal, temp_MatIdx, temp_outside);
+
+				if (temp_T < 0) continue;
+				if (intrT < 0 || temp_T < intrT && temp_T >0)
+				{
+					intrT = temp_T;
+					intrPoint = temp_intrPoint;
+					intrNormal = temp_intrNormal;
+					intrMatIdx = temp_MatIdx;
+					intrOutside = temp_outside;
+				}
+			}
+			//(3) if nothing in between, cos ray, calc direct illumination
+			if (intrMatIdx == lightIndex)
+			{
+				//Direct Illumination
+				//!!! later : reduce bounce
+				color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
+				color *= rays[index].carry;
+				scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
+				color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
 			}
 		}
-		//(3) if nothing in between, cos ray, calc direct illumination
-		if (intrMatIdx == lightIndex)
-		{
-			//Direct Illumination
-			//!!! later : reduce bounce
-			glm::vec3 color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
-			color *= rays[index].carry;
-			scatterRay(rays[index],intrOutside, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], rng);
-			color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
-			image[rays[index].imageIndex] += color;
-			rays[index].terminated = true;
-		}
-		else
-		{
-			image[rays[index].imageIndex] += glm::vec3(0, 0, 0); // !!! later background
-			rays[index].terminated = true;
-		}
+		image[rays[index].imageIndex] += color;
+		rays[index].terminated = true;
 	}
 }
 
@@ -364,6 +370,74 @@ struct is_terminated
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
+
+__global__ void scan_sharedMem(/*Ray *ray, int *Scan_odata, int *Scan_BlkIdx*/)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int thid = threadIdx.x;	
+	/*
+	extern __shared__ int temp[];
+	temp[2 * thid] = ray[2 * index].terminated ? 0 : 1;
+	temp[2 * thid + 1] = ray[2 * index + 1].terminated ? 0 : 1;
+	//Work-efficient scan with shared memory.
+	//http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html
+	extern __shared__ int scan[];					//allocated on invocation
+	int offset = 1;
+	scan[2 * thid] = temp[2 * thid];				//loat ray.terminated to shared memory : scan
+	scan[2 * thid + 1] = temp[2 * thid + 1];
+
+	for (int d = blockDim.x >> 1; d > 0; d >>= 1)	//build sum in place up the tree
+	{
+		__syncthreads();
+		if (thid<d)
+		{
+			int ai = offset*(2 * thid + 1) - 1;
+			int bi = offset*(2 * thid + 2) - 1;
+
+			scan[bi] += scan[ai];
+		}
+		offset *= 2;
+		if (thid == 0)								//clear the last element
+			scan[blockDim.x - 1] = 0;
+	}
+
+	for (int d = 1; d < blockDim.x; d *= 2)			// traverse down tree & build scan
+	{
+		offset >>= 1;
+		__syncthreads();
+		if (thid < d)
+		{
+			int ai = offset*(2 * thid + 1) - 1;
+			int bi = offset*(2 * thid + 2) - 1;
+
+			float t = scan[ai];
+			scan[ai] = scan[bi];
+			scan[bi] += t;
+		}
+	}
+	__syncthreads();
+	if (thid == blockDim.x - 1)
+	{
+		Scan_BlkIdx[blockIdx.x] = scan[thid];
+	}
+	Scan_odata[2 * index] = scan[2 * thid];			//write scan results to device memory
+	Scan_odata[2 * index + 1] = scan[2 * thid + 1];
+	*/
+}
+
+__global__ void streamComp_sharedMem(Ray * iRay, Ray* oRay, int *Scan_odata, int *Scan_BlkIdx)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int thid = threadIdx.x;
+	//scatter
+
+	if (!iRay[index].terminated)
+	{
+
+	}
+
+}
+
 void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera &cam = hst_scene->state.camera;
@@ -385,8 +459,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	{
 		int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 		dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-		thrust::device_ptr<Ray> RayStart(dev_rays);
-		thrust::device_ptr<Ray> newRayEnd = RayStart + totalRays;
 		// a. Compute one ray along each path
 		kernComputeRay <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_mats, dev_geoms, geoNum, iter, i);
 		// b. Add all terminated rays results into pixels
@@ -394,14 +466,43 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		// c. Stream compact away/thrust::remove_if all terminated paths.
 		if (doStreamCompact)
 		{
+			/*
+			//thrust::remove_if stream compact:
+			thrust::device_ptr<Ray> RayStart(dev_rays);
+			thrust::device_ptr<Ray> newRayEnd = RayStart + totalRays;
 			newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
 			totalRays = (int)(newRayEnd - RayStart);
+			*/
+
+			/*
+			int halfTtlRays = (int)((totalRays + 1) / 2);
+			int GridSize =(halfTtlRays + bSize - 1) / bSize;
+			fullBlocksPerGrid = dim3(GridSize);
+			int * dev_scan;
+			int scanSize = halfTtlRays*sizeof(int);
+			cudaMalloc((void**)&dev_scan, scanSize);
+
+			int * dev_scanBlkIdx;
+			int scanBlkIdxSize = GridSize*sizeof(int);
+			cudaMalloc((void**)&dev_scanBlkIdx, scanBlkIdxSize);
+			*/
+			scan_sharedMem<<<fullBlocksPerGrid, bSize >>>(/*dev_rays, dev_scan, dev_scanBlkIdx*/);
+			/*
+			int*a;
+			a = new int[GridSize];
+			a[0] = 10;
+			cudaMemcpy(a, dev_scanBlkIdx, GridSize*sizeof(int), cudaMemcpyDeviceToHost);
+			printf("a[%d]:%d\n",0,a[0]);
+			printf("a[%d]:%d\n", 1, a[1]);
+			printf("a[%d]:%d\n", 2, a[2]);
+			printf("a[%d]:%d\n", 3, a[3]);
+			*/
 		}
 	}
 	//(3) Handle all not terminated
 	int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,geoNum,ligntObjIdx);
+	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,dev_lightIdxs,geoNum,ttlLights);
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
