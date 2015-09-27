@@ -59,13 +59,15 @@ Performance of the path tracer is optimized by using the work efficient stream c
 ## Analysis
 ### Stream Compaction: Open vs. Closed Scenes
 
-#### Active Threads Remaining at Each Trace Depth
-
 ![](img/Project 3 Analysis 1.png "Active Threads Remaining at Trace Depth (Open vs. Closed Scene")
 
-#### Trace Execution Time at Each Trace Depth
-
 ![](img/Project 3 Analysis 2.png "Trace Execution Time at Trace Depth (Open vs. Closed Scene")
+
+The two above charts compare an open cornel box (one of the walls is missing) vs. a closed box. The first thing we can see from these charts, expecially the chart plotting active threads vs. trace depth, is that the stream compaction doesn't really kick in until the second bounce. For the open scene we see the biggest change between depth 0 to 1 and 1 to 2, before it starts to decrease less rapidly. It makes sense that we do not see too major of a drop off at index 0, because there hasn't yet been enough bounces for rays to reasonably terminate.
+
+Notice also how the closed scene data has a very gentle curve across the entire data set, compared to the sharp start off at the start for the open scene that then comes in line with the gentle curve. This shows a significant amount of rays that are bouncing out of the scene entirely.
+
+Regarding execution time, you can see that it correlates almost exactly with the active threads data. This shows us something fairly obvious, that it takes less time to trace over all the rays when there are less of them. This fact isn't very important here however, since the speedup is the result of losing rays that would otherwise contribute to our image.
 
 ### Stream Compaction: Compaction vs. No Compaction
 
