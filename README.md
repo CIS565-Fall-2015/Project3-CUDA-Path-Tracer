@@ -12,7 +12,8 @@ An interactive GPU accelerated path tracer with support for diffuse, specular, m
 
 ## Features
 
-### Raycasting???
+### Raycasting and Anitaliasing
+The camera in my project follows the "pinhole" model. All the rays are shot from the same position (the eye of the camera), and each is shot at a unique pixel on an image plane. Within each of these pixels, we "jitter" the point within the pixel the ray will shoot through calculating a random value within the pixel's dimensions. This gives us antialiasing, which removes sharp "jaggies" that you'd otherwise see on the edges of the objects in my scene.
 
 ### Diffuse Surfaces
 Diffuse surfaces are supported using a cosine weighted random direction calculation.
