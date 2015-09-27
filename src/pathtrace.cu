@@ -14,7 +14,9 @@
 #include "intersections.h"
 #include "interactions.h"
 
+
 #define ERRORCHECK 1
+#define BLOCKSIZE 8
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -71,7 +73,11 @@ static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
-static Camera *cam = NULL;
+static Camera *dev_cam = NULL;
+static Ray *dev_rays = NULL; 
+static Ray *dev_compaction = NULL;
+static Geom *dev_geoms = NULL;
+static Material *dev_materials = NULL;
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -80,15 +86,34 @@ void pathtraceInit(Scene *scene) {
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
-    // TODO: initialize the above static variables added above
 
+    // TODO: initialize the above static variables added above
+	cudaMalloc(&dev_cam, sizeof(Camera));
+	cudaMemcpy(dev_cam, &cam, sizeof(Camera), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_geoms, hst_scene->geoms.size() * sizeof(Geom));
+	cudaMemcpy(dev_geoms, hst_scene->geoms.data(), 
+		hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_materials, hst_scene->materials.size() * sizeof(Material));
+	cudaMemcpy(dev_materials, hst_scene->materials.data(), 
+		hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_rays, pixelcount * sizeof(Ray));
+	cudaMemset(dev_rays, 0, pixelcount * sizeof(Ray));
+
+	cudaMalloc(&dev_compaction, pixelcount * sizeof(Ray));
+	cudaMemset(dev_compaction, 0, pixelcount * sizeof(Ray));
     checkCUDAError("pathtraceInit");
 }
 
 void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
-    // TODO: clean up the above static variables
-
+    cudaFree(dev_cam);
+	cudaFree(dev_geoms);
+	cudaFree(dev_materials);
+	cudaFree(dev_rays);
+	cudaFree(dev_compaction);
     checkCUDAError("pathtraceFree");
 }
 
@@ -117,30 +142,99 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
     }
 }
 
-__global__ void generateRay(Camera cam) {
+__global__ void initializeRay(Camera *cam, Ray *pathRays, int iter, glm::vec3 *img) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
+    if (x < cam->resolution.x && y < cam->resolution.y) {
+        int index = x + (y * cam->resolution.x);
 
-		glm::vec3 vA = glm::cross(cam.view, cam.up);
-		glm::vec3 vB = glm::cross(vA, cam.view);
-		glm::vec3 midPoint = cam.position + cam.view;
+		if(iter == 1) {
+			img[index] = glm::vec3(1.0f);
+		}
 
-		glm::vec3 vV = vB * (glm::length(cam.view) * tanf(cam.fov.y)) / glm::length(vB);
-		glm::vec3 vH = vA * (glm::length(vV) * cam.resolution.x/cam.resolution.y) / glm::length(vA);
+		glm::vec3 vA = glm::cross(cam->view, cam->up);
+		glm::vec3 vB = glm::normalize(glm::cross(vA, cam->view));
+		glm::vec3 midPoint = cam->position + cam->view;
 
-		glm::vec3 pW = midPoint + ((2.0f * x/cam.resolution.x - 1.0f) * vH) 
-			+ (2.0f * (1.0f - y/cam.resolution.y) - 1.0f) * vV;
+		glm::vec3 vH = vA * glm::length(cam->view) * atan(glm::radians(cam->fov.x));
+		glm::vec3 vV = vB * glm::length(cam->view) * atan(glm::radians(cam->fov.y));
+
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
+		glm::vec3 pW = midPoint + vH * (2.0f * (float(x + u01(rng))/float(cam->resolution.x - 1.0f)) - 1) 
+			+ vV * (1 - (2.0f * (float(y + u01(rng))/float(cam->resolution.y - 1.0f))));
 	
-		pathray_rays[index] = (pW - cam.position)/glm::length(pW - cam.position);
-		pathray_colors[index] = glm::vec3(1.0f);
+		pathRays[index].origin = cam->position;
+		pathRays[index].direction = glm::normalize(pW - cam->position);
+		pathRays[index].color = glm::vec3(1.0f);
+		pathRays[index].isOutside = true;
+		pathRays[index].isTerminated = false;
+		
 	}
+
 }
 
-glm::vec3 *pathray_rays;
-glm::vec3 *pathray_colors;
+__global__ void trace_ray(Camera *cam, Ray* pathRays, Geom* geoms, Material* materials, 
+	glm::vec3 *image, int iter, int geom_number, int depth, int maxDepth) {
+
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	int pixel_index = x + (y * cam->resolution.x);
+
+	if(depth == maxDepth) {
+		pathRays[pixel_index].isTerminated = true;
+	}
+
+	if (x < cam->resolution.x && y < cam->resolution.y) {
+       
+		int t = INT_MAX;
+		glm::vec3 intersectionPoint, normal;
+		glm::vec3 nearestIntersectionPoint, theNormal;
+		Geom intersectedGeom;
+		bool isOutside;
+		bool intersected = false;
+
+		for (int i = 0; i < geom_number; i++) {
+
+			int currentT = t;
+				//check if it intersected anything
+				if (geoms[i].type == GeomType::SPHERE) {
+					currentT = sphereIntersectionTest(geoms[i], pathRays[pixel_index], 
+						intersectionPoint, normal, isOutside);
+				} else if (geoms[i].type == GeomType::CUBE) {
+					currentT = boxIntersectionTest(geoms[i], pathRays[pixel_index], 
+						intersectionPoint, normal, isOutside);
+				}
+
+				if (currentT > 0 && currentT < t) {
+					intersected = true;
+					t = currentT;
+					intersectedGeom = geoms[i];
+					nearestIntersectionPoint = intersectionPoint;
+					theNormal = normal;
+				}
+			}
+
+			if (intersected) {
+				//terminate if it's a light source
+				if (materials[intersectedGeom.materialid].emittance > 0) {
+						pathRays[pixel_index].isTerminated = true;
+						image[pixel_index] += pathRays[pixel_index].color;
+				} else {
+					thrust::default_random_engine rng = makeSeededRandomEngine(iter, pixel_index, depth);
+					scatterRay(pathRays[pixel_index], pathRays[pixel_index].color, nearestIntersectionPoint, 
+								theNormal, materials[intersectedGeom.materialid], rng);
+				}
+			} else {
+				pathRays[pixel_index].isTerminated = true;
+			}
+		}
+
+}
+
+
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -151,7 +245,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
-    const dim3 blockSize2d(8, 8);
+    const dim3 blockSize2d(BLOCKSIZE, BLOCKSIZE);
     const dim3 blocksPerGrid2d(
             (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
             (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
@@ -165,36 +259,25 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     //     multiplicative identity, white = (1, 1, 1).
     //   * For debugging, you can output your ray directions as colors. */
 
-	pathray_rays = new glm::vec3[pixelcount * traceDepth];
-	pathray_colors = new glm::vec3[pixelcount * traceDepth];
 
-	cudaMalloc(&pathray_rays, pixelcount * sizeof(glm::vec3));
-	cudaMalloc(&pathray_colors, pixelcount * sizeof(glm::vec3));
+	initializeRay<<<blocksPerGrid2d, blockSize2d>>>(dev_cam, dev_rays, iter, dev_image);
 
-    // * For each depth:
-    //   * Compute one new (ray, color) pair along each path (using scatterRay).
-    //     Note that many rays will terminate by hitting a light or hitting
-    //     nothing at all. You'll have to decide how to represent your path rays
-    //     and how you'll mark terminated rays.
-    //     * Color is attenuated (multiplied) by reflections off of any object
-    //       surface.
-    //     * You can debug your ray-scene intersections by displaying various
-    //       values as colors, e.g., the first surface normal, the first bounced
-    //       ray direction, the first unlit material color, etc.
-    //   * Add all of the terminated rays' results into the appropriate pixels.
-    //   * Stream compact away all of the terminated paths.
-    //     You may use either your implementation or `thrust::remove_if` or its
-    //     cousins.
-    //     * Note that you can't really use a 2D kernel launch any more - switch
-    //       to 1D.
-    // * Finally, handle all of the paths that still haven't terminated.
-    //   (Easy way is to make them black or background-colored.)
+	checkCUDAError("initialize ray");
+	
+	int iterated_depth = 0;
+	int alive_rays = pixelcount;
 
-    // TODO: perform one iteration of path tracing
+	for(int i = 0; i < traceDepth; i++) {
+		trace_ray<<<blocksPerGrid2d, blockSize2d>>>(dev_cam, dev_rays, dev_geoms, 
+			dev_materials, dev_image, iter, hst_scene->geoms.size(), i, traceDepth);
 
-    generateNoiseDeleteMe<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, dev_image);
+		//alive_rays = StreamCompaction::Efficient::rayCompact(alive_rays, dev_compaction, dev_rays);
+		//cudaMemcpy(dev_rays, dev_compaction, alive_rays * sizeof(Ray), cudaMemcpyDeviceToDevice);
 
-    ///////////////////////////////////////////////////////////////////////////
+		//iterated_depth++;
+	}
+	
+	checkCUDAError("trace ray");
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
