@@ -19,6 +19,8 @@ private:
     int loadMaterial(string materialid);
     int loadGeom(string objectid);
     int loadCamera();
+
+	void loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_normal, int material_id);
 public:
     Scene(string filename);
     ~Scene();
