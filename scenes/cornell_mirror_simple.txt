@@ -71,11 +71,11 @@ BLUR        0
 frame 0
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       10 3 10
+SCALE       10 .2 10
 frame 1
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       10 3 10
+SCALE       10 .2 10
 
 // Floor
 OBJECT 1
