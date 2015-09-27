@@ -93,6 +93,7 @@ int Scene::loadCamera() {
     cout << "Loading Camera ..." << endl;
     RenderState &state = this->state;
     Camera &camera = state.camera;
+	camera.lensRadiaus = -1.0f;
     float fovy;
 
     //load static properties
@@ -111,7 +112,7 @@ int Scene::loadCamera() {
             state.traceDepth = atoi(tokens[1].c_str());
         } else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
             state.imageName = tokens[1];
-        }
+		}
     }
 
     string line;
@@ -124,7 +125,13 @@ int Scene::loadCamera() {
             camera.view = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
         } else if (strcmp(tokens[0].c_str(), "UP") == 0) {
             camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        }
+		}
+		else if (strcmp(tokens[0].c_str(), "LENS_RADIUS") == 0) {
+			state.camera.lensRadiaus = atof(tokens[1].c_str());
+		}
+		else if (strcmp(tokens[0].c_str(), "FOCAL_LENGTH") == 0) {
+			state.camera.focalDistance = atof(tokens[1].c_str());
+		}
 
         utilityCore::safeGetline(fp_in, line);
     }

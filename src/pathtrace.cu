@@ -172,16 +172,32 @@ __host__ __device__ void getCameraRayAtPixel(Path & path,const Camera &c, int x,
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
+
 	path.ray.origin = c.position;
-	path.ray.direction = glm::normalize(  c.view 
-		+ c.right * c.pixelLength.x * ( (float)x - (float)c.resolution.x * 0.5f + u01(rng) )  		//u01(rng) is for jiitering for antialiasing
-		- c.up * c.pixelLength.y * ( (float)y - (float)c.resolution.y * 0.5f + u01(rng) ) 			//u01(rng) is for jiitering for antialiasing
+	path.ray.direction = glm::normalize(c.view
+		+ c.right * c.pixelLength.x * ((float)x - (float)c.resolution.x * 0.5f + u01(rng))  		//u01(rng) is for jiitering for antialiasing
+		- c.up * c.pixelLength.y * ((float)y - (float)c.resolution.y * 0.5f + u01(rng)) 			//u01(rng) is for jiitering for antialiasing
 		);
 
+	if (c.lensRadiaus > 0)
+	{
+		//lens effect
+		float r = c.lensRadiaus * u01(rng);
+		float theta = u01(rng) * 2 * PI;
+
+		
+		float t = c.focalDistance * c.view.z / path.ray.direction.z;
+
+		glm::vec3 pfocus = path.ray.origin + t * path.ray.direction;
+
+		path.ray.origin = c.position + c.right * r * cos(theta) - c.up * r * sin(theta);
+		path.ray.direction = glm::normalize(pfocus - path.ray.origin);
+	}
+	
 	path.image_index = index;
 	path.color = glm::vec3(1.0f);
 	path.terminated = false;
-	//TODO: lens effect
+	
 }
 
 
@@ -203,8 +219,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
 		Path & path = paths[index];
 		getCameraRayAtPixel(path,cam,x,y,iter,index);
 
-		//TODO: k-d tree accleration goes here?
-
+		
        
     }
 }
@@ -232,7 +247,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		//for ( thrust::device_vector<Geom>::iterator it = geoms.begin(); it != geoms.end(); ++it)
 		float t_min = FLT_MAX;
 		int hit_geom_index = -1;
-		bool outside;
+		bool outside = false;
 		for(int i = 0; i < geoms_size; i++)
 		{
 			//Geom & geom = static_cast<Geom>(*it);
@@ -371,11 +386,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		depth ++;
 
 		//stream compaction
-		//dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
-		//num_path = dev_path_end - dev_path;
+		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		num_path = dev_path_end - dev_path;
 
 		//TODO:self work efficient
-		num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
+		//num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
+		
 		checkCUDAError("stream compaction");
 	}
 
