@@ -18,6 +18,7 @@ struct Ray {
 	bool terminated;
 	int geomid;
 	bool out;
+	float time;
 };
 
 struct Geom {
@@ -29,6 +30,7 @@ struct Geom {
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+	glm::vec3 move;
 };
 
 struct Material {

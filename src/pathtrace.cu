@@ -94,7 +94,7 @@ void pathtraceInit(Scene *scene) {
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_rayArray, 0, pixelcount * sizeof(Ray));
 
-	cudaMemcpy(dev_geoms, geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+	
 	cudaMemcpy(dev_mats, mats, hst_scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
 
@@ -313,7 +313,7 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 }
 
 //Function to find next ray
-__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth, int traceDepth){
+__global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth, int traceDepth, bool m_blur){
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int index = x + (y * cam.resolution.x);
@@ -341,8 +341,21 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 			}*/
 			
 		}
-		float t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+		//Geom* m_blur_geoms = new Geom[numGeoms];
+		float t;
 
+		if (m_blur) {
+			/*for (int i = 0; i < numGeoms; i++) {
+				m_blur_geoms[i] = geoms[i];
+				m_blur_geoms[i].translation.x += m_blur_geoms[i].move.x*rayArray[index].time;
+				m_blur_geoms[i].translation.y += m_blur_geoms[i].move.y*rayArray[index].time;
+				m_blur_geoms[i].translation.z += m_blur_geoms[i].move.z*rayArray[index].time;
+			}*/
+			t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+		}
+		else {
+			t = closestIntersection(rayArray[index], geoms, interPoint, norm, out, objIndex, numGeoms);
+		}
 		rayArray[index].geomid = objIndex;
 		//get direction of next ray and compute new color
 		if (t >= 0.0f) {
@@ -371,7 +384,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
-	
+	const Geom *geoms = &(hst_scene->geoms)[0];
+	Geom *m_blur_geoms = &(hst_scene->geoms)[0];
 	int numGeoms = hst_scene->geoms.size();
 	int numMats = hst_scene->materials.size();
 	Ray *rayArray = new Ray[pixelcount];
@@ -410,10 +424,25 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     
     // TODO: perform one iteration of path tracing
 	bool dof = false;
+	bool m_blur = true;
+	float time = rand()%100 / 100.0f;
+	printf("time: %f ", time);
+	if (m_blur) {
+		for (int i = 0; i < numGeoms; i++) {
+			m_blur_geoms[i] = geoms[i];
+			m_blur_geoms[i].translation.x += geoms[i].move.x*time;
+			m_blur_geoms[i].translation.y += geoms[i].move.y*time;
+			m_blur_geoms[i].translation.z += geoms[i].move.z*time;
+			printf("(%f, %f, %f)", m_blur_geoms[i].translation.x, m_blur_geoms[i].translation.y, m_blur_geoms[i].translation.z);
+		}
+		cudaMemcpy(dev_geoms, m_blur_geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+	}
+	else {
+		cudaMemcpy(dev_geoms, geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+	}
 	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dof);
-
 	for (int i = 0; i < traceDepth + 1; i++) {
-		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth);
+		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth, m_blur);
 
 		//thrust::remove_if(thrust::host, dev_rayArray, dev_rayArray + pixelcount, is_terminated());
 	}
