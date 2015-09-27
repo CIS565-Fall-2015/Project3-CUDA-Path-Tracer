@@ -81,5 +81,57 @@ The second chart, comparing compaction vs. no compaction for a closed scene, is 
 
 ## Interactive Controls
 
-## Scene File Format 
+## Scene File Format
+
+This project uses a custom scene description format. Scene files are flat text
+files that describe all geometry, materials, lights, cameras, and render
+settings inside of the scene. Items in the format are delimited by new lines,
+and comments can be added using C-style `// comments`.
+
+Materials are defined in the following fashion:
+
+* MATERIAL (material ID) //material header
+* RGB (float r) (float g) (float b) //diffuse color
+* SPECX (float specx) //specular exponent
+* SPECRGB (float r) (float g) (float b) //specular color
+* REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
+* REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
+* REFRIOR (float ior) //index of refraction for Fresnel effects
+* SCATTER (float scatter) //scatter flag, 0 for no, 1 for yes
+* ABSCOEFF (float r) (float b) (float g) //absorption coefficient for scattering
+* RSCTCOEFF (float rsctcoeff) //reduced scattering coefficient
+* EMITTANCE (float emittance) //the emittance of the material. Anything >0
+  makes the material a light source.
+
+Cameras are defined in the following fashion:
+
+* CAMERA //camera header
+* RES (float x) (float y) //resolution
+* FOVY (float fovy) //vertical field of view half-angle. the horizonal angle is calculated from this and the reslution
+* ITERATIONS (float interations) //how many iterations to refine the image,
+  only relevant for supersampled antialiasing, depth of field, area lights, and
+  other distributed raytracing applications
+* DEPTH (int depth) //maximum depth (number of times the path will bounce)
+* FILE (string filename) //file to output render to upon completion
+* EYE (float x) (float y) (float z) //camera's position in worldspace
+* VIEW (float x) (float y) (float z) //camera's view direction
+* UP (float x) (float y) (float z) //camera's up vector
+* BLUR (bool blur) //motion blur flag for the entire scene, 0 for no, 1 for yes
+* DOF (bool dof) //depth of field flag, 0 for no, 1 for yes
+* FD (float fd) //focal distance for depth of field
+* AR (float ar) //aperture radius for depth of field
+
+Objects are defined in the following fashion:
+
+* OBJECT (object ID) //object header
+* (cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or
+  "mesh". Note that cubes and spheres are unit sized and centered at the
+  origin.
+* material (material ID) //material to assign this object
+* BLUR (bool blur) //motion blur flag for individual object, 0 for no, 1 for yes
+* frame (int framenum) //0 or 1. Used for motion blur. Specify start and end transforms
+* TRANS (float transx) (float transy) (float transz) //translation
+* ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
+* SCALE (float scalex) (float scaley) (float scalez) //scale
+
 Add something on included scenes
