@@ -19,7 +19,7 @@ The camera in my project follows the "pinhole" model. All the rays are shot from
 Diffuse surfaces are supported using a cosine weighted random direction calculation.
 
 ### Perfectly Specular Reflective Surfaces
-![](img/cornell_mirror.2015-09-27_00-58-26z.5000samp "Perfectly Specular Mirror Sphere")
+![](img/cornell_mirror.2015-09-27_00-58-26z.5000samp.png "Perfectly Specular Mirror Sphere")
 Perfectly specular surfaces give a mirrored effect and are created by combining a specular light component with the calculation of the direction of a ray off a mirrored object.
 
 ### Work Efficient Stream Compaction
