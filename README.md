@@ -17,6 +17,7 @@ The camera in my project follows the "pinhole" model. All the rays are shot from
 
 ### Diffuse Surfaces
 ![](img/cornell_diffuse.2015-09-27_02-29-25z.5000samp.png "Diffuse Sphere")
+
 Diffuse surfaces are supported using a cosine weighted random direction calculation.
 
 ### Perfectly Specular Reflective Surfaces
