@@ -74,6 +74,7 @@ static Material *dev_mats;
 bool doStreamCompact = false;
 Ray * dev_rays;
 Ray * dev_rays_temp;
+
 int ttlLights = 0;
 int * dev_lightIdxs;
 
@@ -504,9 +505,10 @@ __global__ void getUnterminatedTemp(Ray*ray,int*temp,int ttlRay)
 		temp[index] = ray[index].terminated ? 0 : 1;
 }
 
-__global__ void streamCmp_scatter(Ray*irays, Ray*orays, int*tempBool, int * scanResult)
+__global__ void streamCmp_scatter(Ray*irays, Ray*orays, int*tempBool, int * scanResult,int totalNum)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index >= totalNum) return;
 	if (!irays[index].terminated)
 	{
 		orays[scanResult[index]] = irays[index];
@@ -565,31 +567,31 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 				
 			}
 			*/
-			printf("\n\n/******* Test *******/\n");
+			//printf("\n\n/******* Test *******/\n");
 			int *dev_temps;
 			cudaMalloc((void**)&dev_temps, sizeof(int)*ttRayNum);
 			getUnterminatedTemp<<<GridSize,bSize>>>(dev_rays, dev_temps, ttRayNum);
 			
 			//cudaMemcpy(dev_temps, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
-			cudaMemcpy( hst_temp,dev_temps, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
+			//cudaMemcpy( hst_temp,dev_temps, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "1. original");		//dev_temp
 			int lastInOrig;
 			cudaMemcpy(&lastInOrig, dev_temps + ttRayNum - 1, sizeof(int), cudaMemcpyDeviceToHost);
-			printf("lastInOrig:%d\n", lastInOrig);
+			//printf("lastInOrig:%d\n", lastInOrig);
 			int *dev_temps_thrust;
 			cudaMalloc((void**)&dev_temps_thrust, sizeof(int)*ttRayNum);
 			getUnterminatedTemp << <GridSize, bSize >> >(dev_rays, dev_temps_thrust, ttRayNum);
-			cudaMemcpy(dev_temps_thrust, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
+			//cudaMemcpy(dev_temps_thrust, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
 			checkCUDAError("000");
 
 			int *dev_incre;
 			cudaMalloc((void**)&dev_incre, sizeof(int)*ttRayNum);
 			cudaMemset(dev_incre, 0, sizeof(int)*ttRayNum);
 			checkCUDAError("111");
-			printf("before scatter totalNum: %d\n", ttRayNum);
+			//printf("before scatter totalNum: %d\n", ttRayNum);
 			ExclusiveScanTraverse(dev_incre,ttRayNum, bSize, dev_temps,hst_temp);
 			checkCUDAError("aaa");
-			cudaMemcpy(hst_temp, dev_incre, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
+			//cudaMemcpy(hst_temp, dev_incre, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "..Final");		//dev_incre
 
 			/*
@@ -603,25 +605,32 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			checkCUDAError("bbb");
 			int lastInScan;
 			cudaMemcpy(&lastInScan, dev_incre + ttRayNum - 1, sizeof(int), cudaMemcpyDeviceToHost);
-			//*
+			/*
 			//thrust::remove_if stream compact:
 			thrust::device_ptr<Ray> RayStart(dev_rays);
 			thrust::device_ptr<Ray> newRayEnd = RayStart + ttRayNum;
 			newRayEnd = thrust::remove_if(RayStart, newRayEnd, is_terminated());
 			int thrustTT = (int)(newRayEnd - RayStart);
-			//*/
+			*/
 			ttRayNum = lastInScan + lastInOrig;
-			printf("after scatter totalNum: %d,\t thrust: %d\n\n", ttRayNum,thrustTT);
-			why = ttRayNum;
+			int thrustTT = 0;
+			//printf("after scatter totalNum: %d,\t thrust: %d\n\n", ttRayNum,thrustTT);
+			//why = ttRayNum;
 			//totalRays = ttRayNum;
-			//streamCmp_scatter<<<GridSize,bSize>>>(dev_rays, dev_rays_temp, dev_temps, dev_incre);		
+			Ray * dev_rays_tempt;
+			cudaMalloc((void**)&dev_rays_tempt, sizeof(Ray)*why);
+
+			streamCmp_scatter<<<GridSize,bSize>>>(dev_rays, dev_rays_tempt, dev_temps, dev_incre,why);		
 			//checkCUDAError("bbb");
-			//cudaMemcpy(dev_rays, dev_rays_temp, sizeof(Ray)*why, cudaMemcpyDeviceToDevice);
-			//checkCUDAError("Copy Ray prob");
+			cudaMemcpy(dev_rays, dev_rays_tempt, sizeof(Ray)*why, cudaMemcpyDeviceToDevice);
+			checkCUDAError("Copy Ray prob");
 			//printf("");	
 			//cudaMemcpy( hst_temp, dev_incre,sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "final. scan");		//dev_temp
 
+			why = ttRayNum;
+
+			cudaFree(dev_rays_tempt);
 			cudaFree(dev_incre);
 			cudaFree(dev_temps);
 		}
