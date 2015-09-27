@@ -133,5 +133,3 @@ Objects are defined in the following fashion:
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
-
-Add something on included scenes
