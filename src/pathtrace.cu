@@ -460,7 +460,7 @@ __global__ void sum_scan_incre(int * dev_scan,int*dev_incre,int t,int bSize)
 	int incrIdx = index / (bSize * 2);
 	dev_scan[index] += dev_incre[incrIdx];
 }
-void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps,int * hst_a)
+void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps)
 {
 	int halfTtlRays = (int)((ttRayNum + 1) / 2);
 	int GridSize = (halfTtlRays + bSize - 1) / bSize;
@@ -482,11 +482,11 @@ void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps,i
 
 		int *dev_incre;
 		cudaMalloc((void**)&dev_incre, sizeof(int)*GridSize);
-		ExclusiveScanTraverse(dev_incre, GridSize, bSize, dev_bSum, hst_a);
+		ExclusiveScanTraverse(dev_incre, GridSize, bSize, dev_bSum);
 		
 		GridSize = (ttRayNum + bSize - 1) / bSize;
 		sum_scan_incre<<<GridSize,bSize>>>(dev_scan, dev_incre,ttRayNum,bSize);
-		cudaMemcpy(hst_a, dev_scan, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
+		//cudaMemcpy(hst_a, dev_scan, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 		//delete_PrintIntArray(hst_a, ttRayNum, "5. dev_scan");		//dev_incre
 		
 		cudaMemcpy(dev_inc, dev_scan, sizeof(int)*ttRayNum, cudaMemcpyDeviceToDevice);
@@ -549,8 +549,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			if (ttRayNum == 0) continue;
 			
 			bSize = 64;
-
-			
 			
 			int GridSize = (ttRayNum + bSize - 1) / bSize;
 			
@@ -578,9 +576,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			int lastInOrig;
 			cudaMemcpy(&lastInOrig, dev_temps + ttRayNum - 1, sizeof(int), cudaMemcpyDeviceToHost);
 			//printf("lastInOrig:%d\n", lastInOrig);
-			int *dev_temps_thrust;
-			cudaMalloc((void**)&dev_temps_thrust, sizeof(int)*ttRayNum);
-			getUnterminatedTemp << <GridSize, bSize >> >(dev_rays, dev_temps_thrust, ttRayNum);
+			//int *dev_temps_thrust;
+			//cudaMalloc((void**)&dev_temps_thrust, sizeof(int)*ttRayNum);
+			//getUnterminatedTemp << <GridSize, bSize >> >(dev_rays, dev_temps_thrust, ttRayNum);
 			//cudaMemcpy(dev_temps_thrust, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
 			checkCUDAError("000");
 
@@ -589,7 +587,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			cudaMemset(dev_incre, 0, sizeof(int)*ttRayNum);
 			checkCUDAError("111");
 			//printf("before scatter totalNum: %d\n", ttRayNum);
-			ExclusiveScanTraverse(dev_incre,ttRayNum, bSize, dev_temps,hst_temp);
+			ExclusiveScanTraverse(dev_incre,ttRayNum, bSize, dev_temps);
 			checkCUDAError("aaa");
 			//cudaMemcpy(hst_temp, dev_incre, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "..Final");		//dev_incre
@@ -617,22 +615,23 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//printf("after scatter totalNum: %d,\t thrust: %d\n\n", ttRayNum,thrustTT);
 			//why = ttRayNum;
 			//totalRays = ttRayNum;
-			Ray * dev_rays_tempt;
-			cudaMalloc((void**)&dev_rays_tempt, sizeof(Ray)*why);
+			//Ray * dev_rays_tempt;
+			//cudaMalloc((void**)&dev_rays_tempt, sizeof(Ray)*why);
 
-			streamCmp_scatter<<<GridSize,bSize>>>(dev_rays, dev_rays_tempt, dev_temps, dev_incre,why);		
+			streamCmp_scatter<<<GridSize,bSize>>>(dev_rays, dev_rays_temp, dev_temps, dev_incre,why);		
 			//checkCUDAError("bbb");
-			cudaMemcpy(dev_rays, dev_rays_tempt, sizeof(Ray)*why, cudaMemcpyDeviceToDevice);
+			cudaMemcpy(dev_rays, dev_rays_temp, sizeof(Ray)*why, cudaMemcpyDeviceToDevice);
 			checkCUDAError("Copy Ray prob");
 			//printf("");	
 			//cudaMemcpy( hst_temp, dev_incre,sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "final. scan");		//dev_temp
 
 			why = ttRayNum;
-
-			cudaFree(dev_rays_tempt);
+			totalRays = why;
+			//cudaFree(dev_rays_tempt);
 			cudaFree(dev_incre);
 			cudaFree(dev_temps);
+			//cudaFree(dev_temps_thrust);
 		}
 	}
 	//(3) Handle all not terminated
