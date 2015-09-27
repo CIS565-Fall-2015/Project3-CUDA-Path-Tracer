@@ -60,7 +60,6 @@ Performance of the path tracer is optimized by using the work efficient stream c
 ### Stream Compaction: Open vs. Closed Scenes
 
 ![](img/Project 3 Analysis 1.png "Active Threads Remaining at Trace Depth (Open vs. Closed Scene")
-
 ![](img/Project 3 Analysis 2.png "Trace Execution Time at Trace Depth (Open vs. Closed Scene")
 
 The two above charts compare an open cornel box (one of the walls is missing) vs. a closed box. The first thing we can see from these charts, expecially the chart plotting active threads vs. trace depth, is that the stream compaction doesn't really kick in until the second bounce. For the open scene we see the biggest change between depth 0 to 1 and 1 to 2, before it starts to decrease less rapidly. It makes sense that we do not see too major of a drop off at index 0, because there hasn't yet been enough bounces for rays to reasonably terminate.
@@ -72,8 +71,9 @@ Regarding execution time, you can see that it correlates almost exactly with the
 ### Stream Compaction: Compaction vs. No Compaction
 
 ![](img/Project 3 Analysis 3.png "Trace Execution Time at Trace Depth for an Open Scene (Compaction vs. No Compaction")
-
 ![](img/Project 3 Analysis 4.png "Trace Execution Time at Trace Depth for a Close Scene (Compaction vs. No Compaction")
+
+These above two charts compare the execution time of a trace across all remaining rays when stream compaction is enabled and disabled. In the case where stream compaction is disabled, in the ray bounce function itself I check, after it has already been launched, if it has been terminated, and then return. This stops the tracer from incorrectly calculating more bounces after the ray has been terminated, but keeps the overhead of the kernel launches that we are trying to avoid through compaction.
 
 ## Interactive Controls
 
