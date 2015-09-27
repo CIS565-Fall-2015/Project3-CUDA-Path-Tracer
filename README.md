@@ -81,6 +81,12 @@ The second chart, comparing compaction vs. no compaction for a closed scene, is 
 
 ## Interactive Controls
 
+* Esc to save an image and exit.
+* Space to save an image. Watch the console for the output filename.
+* W/A/S/D and R/F move the camera. Arrow keys rotate.
+* B activates and deactives motion blur for a scene. Only works if at least one object in the scene is blur enabled.
+* 0, activates and deactivates depth of field. 1 decreases focal distance, 2 increases. 3 decreases aperture radius, 3 increases.
+
 ## Scene File Format
 
 This project uses a custom scene description format. Scene files are flat text
