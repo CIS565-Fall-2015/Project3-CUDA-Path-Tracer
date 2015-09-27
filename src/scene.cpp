@@ -55,8 +55,14 @@ int Scene::loadGeom(string objectid) {
                 cout << "Creating new cube..." << endl;
                 newGeom.type = CUBE;
             }
+			else if (strcmp(line.c_str(), "triangle") == 0)
+			{
+				cout << "Creating new triangle..." << endl;
+				newGeom.type = TRIANGLE;
+			}
 			else if (strcmp(line.c_str(), "obj") == 0)
 			{
+				cout << "Creating from obj file ..." << endl;
 				isObj = true;
 			}
         }
@@ -82,15 +88,26 @@ int Scene::loadGeom(string objectid) {
             } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
                 newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             }
-			//MY
+			//OBJ
 			else if (strcmp(tokens[0].c_str(), "OBJFILE") == 0)
 			{
 				objfilename = tokens[1];
+			}
+			//TRIANGLE
+			else if (strcmp(tokens[0].c_str(), "A") == 0) {
+				newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+			}
+			else if (strcmp(tokens[0].c_str(), "B") == 0) {
+				newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+			}
+			else if (strcmp(tokens[0].c_str(), "C") == 0) {
+				newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
 			}
 
             utilityCore::safeGetline(fp_in, line);
         }
 
+		
         newGeom.transform = utilityCore::buildTransformationMatrix(
                 newGeom.translation, newGeom.rotation, newGeom.scale);
         newGeom.inverseTransform = glm::inverse(newGeom.transform);
@@ -98,6 +115,20 @@ int Scene::loadGeom(string objectid) {
 
 		if (!isObj)
 		{
+			if (newGeom.type == TRIANGLE)
+			{
+				glm::vec3 & a = newGeom.translation;
+				glm::vec3 & b = newGeom.rotation;
+				glm::vec3 & c = newGeom.scale;
+				
+				glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+				for (int j = 0; j < 3; j++)
+				{
+					newGeom.transform[0][j] = n[j];	//at a
+					newGeom.transform[1][j] = n[j];	//at b
+					newGeom.transform[2][j] = n[j];	//at c
+				}
+			}
 			geoms.push_back(newGeom);
 		}
 		else
@@ -397,33 +428,7 @@ void Scene::loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_n
 					triangle.type = TRIANGLE;
 
 
-					//Point pa(t * (vec_Vert.at(v[1] - 1)).colwise().homogeneous());
-					//Point pb(t * (vec_Vert.at(v[i - 1] - 1)).colwise().homogeneous());
-					//Point pc(t * (vec_Vert.at(v[i] - 1)).colwise().homogeneous());
-
-					//Primitive* p;
-
-					//if (vec_Nor.size() == 0)
-					//{
-					//	p = new GeometricPrimitive(new Triangle(pa, pb, pc), mat);
-					//}
-					//else if (vn[1] == -1)
-					//{
-					//	Normal an(t_normal * (vec_Nor.at(v[1] - 1)).colwise().homogeneous());
-					//	Normal bn(t_normal * (vec_Nor.at(v[i - 1] - 1)).colwise().homogeneous());
-					//	Normal cn(t_normal * (vec_Nor.at(v[i] - 1)).colwise().homogeneous());
-
-					//	p = new GeometricPrimitive(new Triangle(pa, pb, pc, an, bn, cn), mat);
-					//}
-					//else
-					//{
-					//	Normal an(t_normal * (vec_Nor.at(vn[1] - 1)).colwise().homogeneous());
-					//	Normal bn(t_normal * (vec_Nor.at(vn[i - 1] - 1)).colwise().homogeneous());
-					//	Normal cn(t_normal * (vec_Nor.at(vn[i] - 1)).colwise().homogeneous());
-
-					//	p = new GeometricPrimitive(new Triangle(pa, pb, pc, an, bn, cn), mat);
-					//}
-					//plist.push_back(p);
+					geoms.push_back(triangle);
 				}
 
 

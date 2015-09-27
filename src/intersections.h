@@ -150,10 +150,12 @@ __host__ __device__ float triangleIntersectionTest(Geom triangle, Ray r,
 	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside)
 {
 	glm::vec3 baryPosition;
-	glm::intersectRayTriangle<glm::vec3>(r.origin, r.direction
+	bool hit = glm::intersectRayTriangle<glm::vec3>(r.origin, r.direction
 		, triangle.translation, triangle.rotation, triangle.scale, baryPosition);
 
 	float t = baryPosition.z;
+
+	//printf("%d  %f\n",(int)hit,t);
 
 	if (t < 0)
 	{
@@ -170,12 +172,13 @@ __host__ __device__ float triangleIntersectionTest(Geom triangle, Ray r,
 	//interpolate the normal
 	//[col][row]
 	glm::vec3 n0(triangle.transform[0][0], triangle.transform[0][1], triangle.transform[0][2]);
-	glm::vec3 n1(triangle.transform[1][0], triangle.transform[1][1], triangle.transform[2][2]);
+	glm::vec3 n1(triangle.transform[1][0], triangle.transform[1][1], triangle.transform[1][2]);
 	glm::vec3 n2(triangle.transform[2][0], triangle.transform[2][1], triangle.transform[2][2]);
 
 	normal = glm::normalize(n0 * baryPosition.x + n1 * baryPosition.y + n2 * baryPosition.z);
 
 
+	outside = glm::dot(-r.direction, normal) > 0;
 	
 	return t;
 }

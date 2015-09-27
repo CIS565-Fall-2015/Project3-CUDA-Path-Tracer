@@ -265,7 +265,8 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			else
 			{
 				//TODO: triangle
-				printf("ERROR: geom type error at %d\n",i);
+				//printf("ERROR: geom type error at %d\n",i);
+				t = triangleIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
 			}
 
 			if(t > 0 && t_min > t)
@@ -289,7 +290,16 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[hit_geom_index];
 			Material & material = materials[geom.materialid];
 
-			if(material.emittance > EPSILON)
+
+			//if (geom.type == TRIANGLE)
+			//{
+			//	path.terminated = true;
+			//	image[path.image_index] += glm::vec3(1.0f);
+			//	return;
+			//}
+			
+
+			if (material.emittance > EPSILON)
 			{
 				//light source
 				path.terminated = true;
@@ -299,8 +309,11 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			{
 				path.terminated = false;
 				thrust::default_random_engine rng = makeSeededRandomEngine(iter, path.image_index, depth);
-				scatterRay(path.ray,path.color,intersect_point,normal,material,rng);
+				scatterRay(path.ray, path.color, intersect_point, normal, material, rng);
 			}
+
+
+			
 
 		}
 	}
