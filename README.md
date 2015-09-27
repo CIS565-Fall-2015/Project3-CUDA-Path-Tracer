@@ -40,9 +40,9 @@ Perfectly specular surfaces give a mirrored effect and are created by combining 
 * **How to Optimize**: To keep track of whether a ray was inside or outside of an object so I could know how to use the index of refraction coefficients (the air and the other object) I added a boolean to my Ray struct that held this state. This significantly added to my memory overhead because I'm using so many Ray's. I'd like to come up with a way to determine this property on the fly without saving it to further optimize performance.
 
 ### Motion Blur
-* **Overview**: Motion blur is very conceptually simple. We merely transform an object's position over the course of our render. This creates a blur effect because we are sampling the object at different locations, which creates a blurry trail as the object moves across the screen. 
+* **Overview**: Motion blur is very conceptually simple. We merely transform an object's position over the course of our render. This creates a blur effect because we are sampling the object at different locations, which creates a blurry trail as the object moves across the screen. Implementation was less trivial
 * **Performance Impact**: 
-* **GPU vs. CPU Implementation**: 
+* **GPU vs. CPU Implementation**: The way I am calculating the motion blur effect is independent of how I am doing my path tracing, so there should be no difference between the CPU and GPU implementations.
 * **How to Optimize**: 
 
 
