@@ -92,7 +92,7 @@ EMITTANCE   0
 CAMERA
 RES         800 800
 FOVY        45
-ITERATIONS  5000
+ITERATIONS  20000
 DEPTH       8
 FILE        cornell_mirror
 EYE         0.0 5 10.5
@@ -111,11 +111,11 @@ BLUR        0
 frame 0
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       10 3 30
+SCALE       10 .2 30
 frame 1
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       10 3 30
+SCALE       10 .2 30
 
 // Floor
 OBJECT 1
