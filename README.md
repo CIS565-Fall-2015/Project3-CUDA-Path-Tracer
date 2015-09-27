@@ -75,6 +75,8 @@ Regarding execution time, you can see that it correlates almost exactly with the
 
 These above two charts compare the execution time of a trace across all remaining rays when stream compaction is enabled and disabled. In the case where stream compaction is disabled, in the ray bounce function itself I check, after it has already been launched, if it has been terminated, and then return. This stops the tracer from incorrectly calculating more bounces after the ray has been terminated, but keeps the overhead of the kernel launches that we are trying to avoid through compaction.
 
+The second chart, comparing compaction vs. no compaction for a closed scene, is the most important of the two, because the data in open scene chart is heavily influenced by the fact that rays are terminating early because they are leaving the scene through the open wall. Although the no compaction implementation isn't doing any more calculations than the stream compaction implementation, you can see that over time the gap between the two continues to widden. This is a great illustration of how the overhead of managing threads can drag down performance if it isn't managed correctly. Performance suffers because threads that actually need to execute will be waiting on launched threads that should be dead to figure out that they have nothing to do and free up GPU space for other rays.
+
 ## Interactive Controls
 
 ## Scene File Format 
