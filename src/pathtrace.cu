@@ -16,6 +16,7 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
+#include <stream_compaction/stream_compaction.h>
 
 
 #define ERRORCHECK 1
@@ -42,7 +43,7 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 #endif
 }
 
-__host__ __device__ thrust::default_random_engine random_engine(int iter, int index = 0, int depth = 0) {
+__host__ __device__ thrust::default_random_engine makeSeededRandomEngine(int iter, int index = 0, int depth = 0) {
     int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
 	return thrust::default_random_engine(h);
 }
@@ -123,8 +124,8 @@ void pathtraceInit(Scene *scene) {
 	//KD-tree
 	
 
-	cudaMalloc(&dev_node, (scene->kdtree.last_idx) * sizeof(Node) );
-	cudaMemcpy(dev_node, scene->kdtree.hst_node.data(),(scene->kdtree.last_idx) * sizeof(Node),cudaMemcpyHostToDevice);
+	//cudaMalloc(&dev_node, (scene->kdtree.last_idx) * sizeof(Node) );
+	//cudaMemcpy(dev_node, scene->kdtree.hst_node.data(),(scene->kdtree.last_idx) * sizeof(Node),cudaMemcpyHostToDevice);
 
 
     checkCUDAError("pathtraceInit");
@@ -134,7 +135,7 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
-	cudaFree(dev_node);
+	//cudaFree(dev_node);
 	
 	cudaFree(dev_path);
 
@@ -150,16 +151,32 @@ __host__ __device__ void getCameraRayAtPixel(Path & path,const Camera &c, int x,
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
+
 	path.ray.origin = c.position;
-	path.ray.direction = glm::normalize(  c.view 
-		+ c.right * c.pixelLength.x * ( (float)x - (float)c.resolution.x * 0.5f + u01(rng) )  		//u01(rng) is for jiitering for antialiasing
-		- c.up * c.pixelLength.y * ( (float)y - (float)c.resolution.y * 0.5f + u01(rng) ) 			//u01(rng) is for jiitering for antialiasing
+	path.ray.direction = glm::normalize(c.view
+		+ c.right * c.pixelLength.x * ((float)x - (float)c.resolution.x * 0.5f + u01(rng))  		//u01(rng) is for jiitering for antialiasing
+		- c.up * c.pixelLength.y * ((float)y - (float)c.resolution.y * 0.5f + u01(rng)) 			//u01(rng) is for jiitering for antialiasing
 		);
 
+	if (c.lensRadiaus > 0)
+	{
+		//lens effect
+		float r = c.lensRadiaus * u01(rng);
+		float theta = u01(rng) * 2 * PI;
+
+		
+		float t = c.focalDistance * c.view.z / path.ray.direction.z;
+
+		glm::vec3 pfocus = path.ray.origin + t * path.ray.direction;
+
+		path.ray.origin = c.position + c.right * r * cos(theta) - c.up * r * sin(theta);
+		path.ray.direction = glm::normalize(pfocus - path.ray.origin);
+	}
+	
 	path.image_index = index;
 	path.color = glm::vec3(1.0f);
 	path.terminated = false;
-	//TODO: lens effect
+	
 }
 
 
@@ -180,6 +197,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
         int index = x + (y * cam.resolution.x);
 		Path & path = paths[index];
 		getCameraRayAtPixel(path,cam,x,y,iter,index);
+
 
     }
 }
@@ -373,60 +391,63 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		bool outside = true;
 
 
+
 		//naive parse through global geoms
 
-		//for(int i = 0; i < geoms_size; i++)
-		//{
-		//	//Geom & geom = static_cast<Geom>(*it);
-		//	glm::vec3 tmp_intersect;
-		//	glm::vec3 tmp_normal;
-		//	Geom & geom = geoms[i];
-		//	if( geom.type == CUBE)
-		//	{
-		//		t = boxIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
-		//	}
-		//	else if( geom.type == SPHERE)
-		//	{
-		//		t = sphereIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
-		//	}
-		//	else
-		//	{
-		//		//TODO: triangle
-		//		printf("ERROR: geom type error at %d\n",i);
-		//	}
+		for (int i = 0; i < geoms_size; i++)
+		{
+			//Geom & geom = static_cast<Geom>(*it);
+			glm::vec3 tmp_intersect;
+			glm::vec3 tmp_normal;
+			Geom & geom = geoms[i];
+			if (geom.type == CUBE)
+			{
+				t = boxIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
+			}
+			else if (geom.type == SPHERE)
+			{
+				t = sphereIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
+			}
+			else
+			{
+				//TODO: triangle
+				//printf("ERROR: geom type error at %d\n",i);
+				t = triangleIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
+			}
 
-		//	if(t > 0 && t_min > t)
-		//	{
-		//		t_min = t;
-		//		hit_geom_index = i;
-		//		intersect_point = tmp_intersect;
-		//		normal = tmp_normal;
-		//	}
-		//}
+			if (t > 0 && t_min > t)
+			{
+				t_min = t;
+				hit_geom_index = i;
+				intersect_point = tmp_intersect;
+				normal = tmp_normal;
+			}
+		}
+		
 
 		///////////////////////////////
 
 
 		//TODO:k-d tree traverse approach
 
-		int state = -2;
-		int cur_idx = 0;		//tmp, root node always 0....
-		float global_tmin,global_tmax;
-		AABBIntersect(nodes[cur_idx].aabb,path.ray,global_tmin,global_tmax);
-		while(state == -2 )
-		{
-			float tmin,tmax;
-			AABBIntersect(nodes[cur_idx].aabb,path.ray,tmin,tmax);
-			state = kd_serach_node(cur_idx,nodes,geoms,path.ray,tmin,tmax,global_tmax
-				,intersect_point,normal,outside);
-			
-		}
-		hit_geom_index = state;
+		//int state = -2;
+		//int cur_idx = 0;		//tmp, root node always 0....
+		//float global_tmin, global_tmax;
+		//AABBIntersect(nodes[cur_idx].aabb, path.ray, global_tmin, global_tmax);
+		//while (state == -2)
+		//{
+		//	float tmin, tmax;
+		//	AABBIntersect(nodes[cur_idx].aabb, path.ray, tmin, tmax);
+		//	state = kd_serach_node(cur_idx, nodes, geoms, path.ray, tmin, tmax, global_tmax
+		//		, intersect_point, normal, outside);
+
+		//}
+		//hit_geom_index = state;
 
 		////////////////////////////
 
 
-		if(hit_geom_index == -1)
+		if (hit_geom_index == -1)
 		{
 			path.terminated = true;
 			image[path.image_index] += BACKGROUND_COLOR;
@@ -437,7 +458,16 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[hit_geom_index];
 			Material & material = materials[geom.materialid];
 
-			if(material.emittance > EPSILON)
+
+			//if (geom.type == TRIANGLE)
+			//{
+			//	path.terminated = true;
+			//	image[path.image_index] += glm::vec3(1.0f);
+			//	return;
+			//}
+
+
+			if (material.emittance > EPSILON)
 			{
 				//light source
 				path.terminated = true;
@@ -447,10 +477,15 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			{
 				path.terminated = false;
 				thrust::default_random_engine rng = makeSeededRandomEngine(iter, path.image_index, depth);
-				scatterRay(path.ray,path.color,intersect_point,normal,material,rng);
+				scatterRay(path.ray, path.color, intersect_point, normal, material, rng);
 			}
 
+
+
 		}
+
+
+		
 	}
 }
 
@@ -521,10 +556,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	
 	Path* dev_path_end = dev_path + pixelcount;
+	int num_path = dev_path_end - dev_path;
 	//loop
 	while (dev_path_end != dev_path && depth < traceDepth)
 	{
-		int num_path = dev_path_end - dev_path;
+		
 		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
 			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size()
@@ -535,6 +571,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		//stream compaction
 		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		num_path = dev_path_end - dev_path;
+
+		//TODO:self work efficient
+		//num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
+		
+		checkCUDAError("stream compaction");
 	}
 
     ///////////////////////////////////////////////////////////////////////////

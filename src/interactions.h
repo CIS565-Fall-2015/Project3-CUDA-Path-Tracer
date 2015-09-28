@@ -2,6 +2,7 @@
 
 #include "intersections.h"
 
+#define RAY_EPSILON 0.001f
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -81,7 +82,8 @@ void scatterRay(
 	
 	
 
-	
+
+	float schlickR = 1;
 
 	
 	int num_ray_type = 0;
@@ -117,26 +119,72 @@ void scatterRay(
 	
 
 
-	if(scatter_ray_type == 0)
+	
+	if(scatter_ray_type == 2)
+	{
+		//refractive
+		
+
+		float cosi = glm::dot(-ray.direction, normal);
+		float sini = sqrtf(1 - cosi*cosi);
+		float ni, nt;
+
+		float normal_sign;
+		
+		if (cosi > 0)
+		{
+			//from outside
+			ni = 1;
+			nt = m.indexOfRefraction;
+			normal_sign = 1;
+		}
+		else
+		{
+			ni = m.indexOfRefraction;
+			nt = 1;
+			normal_sign = -1;
+		}
+
+		float sint = ni * sini / nt;
+
+		if (sint > 1)
+		{
+			//total reflect
+			num_ray_type--;
+			scatter_ray_type = 1;
+
+			float R0 = (ni - nt) / (ni + nt);
+			R0 *= R0;
+			schlickR = R0 + (1 - R0) * powf(1 - cosi, 5);
+		}
+		else
+		{
+			float cost = sqrtf(1 - sint*sint);
+			color *= m.specular.color*(float)num_ray_type;
+			glm::vec3 horizontal = (ray.direction + normal * normal_sign * cosi) / sini;
+			ray.direction = horizontal * sint - normal * normal_sign * cost;
+			//ray.direction = ray.direction * ni / nt + normal * normal_sign * (ni / nt*cosi - cost);
+			ray.origin = intersect - normal * normal_sign * RAY_EPSILON;
+		}
+	}
+
+
+	if (scatter_ray_type == 0)
 	{
 		//diffuse
-		ray.direction = calculateRandomDirectionInHemisphere(normal,rng);
+		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
 		//color *= m.color * glm::dot( ray.direction, normal) * (float)num_ray_type;
 		color *= m.color  * (float)num_ray_type;
-		ray.origin = intersect + normal * EPSILON;
+		ray.origin = intersect + normal * RAY_EPSILON;
 
 	}
-	else if(scatter_ray_type == 1)
+	else if (scatter_ray_type == 1)
 	{
 		//reflective
-		color *= m.specular.color * (float)num_ray_type;
-		ray.direction = ray.direction + 2 * glm::dot( -ray.direction, normal) * normal;
-		ray.origin = intersect + normal * EPSILON;
+		color *= m.specular.color * (float)num_ray_type * schlickR;
+		ray.direction = ray.direction + 2 * glm::dot(-ray.direction, normal) * normal;
+		ray.origin = intersect + normal * RAY_EPSILON;
 	}
-	//else if(scatter_ray_type == 2)
-	//{
-	//	//refractive
-	//}
 	
 	
 }

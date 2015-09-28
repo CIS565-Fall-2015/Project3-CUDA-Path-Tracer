@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtx/intersect.hpp>
 
 #include "sceneStructs.h"
 #include "utilities.h"
@@ -143,6 +144,43 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 }
 
 
+__host__ __device__ float triangleIntersectionTest(Geom triangle, Ray r,
+	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside)
+{
+	glm::vec3 baryPosition;
+	bool hit = glm::intersectRayTriangle<glm::vec3>(r.origin, r.direction
+		, triangle.translation, triangle.rotation, triangle.scale, baryPosition);
+
+	float t = baryPosition.z;
+
+	//printf("%d  %f\n",(int)hit,t);
+
+	if (t < 0)
+	{
+		return -1;
+	}
+
+	baryPosition.z = 1 - baryPosition.y - baryPosition.x;
+	intersectionPoint = triangle.translation * baryPosition.x
+		+ triangle.rotation * baryPosition.y
+		+ triangle.scale * baryPosition.z;
+
+	//normal vector?
+	//use transform matrix?
+	//interpolate the normal
+	//[col][row]
+	glm::vec3 n0(triangle.transform[0][0], triangle.transform[0][1], triangle.transform[0][2]);
+	glm::vec3 n1(triangle.transform[1][0], triangle.transform[1][1], triangle.transform[1][2]);
+	glm::vec3 n2(triangle.transform[2][0], triangle.transform[2][1], triangle.transform[2][2]);
+
+	normal = glm::normalize(n0 * baryPosition.x + n1 * baryPosition.y + n2 * baryPosition.z);
+
+
+	outside = glm::dot(-r.direction, normal) > 0;
+
+	return t;
+}
+
 
 
 __host__ __device__ bool AABBIntersect(const AABB aabb,const Ray ray, float & tmin, float & tmax)
@@ -189,3 +227,7 @@ __host__ __device__ bool AABBIntersect(const AABB aabb,const Ray ray, float & tm
 
 	return false;
 }
+
+
+
+
