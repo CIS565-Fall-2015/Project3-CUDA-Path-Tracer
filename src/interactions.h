@@ -64,7 +64,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  */
 __host__ __device__
 void scatterRay(
-PathRay &rayStep,
+		PathRay &rayStep,
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
@@ -73,7 +73,6 @@ PathRay &rayStep,
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
 
-	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.
 	// premultiply color.
 	if (m.emittance > 0.0f) { // hitting a light
 		rayStep.color *= m.color * m.emittance;
@@ -82,6 +81,14 @@ PathRay &rayStep,
 	else if (rayStep.depth <= 0){ // bottoming out
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
+	else if (m.specular.exponent > 0.0f) { // hitting a mirrored object
+		// reflect: http://paulbourke.net/geometry/reflected/
+		rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
+			(glm::dot(rayStep.ray.direction, normal));
+		rayStep.ray.origin = intersect;
+		rayStep.color *= m.color;
+	}
+	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.
 	else // hitting just a normal thing
 	{
 		rayStep.ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
