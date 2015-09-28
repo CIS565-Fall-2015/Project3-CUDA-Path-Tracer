@@ -109,6 +109,7 @@ void pathtraceInit(Scene *scene) {
 	int logn = ilog2ceil(pixelcount);
 	int pow2 = (int)pow(2, logn);
 
+	// TODO: something better than just allocating up to the next power of two. inefficient.
 	cudaMalloc(&dev_compact_tmp_array, pow2 * sizeof(int));
 	cudaMalloc(&dev_compact_scan_array, pow2 * sizeof(int));
 
@@ -402,7 +403,7 @@ __global__ void scatterRays(PathRay* dev_rayPool, int *dev_tmp, int *dev_scan, i
 	}
 }
 
-// culls rays using work efficient stream compaction
+// culls rays using work efficient global memory stream compaction
 int cullRaysEfficient(int numRays) {
 
 	// zero pad up to a power of 2
@@ -436,4 +437,9 @@ int cullRaysEfficient(int numRays) {
 		cudaMemcpyDeviceToHost);
 
 	return last_index + last_true_false;
+}
+
+// culls rays using work efficient shared memory stream compaction
+int cullRaysEfficientSharedMemory(int numRays) {
+	return 0;
 }
