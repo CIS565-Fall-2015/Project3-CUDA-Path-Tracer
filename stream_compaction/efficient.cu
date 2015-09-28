@@ -112,15 +112,8 @@ void up_sweep_down_sweep(int n, int *dev_data1, int blocksPerGrid, int blockSize
 		upsweep_step << <dimGrid, dimBlock >> >(d_offset_plus, d_offset, dev_data1);
 	}
 
-	//debug: peek at the array after upsweep
-	//int peek1[8];
-	//cudaMemcpy(&peek1, dev_data1, sizeof(int) * 8, cudaMemcpyDeviceToHost);
-
 	// Down-Sweep
-	//int zero[1];
-	//zero[0] = 0;
-	//cudaMemcpy(&dev_data1[n - 1], zero, sizeof(int) * 1, cudaMemcpyHostToDevice);
-	cudaMemset(&dev_data1[n - 1], 0.0, sizeof(int) * 1);
+	cudaMemset(&dev_data1[n - 1], 0, sizeof(int) * 1);
 	for (int d = logn - 1; d >= 0; d--) {
 		int d_offset_plus = (int)pow(2, d + 1);
 		int d_offset = (int)pow(2, d);

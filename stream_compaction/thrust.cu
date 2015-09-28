@@ -44,17 +44,8 @@ void scan(int n, int *odata, const int *idata) {
 	thrust::device_vector<int> device_v_in(v_in);
 	thrust::device_vector<int> device_v_out(n);
 
-	if (BENCHMARK) {
-		setup_timer_events();
-	}
-
 	thrust::exclusive_scan(device_v_in.begin(), device_v_in.end(),
 		device_v_out.begin());
-
-	if (BENCHMARK) {
-		printf("%f microseconds.\n",
-			teardown_timer_events() * 1000.0f);
-	}
 
 	// copy back over
 	for (int i = 0; i < n; i++) {
