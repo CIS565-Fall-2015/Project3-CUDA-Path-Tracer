@@ -38,113 +38,119 @@ Scene::Scene(string filename) {
 }
 
 int Scene::loadGeom(string objectid) {
-    int id = atoi(objectid.c_str());
-    //if (id != geoms.size()) {
-    //    cout << "ERROR: OBJECT ID does not match expected number of geoms" << endl;
-    //    return -1;
-    //} else {
-        cout << "Loading Geom " << id << "..." << endl;
-        Geom newGeom;
-        string line;
+	vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms: geoms;
 
-		bool isObj = false;
-		string objfilename;
 
-        //load object type
-        utilityCore::safeGetline(fp_in, line);
-        if (!line.empty() && fp_in.good()) {
-            if (strcmp(line.c_str(), "sphere") == 0) {
-                cout << "Creating new sphere..." << endl;
-                newGeom.type = SPHERE;
-            } else if (strcmp(line.c_str(), "cube") == 0) {
-                cout << "Creating new cube..." << endl;
-                newGeom.type = CUBE;
-            }
-			else if (strcmp(line.c_str(), "triangle") == 0)
-			{
-				cout << "Creating new triangle..." << endl;
-				newGeom.type = TRIANGLE;
-			}
-			else if (strcmp(line.c_str(), "obj") == 0)
-			{
-				cout << "Creating from obj file ..." << endl;
-				isObj = true;
-			}
-        }
+	int id = atoi(objectid.c_str());
+	//if (id != geoms.size()) {
+	//    cout << "ERROR: OBJECT ID does not match expected number of geoms" << endl;
+	//    return -1;
+	//} else {
+	cout << "Loading Geom " << id << "..." << endl;
+	Geom newGeom;
+	string line;
 
-        //link material
-        utilityCore::safeGetline(fp_in, line);
-        if (!line.empty() && fp_in.good()) {
-            vector<string> tokens = utilityCore::tokenizeString(line);
-            newGeom.materialid = atoi(tokens[1].c_str());
-            cout << "Connecting Geom " << objectid << " to Material " << newGeom.materialid << "..." << endl;
-        }
+	bool isObj = false;
+	string objfilename;
 
-        //load transformations
-        utilityCore::safeGetline(fp_in, line);
-        while (!line.empty() && fp_in.good()) {
-            vector<string> tokens = utilityCore::tokenizeString(line);
-
-            //load tranformations
-            if (strcmp(tokens[0].c_str(), "TRANS") == 0) {
-                newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            } else if (strcmp(tokens[0].c_str(), "ROTAT") == 0) {
-                newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
-                newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            }
-			//OBJ
-			else if (strcmp(tokens[0].c_str(), "OBJFILE") == 0)
-			{
-				objfilename = tokens[1];
-			}
-			//TRIANGLE
-			else if (strcmp(tokens[0].c_str(), "A") == 0) {
-				newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-			}
-			else if (strcmp(tokens[0].c_str(), "B") == 0) {
-				newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-			}
-			else if (strcmp(tokens[0].c_str(), "C") == 0) {
-				newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-			}
-
-            utilityCore::safeGetline(fp_in, line);
-        }
-
-		
-        newGeom.transform = utilityCore::buildTransformationMatrix(
-                newGeom.translation, newGeom.rotation, newGeom.scale);
-        newGeom.inverseTransform = glm::inverse(newGeom.transform);
-        newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
-
-		if (!isObj)
-		{
-			if (newGeom.type == TRIANGLE)
-			{
-				glm::vec3 & a = newGeom.translation;
-				glm::vec3 & b = newGeom.rotation;
-				glm::vec3 & c = newGeom.scale;
-				
-				glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
-				for (int j = 0; j < 3; j++)
-				{
-					newGeom.transform[0][j] = n[j];	//at a
-					newGeom.transform[1][j] = n[j];	//at b
-					newGeom.transform[2][j] = n[j];	//at c
-				}
-			}
-			geoms.push_back(newGeom);
+	//load object type
+	utilityCore::safeGetline(fp_in, line);
+	if (!line.empty() && fp_in.good()) {
+		if (strcmp(line.c_str(), "sphere") == 0) {
+			cout << "Creating new sphere..." << endl;
+			newGeom.type = SPHERE;
 		}
-		else
-		{
-			loadObjSimple(objfilename, newGeom.transform,newGeom.invTranspose, newGeom.materialid);
+		else if (strcmp(line.c_str(), "cube") == 0) {
+			cout << "Creating new cube..." << endl;
+			newGeom.type = CUBE;
 		}
-        
-        
-		
-		return 1;
-    //}
+		else if (strcmp(line.c_str(), "triangle") == 0)
+		{
+			cout << "Creating new triangle..." << endl;
+			newGeom.type = TRIANGLE;
+		}
+		else if (strcmp(line.c_str(), "obj") == 0)
+		{
+			cout << "Creating from obj file ..." << endl;
+			isObj = true;
+		}
+	}
+
+	//link material
+	utilityCore::safeGetline(fp_in, line);
+	if (!line.empty() && fp_in.good()) {
+		vector<string> tokens = utilityCore::tokenizeString(line);
+		newGeom.materialid = atoi(tokens[1].c_str());
+		cout << "Connecting Geom " << objectid << " to Material " << newGeom.materialid << "..." << endl;
+	}
+
+	//load transformations
+	utilityCore::safeGetline(fp_in, line);
+	while (!line.empty() && fp_in.good()) {
+		vector<string> tokens = utilityCore::tokenizeString(line);
+
+		//load tranformations
+		if (strcmp(tokens[0].c_str(), "TRANS") == 0) {
+			newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		else if (strcmp(tokens[0].c_str(), "ROTAT") == 0) {
+			newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
+			newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		//OBJ
+		else if (strcmp(tokens[0].c_str(), "OBJFILE") == 0)
+		{
+			objfilename = tokens[1];
+		}
+		//TRIANGLE
+		else if (strcmp(tokens[0].c_str(), "A") == 0) {
+			newGeom.translation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		else if (strcmp(tokens[0].c_str(), "B") == 0) {
+			newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+		else if (strcmp(tokens[0].c_str(), "C") == 0) {
+			newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+		}
+
+		utilityCore::safeGetline(fp_in, line);
+	}
+
+
+	newGeom.transform = utilityCore::buildTransformationMatrix(
+		newGeom.translation, newGeom.rotation, newGeom.scale);
+	newGeom.inverseTransform = glm::inverse(newGeom.transform);
+	newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+
+	if (!isObj)
+	{
+		if (newGeom.type == TRIANGLE)
+		{
+			glm::vec3 & a = newGeom.translation;
+			glm::vec3 & b = newGeom.rotation;
+			glm::vec3 & c = newGeom.scale;
+
+			glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+			for (int j = 0; j < 3; j++)
+			{
+				newGeom.transform[0][j] = n[j];	//at a
+				newGeom.transform[1][j] = n[j];	//at b
+				newGeom.transform[2][j] = n[j];	//at c
+			}
+		}
+		geoms_using.push_back(newGeom);
+	}
+	else
+	{
+		loadObjSimple(objfilename, newGeom.transform, newGeom.invTranspose, newGeom.materialid);
+	}
+
+
+
+	return 1;
+	//}
 }
 
 int Scene::loadCamera() {
@@ -264,6 +270,7 @@ int Scene::loadMaterial(string materialid) {
 //adapted from my uc berkeley cs184 ray tracer project
 void Scene::loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_normal, int material_id)
 {
+	vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms : geoms;
 	//fast implement
 	
 	//now doesn't use
@@ -433,7 +440,7 @@ void Scene::loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_n
 					triangle.type = TRIANGLE;
 
 
-					geoms.push_back(triangle);
+					geoms_using.push_back(triangle);
 				}
 
 

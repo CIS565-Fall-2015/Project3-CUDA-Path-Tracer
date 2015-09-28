@@ -11,6 +11,7 @@ AABB getAABB(const Geom & geom)
 	{
 	case CUBE:
 	{
+		//vs 2012 way of init
 		glm::vec4 tmp_arys[] = {
 			glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)
 			, glm::vec4(0.5f, 0.5f, -0.5f, 1.0f)
@@ -24,8 +25,8 @@ AABB getAABB(const Geom & geom)
 		std::vector<glm::vec4> points(&tmp_arys[0], &tmp_arys[0] + 8);
 
 		glm::vec4 & t = points.at(0);
-		aabb.max_pos = glm::vec3(t.x / t.w, t.x / t.w, t.x / t.w);
-		aabb.min_pos = glm::vec3(t.x / t.w, t.x / t.w, t.x / t.w);
+		aabb.max_pos = glm::vec3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+		aabb.min_pos = glm::vec3(FLT_MAX, FLT_MAX, FLT_MAX);
 		for (auto p : points)
 		{
 			p = geom.transform * p;
@@ -128,14 +129,17 @@ bool my_kd_construct_compare_z(const KDNodeConstructWrapper & a, const KDNodeCon
 
 void KDTree::init(Scene & s)
 {
+	vector<Geom> & geoms_using = s.tmp_geoms;
+	vector<Geom> & geoms_final = s.geoms;
+
 	last_idx = 0;
 	AABB spaceAABB;
-	spaceAABB = getAABB(s.geoms[0]);
+	spaceAABB = getAABB(geoms_using.at(0));
 
-	vector<KDNodeConstructWrapper> vec_geoms(s.geoms.size());
+	vector<KDNodeConstructWrapper> vec_geoms(geoms_using.size());
 
 	int i = 0;
-	for (auto & g : s.geoms)
+	for (const Geom & g : geoms_using)
 	{
 
 		vec_geoms.at(i).aabb = getAABB(g);
@@ -159,40 +163,81 @@ void KDTree::init(Scene & s)
 		i++;
 	}
 
-	hst_node.resize(vec_geoms.size()*2.5);
+	//hst_node.resize(vec_geoms.size()*2.5);
+
+	vector<int> vec_sequence;	//geom_idx, used to rebuild a scene->geoms vector whose sequence = tree travse
+
+	root_idx = build(vec_geoms, vec_sequence, spaceAABB, -1, 0);
+
+	//rebuild scene->geoms according to vec_sequence;
+	for (auto geom_idx : vec_sequence)
+	{
+		geoms_final.push_back(geoms_using.at(geom_idx));
+	}
+	geoms_using.clear();
 
 
-	root_idx = build(vec_geoms, spaceAABB, -1, 0);
 }
 
+
+
+void KDTree::buildLeaf(Node & cur
+	,const vector<KDNodeConstructWrapper>& construct_objs
+	, vector<int> & sequence, const AABB& box, int parent_idx, int depth)
+{
+
+	auto t = construct_objs.begin();
+	cur.aabb = box;//t->aabb;
+
+	//cur.geom_index = t->geom_idx;
+	cur.geom_index = sequence.size();
+
+	cur.parent_idx = parent_idx;
+	//cur.left_idx = -1;
+	cur.num_geoms = construct_objs.size();
+
+	cur.right_idx = -1;
+
+	for (auto c : construct_objs)
+	{
+		sequence.push_back(c.geom_idx);
+	}
+
+	//return cur_idx;
+}
+
+
+
+
+
+
+
 //return this node idx
-int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs, const AABB& box, int parent_idx, int depth)
+int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs
+	, vector<int> & sequence, const AABB& box, int parent_idx, int depth)
 {
 	if (construct_objs.empty())
 	{
+		std::cerr << "ERROR: empty kdtree node!\n";
 		return -1;
 	}
 
 
-	if (last_idx >= hst_node.size())
-	{
-		hst_node.push_back(Node());
-	}
+	//if (last_idx >= hst_node.size())
+	//{
+	//	hst_node.push_back(Node());
+	//}
+	hst_node.push_back(Node());
 	Node & cur = hst_node.at(last_idx);
 	int cur_idx = last_idx;
 	last_idx++;
 
 
-	if (construct_objs.size() <= 1)
+	if (construct_objs.size() <= MAX_LEAF_GEOM_NUM)
 	{
 		//leaf node
 		//no more split
-		auto t = construct_objs.begin();
-		cur.aabb = box;//t->aabb;
-		cur.geom_index = t->geom_idx;
-		cur.parent_idx = parent_idx;
-		cur.left_idx = -1;
-		cur.right_idx = -1;
+		buildLeaf(cur, construct_objs, sequence, box, parent_idx, depth);
 
 		return cur_idx;
 	}
@@ -237,39 +282,52 @@ int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs, const AABB& bo
 	left_objs.assign(construct_objs.begin(), t);
 	right_objs.assign(t, construct_objs.end());
 
-	int tmp_size = left_objs.size();
+	int tmp_left_size = left_objs.size();
 
-	//TODO: overlap object should be added to both branch
+
+
+	//overlap object should be added to both branch
+
+	int num_overlap = 0;
+
+	//add right to left
 	for (auto o : right_objs)
 	{
 		if (o.aabb.min_pos[cur.split.axis] < cur.split.pos)
 		{
 			left_objs.push_back(o);
+			num_overlap++;
 		}
 	}
 
-	for (int i = 0; i < tmp_size; i++)	//naive parse method....
+	//add left to right
+	for (int i = 0; i < tmp_left_size; i++)	//naive parse method....
 	{
 		KDNodeConstructWrapper & o = left_objs.at(i);
 		if (o.aabb.max_pos[cur.split.axis] > cur.split.pos)
 		{
 			right_objs.push_back(o);
+			num_overlap++;
 		}
 	}
 
 
+	if ( ((double)num_overlap) / ((double)construct_objs.size()) >= MAX_OVERLAP_RATIO)
+	{
+		//don't split
+		//build leaf
+		buildLeaf(cur, construct_objs, sequence, box, parent_idx, depth);
+
+		return cur_idx;
+	}
 
 
-	cur.left_idx = build(left_objs, aabb_pair.first, cur_idx, depth + 1);
-	cur.right_idx = build(right_objs, aabb_pair.second, cur_idx, depth + 1);
-	//if(t == construct_objs.begin())
-	//{
-	//	//left_objs.assign(con
-	//}
-	//else
-	//{
-	//	
-	//}
+	//cur.left_idx = build(left_objs, aabb_pair.first, cur_idx, depth + 1);
+	build(left_objs, sequence, aabb_pair.first, cur_idx, depth + 1);
+	
+	cur.right_idx = build(right_objs, sequence, aabb_pair.second, cur_idx, depth + 1);
+	
+
 
 	return cur_idx;
 }

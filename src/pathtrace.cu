@@ -154,7 +154,7 @@ __host__ __device__ void getCameraRayAtPixel(Path & path,const Camera &c, int x,
 
 	path.ray.origin = c.position;
 	path.ray.direction = glm::normalize(c.view
-		+ c.right * c.pixelLength.x * ((float)x - (float)c.resolution.x * 0.5f + u01(rng))  		//u01(rng) is for jiitering for antialiasing
+		- c.right * c.pixelLength.x * ((float)x - (float)c.resolution.x * 0.5f + u01(rng))  		//u01(rng) is for jiitering for antialiasing
 		- c.up * c.pixelLength.y * ((float)y - (float)c.resolution.y * 0.5f + u01(rng)) 			//u01(rng) is for jiitering for antialiasing
 		);
 
@@ -308,13 +308,15 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 	int first,second;
 	if(ray.direction[n.split.axis] > 0.0f)
 	{
-		first = n.left_idx;
+		//first = n.left_idx;
+		first = cur_idx + 1;
 		second = n.right_idx;
 	}
 	else
 	{
 		first = n.right_idx;
-		second = n.left_idx;
+		//second = n.left_idx;
+		second = cur_idx + 1;
 	}
 
 	if(thit >= tmax || thit < 0)

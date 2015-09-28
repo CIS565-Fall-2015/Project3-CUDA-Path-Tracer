@@ -86,7 +86,7 @@ EMITTANCE   0
 
 // Camera
 CAMERA
-RES         400 400
+RES         800 800
 FOVY        45
 ITERATIONS  5000
 DEPTH       8
@@ -94,8 +94,8 @@ FILE        cornell
 EYE         0.0 5 10.5
 VIEW        0 0 -1
 UP          0 1 0
-LENS_RADIUS 1.1
-FOCAL_LENGTH 8.5
+// LENS_RADIUS 1.1
+// FOCAL_LENGTH 8.5
 
 // Ceiling light
 OBJECT 0
@@ -184,3 +184,19 @@ material 1
 TRANS       -3.5 6 4
 ROTAT       10 60 0
 SCALE       2 2 2
+
+// Sphere
+OBJECT 6
+sphere
+material 2
+TRANS       3 8 2
+ROTAT       0 0 0
+SCALE       1 1 1
+
+// Sphere
+OBJECT 6
+sphere
+material 3
+TRANS       2 1.5 4
+ROTAT       0 0 0
+SCALE       1 1 1

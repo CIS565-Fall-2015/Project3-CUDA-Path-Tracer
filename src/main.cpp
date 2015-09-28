@@ -168,7 +168,7 @@ void saveImage() {
 //MY
 void sceneInitKDTree()
 {
-	//scene->kdtree.init(*scene);
+	scene->kdtree.init(*scene);
 
 	std::cout<<sizeof(Node)<<std::endl;
 	std::cout<<(scene->kdtree.last_idx)<<std::endl;
@@ -198,7 +198,11 @@ void runCuda() {
     if (iteration == 0) {
         pathtraceFree();
 
-		sceneInitKDTree();
+		if (USE_KDTREE_FLAG)
+		{
+			sceneInitKDTree();
+		}
+		
         pathtraceInit(scene);
     }
 

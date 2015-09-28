@@ -15,7 +15,7 @@
 
 using namespace std;
 
-
+#define USE_KDTREE_FLAG (true)
 
 
 class Scene {
@@ -39,4 +39,6 @@ public:
 
 	//MY
 	KDTree kdtree;
+
+	std::vector<Geom> tmp_geoms;
 };
