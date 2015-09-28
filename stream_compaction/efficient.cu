@@ -75,7 +75,6 @@ static void setup_dimms(dim3 &dimBlock, dim3 &dimGrid, int n) {
  */
 void scan(int n, int *odata, const int *idata) {
 
-	// copy everything in idata over to the GPU.
 	// we'll need to pad the device memory with 0s to get a power of 2 array size.
 	int logn = ilog2ceil(n);
 	int pow2 = (int)pow(2, logn);
@@ -87,7 +86,7 @@ void scan(int n, int *odata, const int *idata) {
 	int *dev_x;
 	cudaMalloc((void**)&dev_x, sizeof(int) * pow2);
 	fill_by_value <<<dimGrid, dimBlock >>>(0, dev_x);
-
+	// copy everything in idata over to the GPU.
 	cudaMemcpy(dev_x, idata, sizeof(int) * n, cudaMemcpyHostToDevice);
 
 	// up sweep and down sweep
@@ -117,9 +116,10 @@ void up_sweep_down_sweep(int n, int *dev_data1) {
 	//cudaMemcpy(&peek1, dev_data1, sizeof(int) * 8, cudaMemcpyDeviceToHost);
 
 	// Down-Sweep
-	int zero[1];
-	zero[0] = 0;
-	cudaMemcpy(&dev_data1[n - 1], zero, sizeof(int) * 1, cudaMemcpyHostToDevice); // change to memset
+	//int zero[1];
+	//zero[0] = 0;
+	//cudaMemcpy(&dev_data1[n - 1], zero, sizeof(int) * 1, cudaMemcpyHostToDevice);
+	cudaMemset(&dev_data1[n - 1], 0, sizeof(int) * 1);
 	for (int d = logn - 1; d >= 0; d--) {
 		int d_offset_plus = (int)pow(2, d + 1);
 		int d_offset = (int)pow(2, d);

@@ -71,6 +71,9 @@ static PathRay *dev_rayPool; // pool of rays "in flight"
 static int pixelcount;
 static glm::vec3 *dev_sample = NULL;
 
+static int *dev_compact_tmp_array; // temporary array used by compact
+static int *dev_compact_scan_array; // scan array used by compact
+
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
     const Camera &cam = hst_scene->state.camera;
@@ -102,6 +105,13 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_sample, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_sample, 0, pixelcount * sizeof(glm::vec3));
 
+	// allocate space for the compact temp array
+	int logn = ilog2ceil(pixelcount);
+	int pow2 = (int)pow(2, logn);
+
+	cudaMalloc(&dev_compact_tmp_array, pow2 * sizeof(int));
+	cudaMalloc(&dev_compact_scan_array, pow2 * sizeof(int));
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -113,6 +123,9 @@ void pathtraceFree() {
 	cudaFree(dev_firstBounce);
 	cudaFree(dev_rayPool);
 	cudaFree(dev_sample);
+
+	cudaFree(dev_compact_tmp_array);
+	cudaFree(dev_compact_scan_array);
 
     checkCUDAError("pathtraceFree");
 }
@@ -318,7 +331,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
 		
-		unfinishedRays = cullRays(unfinishedRays);
+		unfinishedRays = cullRaysThrust(unfinishedRays);
 		//printf("unfinished rays: %i\n", unfinishedRays);
 	}
 
@@ -350,7 +363,7 @@ struct bottomed_out
 };
 
 // culls rays using stream compaction. for now, just uses thrust.
-int cullRays(int numRays) {
+int cullRaysThrust(int numRays) {
 	PathRay *newEnd = thrust::remove_if(thrust::device, dev_rayPool, dev_rayPool + numRays, bottomed_out());
 	// get the index of newEnd
 	int newNumRays = 0;
@@ -361,4 +374,53 @@ int cullRays(int numRays) {
 		}
 	}
 	return newNumRays;
+}
+
+// in parallel, compute the temp array
+__global__ void tempArray(PathRay* dev_rayPool, int *dev_tmp, int numRays) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < numRays) {
+		dev_tmp[index] = dev_rayPool[index].depth > 0;
+	}
+}
+
+// perform in-place scatter on the ray pool
+__global__ void scatterRays(PathRay* dev_rayPool, int *dev_tmp, int *dev_scan, int numRays) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < numRays && dev_tmp[index]) {
+		dev_rayPool[dev_scan[index]] = dev_rayPool[index];
+	}
+}
+
+// culls rays using work efficient stream compaction
+int cullRaysEfficient(int numRays) {
+	const int blockSideLength = 8;
+	const dim3 blockSize(blockSideLength * blockSideLength, 1);
+	const dim3 blocksPerGrid((numRays + blockSize.x - 1) / blockSize.x);
+
+	int logn = ilog2ceil(numRays);
+	int pow2 = (int)pow(2, logn);
+
+	// zero out the temp array and the scan array
+	cudaMemset(dev_compact_tmp_array, 0, pow2);
+	cudaMemset(dev_compact_scan_array, 0, pow2);
+	// Step 1: compute temporary array containing 1 if criteria met, 0 otherwise
+	tempArray << < blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, numRays);
+	cudaMemcpy(dev_compact_scan_array, dev_compact_tmp_array, sizeof(int) * pow2, cudaMemcpyDeviceToDevice);
+
+	// Step 2: run exclusive scan on temporary array
+	StreamCompaction::Efficient::up_sweep_down_sweep(pow2, dev_compact_scan_array);
+
+	// Step 3: scatter
+	scatterRays << <blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, dev_compact_scan_array, pow2);
+
+	int last_index;
+	cudaMemcpy(&last_index, dev_compact_scan_array + (numRays - 1), sizeof(int),
+		cudaMemcpyDeviceToHost);
+
+	int last_true_false;
+	cudaMemcpy(&last_true_false, dev_compact_tmp_array + (numRays - 1), sizeof(int),
+		cudaMemcpyDeviceToHost);
+
+	return last_index + last_true_false;
 }

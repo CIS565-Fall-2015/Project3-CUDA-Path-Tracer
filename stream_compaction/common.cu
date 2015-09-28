@@ -1,6 +1,6 @@
 #include "common.h"
 
-void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+void checkCUDAErrorFnSC(const char *msg, const char *file, int line) {
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err) {
         return;

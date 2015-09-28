@@ -6,12 +6,12 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
-#define BENCHMARK 1
+#define BENCHMARK 0
 
 /**
  * Check for CUDA errors; print and exit if there was a problem.
  */
-void checkCUDAErrorFn(const char *msg, const char *file = NULL, int line = -1);
+void checkCUDAErrorFnSC(const char *msg, const char *file = NULL, int line = -1);
 
 inline int ilog2(int x) {
     int lg = 0;
