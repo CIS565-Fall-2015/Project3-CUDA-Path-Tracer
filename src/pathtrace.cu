@@ -331,7 +331,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
 		
-		unfinishedRays = cullRaysThrust(unfinishedRays);
+		//unfinishedRays = cullRaysThrust(unfinishedRays);
+		unfinishedRays = cullRaysEfficient(unfinishedRays);
 		//printf("unfinished rays: %i\n", unfinishedRays);
 	}
 
@@ -398,6 +399,7 @@ int cullRaysEfficient(int numRays) {
 	const dim3 blockSize(blockSideLength * blockSideLength, 1);
 	const dim3 blocksPerGrid((numRays + blockSize.x - 1) / blockSize.x);
 
+	// zero pad up to a power of 2
 	int logn = ilog2ceil(numRays);
 	int pow2 = (int)pow(2, logn);
 
@@ -406,13 +408,14 @@ int cullRaysEfficient(int numRays) {
 	cudaMemset(dev_compact_scan_array, 0, pow2);
 	// Step 1: compute temporary array containing 1 if criteria met, 0 otherwise
 	tempArray << < blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, numRays);
+	// make a copy of the temp array so we can do an in-place upsweep downsweep step. TODO: can we get around this memcpy?
 	cudaMemcpy(dev_compact_scan_array, dev_compact_tmp_array, sizeof(int) * pow2, cudaMemcpyDeviceToDevice);
 
 	// Step 2: run exclusive scan on temporary array
 	StreamCompaction::Efficient::up_sweep_down_sweep(pow2, dev_compact_scan_array);
 
-	// Step 3: scatter
-	scatterRays << <blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, dev_compact_scan_array, pow2);
+	// Step 3: scatter in place
+	scatterRays << <blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, dev_compact_scan_array, numRays);
 
 	int last_index;
 	cudaMemcpy(&last_index, dev_compact_scan_array + (numRays - 1), sizeof(int),
