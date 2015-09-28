@@ -10,16 +10,26 @@ Description
 ========================
 
 ## Overview
-
+This GPU based path tracer with global illumination and anti-alising can render diffuse, perfect/non-perfect specular, transparent and subsurface scattering materials. Shown as the picture below.
+![](img/Overview.png)
 ## Features
-   #### Global Illumination
-   #### Shared mem work-eff 
-   #### Materials
-        *diffuse
-		*mirror(pure specular)
-		*specular
-		*sss
-		*transparent (w fresnel)
+
+#### Materials
+	*diffuse
+	*Perfect Specular Materials (Mirrors)
+	*specular
+	*Subsurface Scattering
+
+	*transparent (w fresnel)
+
+#### Global Illumination
+
+With Direct Lighting	|  Without Direct Lighting
+:----------------------:|:-------------------------:
+![](img/GI_on.png)		|		![](img/GI_off.png)
+
+#### Work-efficient Stream Compaction with Shared Memory
+
 
 ## Analysis
    #### stream compaction
