@@ -77,7 +77,8 @@ Ray * dev_rays_temp;
 
 int ttlLights = 0;
 int * dev_lightIdxs;
-
+int *dev_temps;
+int *dev_incre;
 
 void pathtraceInit(Scene *scene,bool strCmpt) {
     hst_scene = scene;
@@ -89,8 +90,11 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	int raySize = pixelcount*sizeof(Ray);
 	cudaMalloc((void**)&dev_rays, raySize);
 	cudaMalloc((void**)&dev_rays_temp, raySize);
-	//Copy geoms to dev_geoms
 	
+	//for stream compact
+	cudaMalloc((void**)&dev_temps, sizeof(int)*pixelcount);
+	cudaMalloc((void**)&dev_incre, sizeof(int)*pixelcount);
+	//Copy geoms to dev_geoms
 	int geoSize = hst_scene->geoms.size()*sizeof(Geom);
 	Geom * hst_geoms = (Geom *)malloc(geoSize);
 
@@ -124,6 +128,8 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 
 void pathtraceFree() {
 
+	cudaFree(dev_incre);
+	cudaFree(dev_temps);
 	cudaFree(dev_rays);
 	cudaFree(dev_rays_temp);
 	cudaFree(dev_geoms);
@@ -566,8 +572,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			}
 			*/
 			//printf("\n\n/******* Test *******/\n");
-			int *dev_temps;
-			cudaMalloc((void**)&dev_temps, sizeof(int)*ttRayNum);
+
 			getUnterminatedTemp<<<GridSize,bSize>>>(dev_rays, dev_temps, ttRayNum);
 			
 			//cudaMemcpy(dev_temps, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
@@ -582,9 +587,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//cudaMemcpy(dev_temps_thrust, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
 			checkCUDAError("000");
 
-			int *dev_incre;
-			cudaMalloc((void**)&dev_incre, sizeof(int)*ttRayNum);
-			cudaMemset(dev_incre, 0, sizeof(int)*ttRayNum);
+		
+			//cudaMemset(dev_incre, 0, sizeof(int)*ttRayNum);
 			checkCUDAError("111");
 			//printf("before scatter totalNum: %d\n", ttRayNum);
 			ExclusiveScanTraverse(dev_incre,ttRayNum, bSize, dev_temps);
@@ -625,13 +629,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//printf("");	
 			//cudaMemcpy( hst_temp, dev_incre,sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "final. scan");		//dev_temp
-
+			//printf("before str: %d\t,",why);
 			why = ttRayNum;
+			//printf("after str: %d\t\n", why);
 			totalRays = why;
-			//cudaFree(dev_rays_tempt);
-			cudaFree(dev_incre);
-			cudaFree(dev_temps);
-			//cudaFree(dev_temps_thrust);
 		}
 	}
 	//(3) Handle all not terminated

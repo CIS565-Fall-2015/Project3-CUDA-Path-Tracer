@@ -185,7 +185,7 @@ thrust::default_random_engine &rrr) {
 		//	if incident:
 		if (outside) //from outside
 		{
-			if (u01(rrr) > 0.1)//later: what value to choose?
+			if (u01(rrr) > -0.1)//later: what value to choose?
 				ray_type = SSSRay_o;
 			else
 				ray_type = DiffRay;
@@ -266,11 +266,13 @@ thrust::default_random_engine &rrr) {
 		if (si <= so) //turns into exitant, go out of the objects
 		//if (true)
 		{
+			//ray.carry *= m.color;
 			ray.origin = getPointOnRay(ray, intrT + .0002f);
 			ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
 		}
 		else //stays in the obj, pick new direction and scatter distance
 		{
+			//ray.carry *= m.color;
 			ray.origin = getPointOnRay(ray, so);
 			ray.direction = -glm::normalize(calculateRandomDirectionInHemisphere(ray.direction, rrr));
 		}
