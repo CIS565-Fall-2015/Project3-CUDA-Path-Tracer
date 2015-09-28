@@ -90,19 +90,20 @@ void scan(int n, int *odata, const int *idata) {
 	cudaMemcpy(dev_x, idata, sizeof(int) * n, cudaMemcpyHostToDevice);
 
 	// up sweep and down sweep
-	up_sweep_down_sweep(pow2, dev_x);
+	up_sweep_down_sweep(pow2, dev_x, -1, -1);
 
 	cudaMemcpy(odata, dev_x, sizeof(int) * n, cudaMemcpyDeviceToHost);
 	cudaFree(dev_x);
 }
 
 // exposed up sweep and down sweep. expects powers of two!
-void up_sweep_down_sweep(int n, int *dev_data1) {
+void up_sweep_down_sweep(int n, int *dev_data1, int blocksPerGrid, int blockSize) {
 	int logn = ilog2ceil(n);
 
-	dim3 dimBlock;
-	dim3 dimGrid;
-	setup_dimms(dimBlock, dimGrid, n);
+	dim3 dimBlock(blockSize, 1);
+	dim3 dimGrid(blocksPerGrid, 1);
+	if (blockSize < 0 && blocksPerGrid < 0)
+		setup_dimms(dimBlock, dimGrid, n);
 
 	// Up Sweep
 	for (int d = 0; d < logn; d++) {
@@ -119,7 +120,7 @@ void up_sweep_down_sweep(int n, int *dev_data1) {
 	//int zero[1];
 	//zero[0] = 0;
 	//cudaMemcpy(&dev_data1[n - 1], zero, sizeof(int) * 1, cudaMemcpyHostToDevice);
-	cudaMemset(&dev_data1[n - 1], 0, sizeof(int) * 1);
+	cudaMemset(&dev_data1[n - 1], 0.0, sizeof(int) * 1);
 	for (int d = logn - 1; d >= 0; d--) {
 		int d_offset_plus = (int)pow(2, d + 1);
 		int d_offset = (int)pow(2, d);
@@ -176,7 +177,7 @@ int compact(int n, int *odata, const int *idata) {
 
 	// Step 2: run efficient scan on the tmp array
 	cudaMemcpy(dev_scan, dev_tmp, sizeof(int) * pow2, cudaMemcpyDeviceToDevice);
-	up_sweep_down_sweep(pow2, dev_scan);
+	up_sweep_down_sweep(pow2, dev_scan, -1, -1);
 
 	// Step 3: scatter
 	scatter <<<dimGrid, dimBlock >>>(dev_x, dev_tmp, dev_scan, dev_scatter);

@@ -258,7 +258,9 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool, int trace_depth) {
 // transfers colors from thread pool to the image
 __global__ void poolToImage(PathRay* dev_rayPool, glm::vec3 *sample) {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	sample[dev_rayPool[index].pixelIndex] = dev_rayPool[index].color;
+	if (dev_rayPool[index].depth <= 0) {
+		sample[dev_rayPool[index].pixelIndex] = dev_rayPool[index].color;
+	}
 }
 
 // transfers colors from thread pool to the image
@@ -332,7 +334,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
 		
 		//unfinishedRays = cullRaysThrust(unfinishedRays);
-		unfinishedRays = cullRaysEfficient(unfinishedRays);
+		//unfinishedRays = cullRaysEfficient(unfinishedRays);
 		//printf("unfinished rays: %i\n", unfinishedRays);
 	}
 
@@ -395,13 +397,14 @@ __global__ void scatterRays(PathRay* dev_rayPool, int *dev_tmp, int *dev_scan, i
 
 // culls rays using work efficient stream compaction
 int cullRaysEfficient(int numRays) {
-	const int blockSideLength = 8;
-	const dim3 blockSize(blockSideLength * blockSideLength, 1);
-	const dim3 blocksPerGrid((numRays + blockSize.x - 1) / blockSize.x);
 
 	// zero pad up to a power of 2
 	int logn = ilog2ceil(numRays);
 	int pow2 = (int)pow(2, logn);
+
+	const int blockSideLength = 8;
+	const dim3 blockSize(blockSideLength * blockSideLength, 1);
+	const dim3 blocksPerGrid((pow2 + blockSize.x - 1) / blockSize.x);
 
 	// zero out the temp array and the scan array
 	cudaMemset(dev_compact_tmp_array, 0, pow2);
@@ -412,7 +415,16 @@ int cullRaysEfficient(int numRays) {
 	cudaMemcpy(dev_compact_scan_array, dev_compact_tmp_array, sizeof(int) * pow2, cudaMemcpyDeviceToDevice);
 
 	// Step 2: run exclusive scan on temporary array
-	StreamCompaction::Efficient::up_sweep_down_sweep(pow2, dev_compact_scan_array);
+	StreamCompaction::Efficient::up_sweep_down_sweep(pow2, dev_compact_scan_array, blocksPerGrid.x, blockSize.x);
+
+
+	//for (int d = 1; d <= logn; d++) {
+	//	int offset = powf(2, d - 1);
+	//	StreamCompaction::Naive::naive_scan_step << <blocksPerGrid, blockSize >> >(offset, dev_x, dev_x_next);
+	//	int *temp = dev_x_next;
+	//	dev_x_next = dev_x;
+	//	dev_x = temp;
+	//}
 
 	// Step 3: scatter in place
 	scatterRays << <blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, dev_compact_scan_array, numRays);
