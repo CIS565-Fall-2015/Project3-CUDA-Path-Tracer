@@ -11,6 +11,6 @@ namespace Efficient {
 
 	void scan_components_test();
 
-	void efficient_scan(int n, int *dev_data);
+	void memoryEfficientInclusiveScan(int n, int *dev_data);
 }
 }

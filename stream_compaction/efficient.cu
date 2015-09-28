@@ -265,13 +265,59 @@ __global__ void block_downsweep(int *dev_data, int n) {
 			block_data[t] += tmp;
 		}
 	}
+	__syncthreads();
 	if (t + blockIdx.x * blockDim.x < n) {
-		// write the data out. no need to sync b/c block_data[t] is all handled on this thread.
+		// write the data out.
 		dev_data[t + blockIdx.x * blockDim.x] = block_data[t];
 	}
 }
 
-__global__ void accumulate_max_by_segment(int *dev_data, int data_length, int *dev_maxPerSeg, int segWidth) {
+__global__ void block_downsweep_inclusive(int *dev_data, int *dev_segment_ends, int n) {
+	// we basically want the indices per step in block_upsweep in reverse.
+	// then we need to do that tricky tricky swapping thing
+
+	unsigned int t = threadIdx.x; // we're indexing shared memory, so no need for +(blockIdx.x * blockDim.x);
+	// load into shared memory from provided pointer
+	// we know dev_data is spread over the entire grid
+	// so start is blockId.x * blockDim.x, size i blockDim.x
+	__shared__ int block_data[DEVICE_SHARED_MEMORY];
+	__shared__ int block_data_inclusive[DEVICE_SHARED_MEMORY];
+
+	block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
+	if (t == blockDim.x - 1) {
+		block_data[t] = 0;
+	}
+	int tmp = 0;
+	// for each stage:
+	for (unsigned int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+		// syncthreads to make sure all threads have transferred relevant data
+		__syncthreads();
+		// swap and sum
+		if ((t + 2) % (2 * stride) == 1) {
+			tmp = block_data[t - stride];
+			block_data[t - stride] = block_data[t];
+			block_data[t] += tmp;
+		}
+	}
+	__syncthreads();
+	// shift left by 1 to make this inclusive.
+	if (t  < DEVICE_SHARED_MEMORY - 1) {
+		block_data_inclusive[t] = block_data[t + 1];
+	}
+	else {
+		// figure out what index of dev_segment_ends to look at
+		block_data_inclusive[DEVICE_SHARED_MEMORY - 1] = dev_segment_ends[blockIdx.x];
+		block_data_inclusive[DEVICE_SHARED_MEMORY - 1] += block_data[t];
+	}
+
+	__syncthreads();
+	if (t + blockIdx.x * blockDim.x < n) {
+		// write the data out.
+		dev_data[t + blockIdx.x * blockDim.x] = block_data_inclusive[t];
+	}
+}
+
+__global__ void accumulate_ends_of_segments(int *dev_data, int data_length, int *dev_maxPerSeg, int segWidth) {
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 	if (index < ((data_length + segWidth - 1) / segWidth)) { // the number of data segments, including incomplete
 		int blockMaxIndex = segWidth * (index + 1) - 1;
@@ -393,7 +439,7 @@ void scan_components_test() {
 	cudaMemcpy(dev_values, small, 8 * sizeof(int), cudaMemcpyHostToDevice);
 
 	// test for a block width that divides the data evenly
-	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 4);
+	accumulate_ends_of_segments << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 4);
 	cudaMemcpy(results, dev_maxes, 8 * sizeof(int), cudaMemcpyDeviceToHost);
 	int maxesSegWidth4[2] = {3, 7};
 	for (int i = 0; i < 2; i++) {
@@ -404,7 +450,7 @@ void scan_components_test() {
 	}
 
 	// test for a block width that divides the data unevenly
-	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 3);
+	accumulate_ends_of_segments << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 3);
 	cudaMemcpy(results, dev_maxes, 8 * sizeof(int), cudaMemcpyDeviceToHost);
 	int maxesSegWidth3[3] = { 2, 5, 7 };
 	for (int i = 0; i < 3; i++) {
@@ -434,13 +480,13 @@ void scan_components_test() {
 	}
 	biggerScan[0] = 0;
 	for (int i = 1; i < 24; i++) {
-		biggerScan[i] = biggerScan[i - 1] + bigger[i - 1];
+		biggerScan[i] = biggerScan[i - 1] + bigger[i];
 	}
 
 	int *dev_data;
 	cudaMalloc(&dev_data, 24 * sizeof(int));
 	cudaMemcpy(dev_data, bigger, 24 * sizeof(int), cudaMemcpyHostToDevice);
-	efficient_scan(24, dev_data);
+	memoryEfficientInclusiveScan(24, dev_data);
 	cudaMemcpy(bigger, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
 	for (int i = 0; i < 24; i++) {
 		if (bigger[i] != biggerScan[i]) {
@@ -457,13 +503,13 @@ void scan_components_test() {
 	}
 	biggerScanNP2[0] = 0;
 	for (int i = 1; i < 27; i++) {
-		biggerScanNP2[i] = biggerScanNP2[i - 1] + biggerNP2[i - 1];
+		biggerScanNP2[i] = biggerScanNP2[i - 1] + biggerNP2[i];
 	}
 
 	int *dev_dataNP2;
 	cudaMalloc(&dev_dataNP2, 27 * sizeof(int));
 	cudaMemcpy(dev_dataNP2, biggerNP2, 27 * sizeof(int), cudaMemcpyHostToDevice);
-	efficient_scan(27, dev_dataNP2);
+	memoryEfficientInclusiveScan(27, dev_dataNP2);
 	cudaMemcpy(biggerNP2, dev_dataNP2, 27 * sizeof(int), cudaMemcpyDeviceToHost);
 	for (int i = 0; i < 27; i++) {
 		if (biggerNP2[i] != biggerScanNP2[i]) {
@@ -480,12 +526,12 @@ void scan_components_test() {
 	cudaFree(dev_dataNP2);
 }
 
-void efficient_scan(int n, int *dev_data) {
+void memoryEfficientInclusiveScan(int n, int *dev_data) {
 	// break up into blocks.
 
-	int peek0[3];
-	int peek1[24];
-	int peek2[3];
+	//int peek0[3];
+	//int peek1[24];
+	//int peek2[3];
 
 	int numBlocks = ((n + DEVICE_SHARED_MEMORY - 1) / DEVICE_SHARED_MEMORY);
 	int* dev_accumulation;
@@ -495,25 +541,28 @@ void efficient_scan(int n, int *dev_data) {
 	dim3 blockSize(DEVICE_SHARED_MEMORY, 1);
 	dim3 blocksPerGrid(numBlocks, 1);
 
+	accumulate_ends_of_segments << <blocksPerGrid, blockSize >> >(dev_data, n,
+		dev_accumulation, DEVICE_SHARED_MEMORY);
+
 	block_upsweep << <blocksPerGrid, blockSize >> >(dev_data, n);
-	block_downsweep << <blocksPerGrid, blockSize >> >(dev_data, n);
+	block_downsweep_inclusive << <blocksPerGrid, blockSize >> >(dev_data, dev_accumulation, n);
 
 	// accumulate block sums into an array of sums.
-	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_data, n, 
+	accumulate_ends_of_segments << <blocksPerGrid, blockSize >> >(dev_data, n, 
 		dev_accumulation, DEVICE_SHARED_MEMORY);
-	cudaMemcpy(peek0, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(peek0, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
 
 	// scan block sums to compute block increments. if it's too big for one block, recurse (omg)
 	if (numBlocks > DEVICE_SHARED_MEMORY) {
-		efficient_scan(numBlocks, dev_accumulation);
+		memoryEfficientInclusiveScan(numBlocks, dev_accumulation);
 	}
 	else {
 		block_upsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
 		block_downsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
 	}
-	cudaMemcpy(peek1, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
-	cudaMemcpy(peek2, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
-	printf("derp\n");
+	//cudaMemcpy(peek1, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(peek2, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+	//printf("derp\n");
 
 	// add block increments to each element in the corresponding block. stop at n, don't pile on zeros
 	backAdd << <blocksPerGrid, blockSize >> >(dev_data, n, dev_accumulation, DEVICE_SHARED_MEMORY);
