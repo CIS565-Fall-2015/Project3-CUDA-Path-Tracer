@@ -2,6 +2,7 @@
 
 #include <vector>
 #include "scene.h"
+#include "stream_compaction\efficient.h"
 
 void pathtraceInit(Scene *scene);
 void pathtraceFree();
