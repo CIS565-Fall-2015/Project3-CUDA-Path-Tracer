@@ -5,6 +5,7 @@
 #include <thrust/random.h>
 #include <thrust/remove.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -179,7 +180,7 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dof){
 		if (dof == true) {
 			glm::vec3 apOff = glm::vec3(dofDistrib(rng), dofDistrib(rng), 0.0f);
 			glm::vec3 new_E = cam.position + apOff;
-			float focal = 11.587f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
+			float focal = 12.339f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
 			dir *= focal;
 			dir -= apOff;
 			dir = glm::normalize(dir);
@@ -389,7 +390,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	int numGeoms = hst_scene->geoms.size();
 	int numMats = hst_scene->materials.size();
 	Ray *rayArray = new Ray[pixelcount];
-
+	int max_iter = 1000; //hst_scene->state.iterations;
     const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
     const dim3 blocksPerGrid(
@@ -423,17 +424,20 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     
     // TODO: perform one iteration of path tracing
-	bool dof = false;
-	bool m_blur = true;
-	float time = rand()%100 / 100.0f;
-	printf("time: %f ", time);
-	if (m_blur) {
+	bool dof = true;
+	bool m_blur = false;
+	
+	if (m_blur && iter < max_iter) {
 		for (int i = 0; i < numGeoms; i++) {
+
 			m_blur_geoms[i] = geoms[i];
-			m_blur_geoms[i].translation.x += geoms[i].move.x*time;
-			m_blur_geoms[i].translation.y += geoms[i].move.y*time;
-			m_blur_geoms[i].translation.z += geoms[i].move.z*time;
-			printf("(%f, %f, %f)", m_blur_geoms[i].translation.x, m_blur_geoms[i].translation.y, m_blur_geoms[i].translation.z);
+			m_blur_geoms[i].translation.x += geoms[i].move.x / (float)max_iter;
+			m_blur_geoms[i].translation.y += geoms[i].move.y / (float)max_iter;
+			m_blur_geoms[i].translation.z += geoms[i].move.z / (float)max_iter;
+			m_blur_geoms[i].transform = utilityCore::buildTransformationMatrix(m_blur_geoms[i].translation, m_blur_geoms[i].rotation, m_blur_geoms[i].scale);
+			m_blur_geoms[i].inverseTransform = glm::inverse(m_blur_geoms[i].transform);
+			m_blur_geoms[i].invTranspose = glm::inverseTranspose(m_blur_geoms[i].transform);
+			//printf("(%f, %f, %f)", m_blur_geoms[i].translation.x, m_blur_geoms[i].translation.y, m_blur_geoms[i].translation.z);
 		}
 		cudaMemcpy(dev_geoms, m_blur_geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 	}
