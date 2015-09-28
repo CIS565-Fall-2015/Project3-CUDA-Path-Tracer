@@ -198,10 +198,10 @@ void runCuda() {
     if (iteration == 0) {
         pathtraceFree();
 
-		if (USE_KDTREE_FLAG)
-		{
-			sceneInitKDTree();
-		}
+#ifdef USE_KDTREE_FLAG
+		sceneInitKDTree();
+#endif
+
 		
         pathtraceInit(scene);
     }

@@ -129,8 +129,9 @@ bool my_kd_construct_compare_z(const KDNodeConstructWrapper & a, const KDNodeCon
 
 void KDTree::init(Scene & s)
 {
-	vector<Geom> & geoms_using = s.tmp_geoms;
-	vector<Geom> & geoms_final = s.geoms;
+	//vector<Geom> & geoms_using = s.tmp_geoms;
+	vector<Geom> & geoms_using = s.geoms;
+	//vector<Geom> & geoms_final = s.geoms;
 
 	last_idx = 0;
 	AABB spaceAABB;
@@ -165,17 +166,21 @@ void KDTree::init(Scene & s)
 
 	//hst_node.resize(vec_geoms.size()*2.5);
 
-	vector<int> vec_sequence;	//geom_idx, used to rebuild a scene->geoms vector whose sequence = tree travse
+	//vector<int> vec_sequence;	//geom_idx, used to rebuild a scene->geoms vector whose sequence = tree travse
 
-	root_idx = build(vec_geoms, vec_sequence, spaceAABB, -1, 0);
+	root_idx = build(vec_geoms, hst_geom_idx, spaceAABB, -1, 0);
+
 
 	//rebuild scene->geoms according to vec_sequence;
-	for (auto geom_idx : vec_sequence)
-	{
-		geoms_final.push_back(geoms_using.at(geom_idx));
-	}
-	geoms_using.clear();
+	
+	////old method copy every geom 
+	//for (auto geom_idx : hst_geom_idx)
+	//{
+	//	geoms_final.push_back(geoms_using.at(geom_idx));
+	//}
+	//geoms_using.clear();
 
+	
 
 }
 

@@ -38,7 +38,8 @@ Scene::Scene(string filename) {
 }
 
 int Scene::loadGeom(string objectid) {
-	vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms: geoms;
+	//vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms: geoms;
+	vector<Geom> & geoms_using = geoms;
 
 
 	int id = atoi(objectid.c_str());
@@ -270,7 +271,10 @@ int Scene::loadMaterial(string materialid) {
 //adapted from my uc berkeley cs184 ray tracer project
 void Scene::loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_normal, int material_id)
 {
-	vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms : geoms;
+	//vector<Geom> & geoms_using = USE_KDTREE_FLAG ? tmp_geoms : geoms;
+	vector<Geom> & geoms_using = geoms;
+	
+	
 	//fast implement
 	
 	//now doesn't use

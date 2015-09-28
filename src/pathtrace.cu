@@ -92,9 +92,11 @@ static Geom * dev_geom;
 static Material * dev_material;
 
 
+
+//kd tree structure
 static Node * dev_node;		//kd tree node
 
-
+static int * dev_geom_idx;
 
 
 
@@ -124,8 +126,11 @@ void pathtraceInit(Scene *scene) {
 	//KD-tree
 	
 
-	//cudaMalloc(&dev_node, (scene->kdtree.last_idx) * sizeof(Node) );
-	//cudaMemcpy(dev_node, scene->kdtree.hst_node.data(),(scene->kdtree.last_idx) * sizeof(Node),cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_node, (scene->kdtree.hst_node.size()) * sizeof(Node) );
+	cudaMemcpy(dev_node, scene->kdtree.hst_node.data(), (scene->kdtree.hst_node.size()) * sizeof(Node), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_geom_idx, (scene->kdtree.hst_geom_idx.size()) * sizeof(int));
+	cudaMemcpy(dev_geom_idx, scene->kdtree.hst_geom_idx.data(), (scene->kdtree.hst_geom_idx.size()) * sizeof(int), cudaMemcpyHostToDevice);
 
 
     checkCUDAError("pathtraceInit");
@@ -135,7 +140,8 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
-	//cudaFree(dev_node);
+	cudaFree(dev_node);
+	cudaFree(dev_geom_idx);
 	
 	cudaFree(dev_path);
 
@@ -239,51 +245,95 @@ __global__ void generateRayFromCamera(Camera cam, int iter, Path* paths)
 //}
 
 
-__device__ int kd_search_leaf(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin, float& tmax, float global_tmax
+__device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * geomsid
+	                          ,const Ray & ray,float& tmin, float& tmax, float global_tmax
 							  ,glm::vec3 & intersect, glm::vec3 & normal, bool & outside)
 {
+	//search for a hit in this leaf
 	Node & n = nodes[cur_idx];
 	float t;
-	Geom & geom = geoms[n.geom_index];
-	if( geom.type == CUBE)
+	glm::vec3 intersect_point;
+	glm::vec3 normal;
+	float t_min = FLT_MAX;
+	int hit_geom_index = -1;
+	bool outside = true;
+
+	for (int i = 0; i < n.num_geoms; i++)
 	{
-		t = boxIntersectionTest(geom, ray, intersect, normal, outside);
-	}
-	else if( geom.type == SPHERE)
-	{
-		t = sphereIntersectionTest(geom, ray, intersect, normal, outside);
-	}
-	else
-	{
-		//TODO: triangle
+		glm::vec3 tmp_intersect;
+		glm::vec3 tmp_normal;
+		int gid = geomsid[n.geom_index] + i;
+		Geom & geom = geoms[gid];
+		if (geom.type == CUBE)
+		{
+			t = boxIntersectionTest(geom, ray, intersect, normal, outside);
+		}
+		else if (geom.type == SPHERE)
+		{
+			t = sphereIntersectionTest(geom, ray, intersect, normal, outside);
+		}
+		else
+		{
+			// triangle
+			t = triangleIntersectionTest(geom, ray, intersect, normal, outside);
+		}
+
+		if (t > 0 && t_min > t)
+		{
+			t_min = t;
+			hit_geom_index = gid;
+			intersect_point = tmp_intersect;
+			normal = tmp_normal;
+		}
 	}
 
-	if(t > 0 && t < global_tmax )
-	{
-		//hit
 
-		return n.geom_index;
+
+	//////////////////////////////////////////////////////////////////////
+	if(t > 0 && t < tmax )
+	{
+		// found hithit
+
+		return hit_geom_index;
 	}
 	else
 	{
 		//continue search
-		if(fabs(tmax - global_tmax) < EPSILON)
+		if (fabs(tmax - global_tmax) < RAY_EPSILON)
 		{
 			//fail, no collision
+			//end search
 			return -1;
 		}
 		else
 		{
 			float tmp_tmin = tmax,tmp_tmax = global_tmax;
 			float t0, t1;
+
 			//backtrack
-			bool tmp_hit = AABBIntersect(n.aabb,ray,tmp_tmin,tmp_tmax);
+			bool tmp_hit = AABBIntersect(n.aabb,ray,t0,t1);
 			int backtrack_idx = cur_idx;
+			if (!(t0 >= tmp_tmin && t1 <= tmp_tmax))
+			{
+				tmp_hit = false;
+			}
+
 			while(!tmp_hit)
 			{
 				//tmp_tmin = tmax;
 				//tmp_tmax = global_tmax;
+				
+				//call backtrack again
 				backtrack_idx = nodes[backtrack_idx].parent_idx;
+
+				if (backtrack_idx < 0)
+				{
+					//error...
+					//should happen
+					printf("ERROR: kd tree backtrack to root!\n");
+					return -1;
+				}
+
 				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,t0,t1);
 				if (! (t0 >= tmp_tmin && t1 <= tmp_tmax ) )
 				{
@@ -293,8 +343,8 @@ __device__ int kd_search_leaf(int & cur_idx,Node * nodes,Geom* geoms,const Ray &
 			
 			//has intersection
 			cur_idx = backtrack_idx;
-			tmin = tmp_tmin;
-			tmax = tmp_tmax;
+			tmin = t0;
+			tmax = t1;
 			
 			return -2;
 		}
@@ -306,6 +356,7 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 {
 	float thit = (n.split.pos - ray.origin[n.split.axis]) / ray.direction[n.split.axis];
 	int first,second;
+	//order
 	if(ray.direction[n.split.axis] > 0.0f)
 	{
 		//first = n.left_idx;
@@ -318,6 +369,7 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 		//second = n.left_idx;
 		second = cur_idx + 1;
 	}
+
 
 	if(thit >= tmax || thit < 0)
 	{
@@ -342,7 +394,8 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 //-1 end, no collision
 //-2 continue
 //>=0 hit_geom_id
-__device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray & ray,float& tmin,float& tmax, float global_tmax
+__device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms, int * geomsid
+							  ,const Ray & ray,float& tmin,float& tmax, float global_tmax
 							  ,glm::vec3 & intersect, glm::vec3 & normal, bool & outside)
 {
 	if(nodes[cur_idx].geom_index == -1)
@@ -354,7 +407,8 @@ __device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray &
 	else
 	{
 		//leaf node
-		return kd_search_leaf(cur_idx,nodes,geoms,ray,tmin,tmax,global_tmax
+		return kd_search_leaf(cur_idx, nodes, geoms, geomsid
+			, ray, tmin, tmax, global_tmax
 			, intersect, normal, outside);
 	}
 }
@@ -371,8 +425,10 @@ __device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms,const Ray &
 
 __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 * image
 										,Path * paths
-										,Geom * geoms, int geoms_size,Material * materials, int materials_size
+										,Geom * geoms, int geoms_size
+										,Material * materials, int materials_size
 										,Node * nodes
+										, int * geomsid
 										//,const thrust::device_vector<Geom> & geoms , const thrust::device_vector<Material> & materials
 										)
 {
@@ -393,7 +449,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		bool outside = true;
 
 
-
+#ifndef USE_KDTREE_FLAG
 		//naive parse through global geoms
 
 		for (int i = 0; i < geoms_size; i++)
@@ -412,7 +468,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			}
 			else
 			{
-				//TODO: triangle
+				// triangle
 				//printf("ERROR: geom type error at %d\n",i);
 				t = triangleIntersectionTest(geom, path.ray, tmp_intersect, tmp_normal, outside);
 			}
@@ -428,25 +484,27 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		
 
 		///////////////////////////////
-
+#else
 
 		//TODO:k-d tree traverse approach
 
-		//int state = -2;
-		//int cur_idx = 0;		//tmp, root node always 0....
-		//float global_tmin, global_tmax;
-		//AABBIntersect(nodes[cur_idx].aabb, path.ray, global_tmin, global_tmax);
-		//while (state == -2)
-		//{
-		//	float tmin, tmax;
-		//	AABBIntersect(nodes[cur_idx].aabb, path.ray, tmin, tmax);
-		//	state = kd_serach_node(cur_idx, nodes, geoms, path.ray, tmin, tmax, global_tmax
-		//		, intersect_point, normal, outside);
+		int state = -2;
+		int cur_idx = 0;		//tmp, root node always 0....
+		float global_tmin, global_tmax;
+		AABBIntersect(nodes[cur_idx].aabb, path.ray, global_tmin, global_tmax);
+		float tmin = global_tmin, tmax = global_tmax;
+		while (state == -2)
+		{
+			AABBIntersect(nodes[cur_idx].aabb, path.ray, tmin, tmax);
+			state = kd_serach_node(cur_idx, nodes, geoms, geomsid
+				,path.ray, tmin, tmax, global_tmax
+				, intersect_point, normal, outside);
 
-		//}
-		//hit_geom_index = state;
+		}
+		hit_geom_index = state;
 
 		////////////////////////////
+#endif
 
 
 		if (hit_geom_index == -1)
@@ -560,13 +618,14 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	Path* dev_path_end = dev_path + pixelcount;
 	int num_path = dev_path_end - dev_path;
 	//loop
-	while (dev_path_end != dev_path && depth < traceDepth)
+	while (/*dev_path_end != dev_path*/num_path > 0 && depth < traceDepth)
 	{
 		
 		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
-			, dev_geom, hst_scene->geoms.size(), dev_material, hst_scene->materials.size()
-			, dev_node);
+			, dev_geom, hst_scene->geoms.size()
+			, dev_material, hst_scene->materials.size()
+			, dev_node, dev_geom_idx);
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 		depth ++;

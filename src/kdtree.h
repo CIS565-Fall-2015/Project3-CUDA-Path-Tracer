@@ -52,6 +52,7 @@ public:
 
 	vector<Node> hst_node;
 
+	vector<int> hst_geom_idx;
 	//
 	int last_idx;
 private:
