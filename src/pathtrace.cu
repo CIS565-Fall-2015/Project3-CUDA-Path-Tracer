@@ -189,10 +189,11 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 			thrust::default_random_engine rng = random_engine(iter, index, 0);
 			scatterRay(dev_rayPool[index], isx_point, isx_norm,
 				dev_mats[nearestGeom->materialid], rng);
-			dev_rayPool[index].depth++;
+			dev_rayPool[index].depth--;
 		}
 		else {
-			dev_rayPool[index].depth = MAX_DEPTH;
+			// ray cast out into space
+			dev_rayPool[index].depth = 0;
 			dev_rayPool[index].color = glm::vec3(0, 0, 0);
 		}
 
@@ -207,7 +208,7 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 }
 
 // generates the initial raycasts
-__global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
+__global__ void rayCast(Camera cam, PathRay* dev_rayPool, int trace_depth) {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	
 	// compute x and y screen coordinates by reversing int index = x + (y * resolution.x);
@@ -219,7 +220,7 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
 
 		// generate a PathRay to cast
 		glm::vec3 ref = cam.position + cam.view;
-		glm::vec3 R = glm::cross(cam.view, cam.up);
+		glm::vec3 R = glm::cross(cam.up, cam.view);
 		glm::vec3 V = cam.up * glm::tan(cam.fov.y * 0.01745329251f);
 		glm::vec3 H = R * glm::tan(cam.fov.x * 0.01745329251f);
 		// sx = ((2.0f * x) / cam.resolution.x) - 1.0f
@@ -229,7 +230,7 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool) {
 		dev_rayPool[index].ray.direction = glm::normalize(p - cam.position);
 		dev_rayPool[index].ray.origin = cam.position;
 		dev_rayPool[index].color = glm::vec3(1.0f);
-		dev_rayPool[index].depth = 0;
+		dev_rayPool[index].depth = trace_depth;
 		dev_rayPool[index].pixelIndex = index;
 
 		//glm::vec3 debug = glm::normalize(p - cam.position);
@@ -306,7 +307,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	dim3 iterBlocksPerGrid((unfinishedRays + iterBlockSize.x - 1) /
 		iterBlockSize.x);
 
-	rayCast <<<iterBlocksPerGrid, iterBlockSize >> >(cam, dev_rayPool);
+	rayCast <<<iterBlocksPerGrid, iterBlockSize >>>(cam, dev_rayPool, traceDepth);
 	
 	while (unfinishedRays > 0) {
 		iterBlocksPerGrid.x = (unfinishedRays + iterBlockSize.x - 1) /
@@ -344,7 +345,7 @@ struct bottomed_out
 	__host__ __device__
 	bool operator()(const PathRay pathray)
 	{
-		return pathray.depth >= MAX_DEPTH;
+		return pathray.depth <= 0;
 	}
 };
 

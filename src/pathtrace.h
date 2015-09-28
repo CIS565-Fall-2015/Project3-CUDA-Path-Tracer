@@ -2,7 +2,6 @@
 
 #include <vector>
 #include "scene.h"
-#define MAX_DEPTH 10
 
 void pathtraceInit(Scene *scene);
 void pathtraceFree();

@@ -77,9 +77,9 @@ PathRay &rayStep,
 	// premultiply color.
 	if (m.emittance > 0.0f) { // hitting a light
 		rayStep.color *= m.color * m.emittance;
-		rayStep.depth = MAX_DEPTH;
+		rayStep.depth = 0;
 	}
-	else if (rayStep.depth >= MAX_DEPTH){ // bottoming out
+	else if (rayStep.depth <= 0){ // bottoming out
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
 	else // hitting just a normal thing
