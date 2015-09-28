@@ -193,5 +193,61 @@ int compact(int n, int *odata, const int *idata) {
 	return last_index + last_true_false;
 }
 
+__global__ void block_upsweep(int n, int *dev_data) {
+	// parallel reduction with some modifications
+	// in place of:
+	// 0  1  2  3  4  5  6  7   stride = 1  
+	// 1     5     9     13     stride = 2 
+	// 6           22           stride = 4 
+	// 28                              
+	//
+	// we want:
+	// 0  1  2  3  4  5  6  7   stride = 1
+	//    1     5     9     13  stride = 2
+	//          6           22  stride = 4
+	//                      28
+	//
+	// want to do stuff at indices:
+	// 1  3  5  6  7 -> stride to get here is 1
+	// 3 7 -> stride to get here is 2
+	// 7 -> stride to get here is 4
+	//
+	// use if((t + 2) % (2 * stride) == 1)
+	// needs to produce something more like an "upsweep" than a traditional parallel reduction
+
+	unsigned int t = threadIdx.x; // we're indexing shared memory, so no need for +(blockIdx.x * blockDim.x);
+
+	// load into shared memory from provided pointer
+	// we know dev_data is spread over the entire grid
+	// so start is blockId.x * blockDim.x, size i blockDim.x
+	__shared__ int block_data[blockDim.x];
+	block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
+	// for each stage:
+	for (unsigned int stride = 1; stride < blockDim.x; stride *= 2) {
+		// syncthreads to make sure all threads have transferred relevant data
+		__syncthreads();
+		// compute partial
+		if ((t + 2) % (2 * stride) == 1) {
+			partialSum[t] += partialSum[t - stride];
+		}
+	}
+	__syncthreads(); // make sure all threads are done computing
+	// write the data out
+	dev_data[t + blockIdx.x * blockDim.x] = block_data[t];
+}
+
+__global__ void block_downsweep() {
+
+}
+
+void efficient_scan(int n, int *dev_data, int blocksPerGrid, int blockSize) {
+	// break up into blocks. pad with zeros so we have pow 2
+	// run scan on each block (upsweep downsweep)
+	// accumulate block sums into an array of sums.
+	// scan block sums to compute block increments. if it's too big for one block, recurse (omg)
+	// add block increments to each element in the corresponding block. stop at n, don't pile on zeros
+	// return!
+}
+
 }
 }

@@ -7,5 +7,7 @@ namespace Efficient {
 	void up_sweep_down_sweep(int n, int *dev_data, int blocksPerGrid, int blockSize);
 
     int compact(int n, int *odata, const int *idata);
+
+	void efficient_scan(int n, int *dev_data, int blocksPerGrid, int blockSize);
 }
 }
