@@ -213,7 +213,7 @@ void KDTree::buildLeaf(Node & cur
 
 
 //return this node idx
-int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs
+int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	, vector<int> & sequence, const AABB& box, int parent_idx, int depth)
 {
 	if (construct_objs.empty())
@@ -228,7 +228,7 @@ int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs
 	//	hst_node.push_back(Node());
 	//}
 	hst_node.push_back(Node());
-	Node & cur = hst_node.at(last_idx);
+	Node & cur = hst_node.at(last_idx); // !!! this is not safe when hst_node assigns new value
 	int cur_idx = last_idx;
 	last_idx++;
 
@@ -268,7 +268,7 @@ int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs
 
 	sort(construct_objs.begin(), construct_objs.end(), *f);
 
-	auto t = construct_objs.begin() + (construct_objs.size() / 2);
+	vector<KDNodeConstructWrapper>::iterator t = construct_objs.begin() + (construct_objs.size() / 2);
 
 	cur.split.pos = t->mid[cur.split.axis];
 	cur.aabb = box;
@@ -325,7 +325,7 @@ int KDTree::build(vector<KDNodeConstructWrapper>& construct_objs
 	//cur.left_idx = build(left_objs, aabb_pair.first, cur_idx, depth + 1);
 	build(left_objs, sequence, aabb_pair.first, cur_idx, depth + 1);
 	
-	cur.right_idx = build(right_objs, sequence, aabb_pair.second, cur_idx, depth + 1);
+	hst_node.at(cur_idx).right_idx = build(right_objs, sequence, aabb_pair.second, cur_idx, depth + 1);
 	
 
 
