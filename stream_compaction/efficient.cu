@@ -555,6 +555,9 @@ void memoryEfficientInclusiveScan(int n, int *dev_data) {
 	// scan block sums to compute block increments. if it's too big for one block, recurse (omg)
 	if (numBlocks > DEVICE_SHARED_MEMORY) {
 		memoryEfficientInclusiveScan(numBlocks, dev_accumulation);
+		// make this exclusive. Less memory access than making this return exclusive.
+		cudaMemcpy(dev_accumulation + 1, dev_accumulation, (numBlocks - 1) * sizeof(int), cudaMemcpyDeviceToDevice);
+		cudaMemset(dev_accumulation, 0, sizeof(int));
 	}
 	else {
 		block_upsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);

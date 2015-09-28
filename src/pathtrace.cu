@@ -342,7 +342,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
 		
 		//unfinishedRays = cullRaysThrust(unfinishedRays);
-		unfinishedRays = cullRaysEfficient(unfinishedRays);
+		//unfinishedRays = cullRaysEfficient(unfinishedRays);
+		unfinishedRays = cullRaysEfficientSharedMemory(unfinishedRays);
 		if (iter == 1) printf("unfinished rays: %i\n", unfinishedRays);
 	}
 
@@ -439,7 +440,46 @@ int cullRaysEfficient(int numRays) {
 	return last_index + last_true_false;
 }
 
+// perform in-place scatter on the ray pool
+__global__ void inclusiveScatterRays(PathRay* dev_rayPool, int *dev_tmp, int *dev_scan, int numRays) {
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (index < numRays && dev_tmp[index]) {
+		if (index - 1 >= 0) {
+			dev_rayPool[dev_scan[index - 1]] = dev_rayPool[index];
+		}
+		else {
+			dev_rayPool[0] = dev_rayPool[index];
+		}
+	}
+}
+
 // culls rays using work efficient shared memory stream compaction
 int cullRaysEfficientSharedMemory(int numRays) {
-	return 0;
+	const int blockSideLength = 8;
+	const dim3 blockSize(blockSideLength * blockSideLength, 1);
+	const dim3 blocksPerGrid((numRays + blockSize.x - 1) / blockSize.x);
+
+	// zero out the temp array and the scan array
+	cudaMemset(dev_compact_tmp_array, 0, numRays * sizeof(int));
+	cudaMemset(dev_compact_scan_array, 0, numRays * sizeof(int));
+	// Step 1: compute temporary array containing 1 if criteria met, 0 otherwise
+	tempArray << < blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, numRays);
+	// make a copy of the temp array so we can do an scatter. TODO: can we get around this memcpy?
+	cudaMemcpy(dev_compact_scan_array, dev_compact_tmp_array, sizeof(int) * numRays, cudaMemcpyDeviceToDevice);
+
+	// Step 2: run inclusive scan on temporary array
+	StreamCompaction::Efficient::memoryEfficientInclusiveScan(numRays, dev_compact_scan_array);
+
+	// Step 3: inclusive scatter in place
+	inclusiveScatterRays << <blocksPerGrid, blockSize >> >(dev_rayPool, dev_compact_tmp_array, dev_compact_scan_array, numRays);
+
+	int last_index;
+	cudaMemcpy(&last_index, dev_compact_scan_array + (numRays - 2), sizeof(int),
+		cudaMemcpyDeviceToHost);
+
+	int last_true_false;
+	cudaMemcpy(&last_true_false, dev_compact_tmp_array + (numRays - 1), sizeof(int),
+		cudaMemcpyDeviceToHost);
+
+	return last_index + last_true_false;
 }
