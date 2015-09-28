@@ -115,7 +115,7 @@ void pathtraceFree() {
     checkCUDAError("pathtraceFree");
 }
 
-__global__ void initRays(int n, int iter, Camera cam, Ray* rays){
+__global__ void initRays(int n, int iter, Camera cam, Ray* rays, float cam_pos_dx, float cam_pos_dy){
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < n){
@@ -135,7 +135,16 @@ __global__ void initRays(int n, int iter, Camera cam, Ray* rays){
 		glm::vec3 direction = cam.view + magx*left + magy*cam.up;
 		direction = glm::normalize(direction);
 
-		rays[index].origin = cam.position;
+		// Depth-of-field computations
+		// Source : https://www.cs.princeton.edu/courses/archive/fall00/cs426/lectures/raycast/sld017.htm
+		glm::vec3 focal_point = cam.position + cam.focal * cam.view;
+		float t = -(glm::dot(cam.position, direction) + glm::dot(focal_point, cam.view)) / ((glm::dot(direction,cam.view))+0.000001);
+		glm::vec3 intersection = cam.position + t*direction;
+
+		//rays[index].origin = cam.position;
+		rays[index].origin = cam.position + cam_pos_dx*left + cam_pos_dy*cam.up;
+		direction = intersection - rays[index].origin;
+
 		rays[index].direction = direction;
 		rays[index].color = glm::vec3(1.0);
 		rays[index].isAlive = true;
@@ -232,7 +241,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
-	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays);
+	thrust::default_random_engine rng = makeSeededRandomEngine(iter, iter, 0);
+	thrust::uniform_real_distribution<float> u01(-cam.aperture, cam.aperture);
+
+	float dx = u01(rng);
+	float dy = u01(rng);
+	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays, dx, dy);
 	checkCUDAError("initRays");
 
 	int numAlive = pixelcount;
