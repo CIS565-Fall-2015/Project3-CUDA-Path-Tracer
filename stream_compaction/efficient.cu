@@ -271,6 +271,25 @@ __global__ void block_downsweep(int *dev_data, int n) {
 	}
 }
 
+__global__ void accumulate_max_by_segment(int *dev_data, int data_length, int *dev_maxPerSeg, int segWidth) {
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if (index < ((data_length + segWidth - 1) / segWidth)) { // the number of data segments, including incomplete
+		int blockMaxIndex = segWidth * (index + 1) - 1;
+		if (blockMaxIndex >= data_length) {
+			blockMaxIndex = data_length - 1;
+		}
+		dev_maxPerSeg[index] = dev_data[blockMaxIndex];
+	}
+}
+
+__global__ void backAdd(int *dev_data, int data_length, int *dev_maxPerSegScan, int segWidth) {
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if (index < data_length) {
+		// compute which maxPerSegScan value to use. based on block.
+		dev_data[index] += dev_maxPerSegScan[index / segWidth];
+	}
+}
+
 void scan_components_test() {
 	printf("running efficient shared memory scan component tests...\n");
 	int *dev_small;
@@ -365,37 +384,142 @@ void scan_components_test() {
 		}
 	}
 
-	cudaFree(dev_small);
+
+	// test accumulate
+	int *dev_values;
+	int *dev_maxes;
+	cudaMalloc(&dev_values, 8 * sizeof(int));
+	cudaMalloc(&dev_maxes, 8 * sizeof(int));
+	cudaMemcpy(dev_values, small, 8 * sizeof(int), cudaMemcpyHostToDevice);
+
+	// test for a block width that divides the data evenly
+	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 4);
+	cudaMemcpy(results, dev_maxes, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	int maxesSegWidth4[2] = {3, 7};
+	for (int i = 0; i < 2; i++) {
+		if (results[i] != maxesSegWidth4[i]) {
+			printf("accumulate test on even block width FAIL!\n");
+			return;
+		}
+	}
+
+	// test for a block width that divides the data unevenly
+	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 3);
+	cudaMemcpy(results, dev_maxes, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	int maxesSegWidth3[3] = { 2, 5, 7 };
+	for (int i = 0; i < 3; i++) {
+		if (results[i] != maxesSegWidth3[i]) {
+			printf("accumulate test on even block width FAIL!\n");
+			return;
+		}
+	}
+
+	// test back add, backAdd(int *dev_data, int data_length, int *dev_maxPerSegScan, int segWidth) {
+	cudaMemcpy(dev_values, small, 8 * sizeof(int), cudaMemcpyHostToDevice);
+	backAdd << <blocksPerGrid, blockSize >> >(dev_values, 8, dev_maxes, 3);
+	int backAddedValues[8] = {2, 3, 4, 8, 9, 10, 13, 14};
+	cudaMemcpy(results, dev_values, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 8; i++) {
+		if (results[i] != backAddedValues[i]) {
+			printf("back add test FAIL!\n");
+			return;
+		}
+	}
+
+	// test efficient scan for power of two!
+	int bigger[24];
+	int biggerScan[24];
+	for (int i = 0; i < 24; i++) {
+		bigger[i] = i;
+	}
+	biggerScan[0] = 0;
+	for (int i = 1; i < 24; i++) {
+		biggerScan[i] = biggerScan[i - 1] + bigger[i - 1];
+	}
+
+	int *dev_data;
+	cudaMalloc(&dev_data, 24 * sizeof(int));
+	cudaMemcpy(dev_data, bigger, 24 * sizeof(int), cudaMemcpyHostToDevice);
+	efficient_scan(24, dev_data);
+	cudaMemcpy(bigger, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 24; i++) {
+		if (bigger[i] != biggerScan[i]) {
+			printf("power of two efficient scan test FAIL!\n");
+			return;
+		}
+	}
+
+	// test for non power of two
+	int biggerNP2[27];
+	int biggerScanNP2[27];
+	for (int i = 0; i < 27; i++) {
+		biggerNP2[i] = i;
+	}
+	biggerScanNP2[0] = 0;
+	for (int i = 1; i < 27; i++) {
+		biggerScanNP2[i] = biggerScanNP2[i - 1] + biggerNP2[i - 1];
+	}
+
+	int *dev_dataNP2;
+	cudaMalloc(&dev_dataNP2, 27 * sizeof(int));
+	cudaMemcpy(dev_dataNP2, biggerNP2, 27 * sizeof(int), cudaMemcpyHostToDevice);
+	efficient_scan(27, dev_dataNP2);
+	cudaMemcpy(biggerNP2, dev_dataNP2, 27 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 27; i++) {
+		if (biggerNP2[i] != biggerScanNP2[i]) {
+			printf("non power of two efficient scan test FAIL!\n");
+			return;
+		}
+	}
 
 	printf("appears that all tests pass.\n");
+	cudaFree(dev_small);
+	cudaFree(dev_values);
+	cudaFree(dev_maxes);
+	cudaFree(dev_data);
+	cudaFree(dev_dataNP2);
 }
 
 void efficient_scan(int n, int *dev_data) {
 	// break up into blocks.
-	
-	int numBlocks = n / DEVICE_SHARED_MEMORY;
-	if (n % DEVICE_SHARED_MEMORY) {
-		numBlocks++;
-	}
-	int* accumulation;
-	cudaMalloc(&accumulation, numBlocks * sizeof(int));
+
+	int peek0[3];
+	int peek1[24];
+	int peek2[3];
+
+	int numBlocks = ((n + DEVICE_SHARED_MEMORY - 1) / DEVICE_SHARED_MEMORY);
+	int* dev_accumulation;
+	cudaMalloc(&dev_accumulation, numBlocks * sizeof(int));
 
 	// run scan on each block (upsweep downsweep)
 	dim3 blockSize(DEVICE_SHARED_MEMORY, 1);
 	dim3 blocksPerGrid(numBlocks, 1);
 
+	block_upsweep << <blocksPerGrid, blockSize >> >(dev_data, n);
+	block_downsweep << <blocksPerGrid, blockSize >> >(dev_data, n);
 
 	// accumulate block sums into an array of sums.
-	
-	
+	accumulate_max_by_segment << <blocksPerGrid, blockSize >> >(dev_data, n, 
+		dev_accumulation, DEVICE_SHARED_MEMORY);
+	cudaMemcpy(peek0, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+
 	// scan block sums to compute block increments. if it's too big for one block, recurse (omg)
-	
-	
+	if (numBlocks > DEVICE_SHARED_MEMORY) {
+		efficient_scan(numBlocks, dev_accumulation);
+	}
+	else {
+		block_upsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
+		block_downsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
+	}
+	cudaMemcpy(peek1, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpy(peek2, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+	printf("derp\n");
+
 	// add block increments to each element in the corresponding block. stop at n, don't pile on zeros
-	
-	
+	backAdd << <blocksPerGrid, blockSize >> >(dev_data, n, dev_accumulation, DEVICE_SHARED_MEMORY);
+
 	// free and return!
-	cudaFree(accumulation);
+	cudaFree(dev_accumulation);
 
 
 }
