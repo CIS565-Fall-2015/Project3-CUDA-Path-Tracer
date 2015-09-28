@@ -252,38 +252,40 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 	//search for a hit in this leaf
 	Node & n = nodes[cur_idx];
 	float t;
-	glm::vec3 intersect_point;
-	glm::vec3 normal;
+	glm::vec3 leaf_intersect_point;
+	glm::vec3 leaf_normal;
 	float t_min = FLT_MAX;
 	int hit_geom_index = -1;
-	bool outside = true;
+	bool leaf_outside = true;
 
 	for (int i = 0; i < n.num_geoms; i++)
 	{
 		glm::vec3 tmp_intersect;
 		glm::vec3 tmp_normal;
+		bool tmp_outside = true;
 		int gid = geomsid[n.geom_index] + i;
 		Geom & geom = geoms[gid];
 		if (geom.type == CUBE)
 		{
-			t = boxIntersectionTest(geom, ray, intersect, normal, outside);
+			t = boxIntersectionTest(geom, ray, tmp_intersect, tmp_normal, tmp_outside);
 		}
 		else if (geom.type == SPHERE)
 		{
-			t = sphereIntersectionTest(geom, ray, intersect, normal, outside);
+			t = sphereIntersectionTest(geom, ray, tmp_intersect, tmp_normal, tmp_outside);
 		}
 		else
 		{
 			// triangle
-			t = triangleIntersectionTest(geom, ray, intersect, normal, outside);
+			t = triangleIntersectionTest(geom, ray, tmp_intersect, tmp_normal, tmp_outside);
 		}
 
 		if (t > 0 && t_min > t)
 		{
 			t_min = t;
 			hit_geom_index = gid;
-			intersect_point = tmp_intersect;
-			normal = tmp_normal;
+			leaf_intersect_point = tmp_intersect;
+			leaf_normal = tmp_normal;
+			leaf_outside = tmp_outside;
 		}
 	}
 
@@ -293,7 +295,9 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 	if(t > 0 && t < tmax )
 	{
 		// found hithit
-
+		intersect = leaf_intersect_point;
+		normal = leaf_normal;
+		outside = leaf_outside;
 		return hit_geom_index;
 	}
 	else
