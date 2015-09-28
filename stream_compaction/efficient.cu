@@ -193,7 +193,7 @@ int compact(int n, int *odata, const int *idata) {
 	return last_index + last_true_false;
 }
 
-__global__ void block_upsweep(int n, int *dev_data) {
+__global__ void block_upsweep(int *dev_data, int n) {
 	// parallel reduction with some modifications
 	// in place of:
 	// 0  1  2  3  4  5  6  7   stride = 1  
@@ -220,24 +220,115 @@ __global__ void block_upsweep(int n, int *dev_data) {
 	// load into shared memory from provided pointer
 	// we know dev_data is spread over the entire grid
 	// so start is blockId.x * blockDim.x, size i blockDim.x
-	__shared__ int block_data[blockDim.x];
-	block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
-	// for each stage:
-	for (unsigned int stride = 1; stride < blockDim.x; stride *= 2) {
-		// syncthreads to make sure all threads have transferred relevant data
-		__syncthreads();
-		// compute partial
-		if ((t + 2) % (2 * stride) == 1) {
-			partialSum[t] += partialSum[t - stride];
+	__shared__ int block_data[DEVICE_SHARED_MEMORY];
+	if (t + blockIdx.x * blockDim.x < n) {
+		block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
+		// for each stage:
+		for (unsigned int stride = 1; stride < blockDim.x; stride *= 2) {
+			// syncthreads to make sure all threads have transferred relevant data
+			__syncthreads();
+			// compute partial
+			if ((t + 2) % (2 * stride) == 1) {
+				block_data[t] += block_data[t - stride];
+			}
 		}
+		// write the data out. no need to sync b/c block_data[t] is all handled on this thread.
+		dev_data[t + blockIdx.x * blockDim.x] = block_data[t];
 	}
-	__syncthreads(); // make sure all threads are done computing
-	// write the data out
-	dev_data[t + blockIdx.x * blockDim.x] = block_data[t];
 }
 
-__global__ void block_downsweep() {
+__global__ void block_downsweep(int *dev_data, int n) {
+	// we basically want the indices per step in block_upsweep in reverse.
+	// then we need to do that tricky tricky swapping thing
 
+	unsigned int t = threadIdx.x; // we're indexing shared memory, so no need for +(blockIdx.x * blockDim.x);
+	// load into shared memory from provided pointer
+	// we know dev_data is spread over the entire grid
+	// so start is blockId.x * blockDim.x, size i blockDim.x
+	__shared__ int block_data[DEVICE_SHARED_MEMORY];
+	if (t + blockIdx.x * blockDim.x < n) {
+		block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
+		// replace the last item in the array with 0
+		if (t == n - 1) {
+			block_data[t] = 0;
+		}
+		int tmp = 0;
+		// for each stage:
+		for (unsigned int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+			// syncthreads to make sure all threads have transferred relevant data
+			__syncthreads();
+			// swap and sum
+			if ((t + 2) % (2 * stride) == 1) {
+				tmp = block_data[t - stride];
+				block_data[t - stride] = block_data[t];
+				block_data[t] += tmp;
+			}
+		}
+		// write the data out. no need to sync b/c block_data[t] is all handled on this thread.
+		dev_data[t + blockIdx.x * blockDim.x] = block_data[t];
+	}
+}
+
+void scan_components_test() {
+	printf("running efficient shared memory scan component tests...\n");
+	// the case in the slides, as a smaller test.
+	int small[8];
+	for (int i = 0; i < 8; i++) {
+		small[i] = i;
+	}
+	int smallScan[8] = { 0, 0, 1, 3, 6, 10, 15, 21 };
+	int smallUpsweepSingle[8] = {0, 1, 2, 6, 4, 9, 6, 28};
+	int smallUpsweepDouble[8] = { 0, 1, 2, 6, 4, 9, 6, 22}; // upsweep across two blocks is "incomplete"
+
+	int smallCompact[7] = { 1, 2, 3, 4, 5, 6, 7 };
+
+	int *dev_small;
+	cudaMalloc(&dev_small, 8 * sizeof(int));
+	int results[8];
+
+	// test upsweep on one block
+	cudaMemcpy(dev_small, small, 8 * sizeof(int), cudaMemcpyHostToDevice);
+	dim3 blockSize(8, 1);
+	dim3 blocksPerGrid(1, 1);
+	block_upsweep << <blocksPerGrid, blockSize >> >(dev_small, 8);
+	cudaMemcpy(results, dev_small, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 8; i++) {
+		if (smallUpsweepSingle[i] != results[i]) {
+			printf("one block upweep test FAIL!\n");
+			return;
+		}
+	}
+
+	// test upsweep across two blocks
+	cudaMemcpy(dev_small, small, 8 * sizeof(int), cudaMemcpyHostToDevice);
+	blockSize = dim3(4, 1);
+	blocksPerGrid = dim3(2, 1);
+	block_upsweep << <blocksPerGrid, blockSize >> >(dev_small, 8);
+	cudaMemcpy(results, dev_small, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 8; i++) {
+		if (smallUpsweepDouble[i] != results[i]) {
+			printf("multi block upsweep test FAIL!\n");
+			return;
+		}
+	}
+
+	int smallDownsweepSingle[8] = {0, 0, 1, 3, 6, 10, 15, 21 };
+
+	// test downsweep on one block
+	blockSize = dim3(8, 1);
+	blocksPerGrid = dim3(1, 1);
+	cudaMemcpy(dev_small, smallUpsweepSingle, 8 * sizeof(int), cudaMemcpyHostToDevice);
+	block_downsweep << <blocksPerGrid, blockSize >> >(dev_small, 8);
+	cudaMemcpy(results, dev_small, 8 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 8; i++) {
+		if (smallDownsweepSingle[i] != results[i]) {
+			printf("one block downsweep test FAIL!\n");
+			return;
+		}
+	}
+
+	cudaFree(dev_small);
+	printf("appears that all tests pass.\n");
 }
 
 void efficient_scan(int n, int *dev_data, int blocksPerGrid, int blockSize) {

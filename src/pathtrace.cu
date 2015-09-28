@@ -274,6 +274,13 @@ __global__ void mergeSample(glm::vec3 *sample, glm::vec3 *image) {
  * of memory management
  */
 void pathtrace(uchar4 *pbo, int frame, int iter) {
+	// on iteration 1, run tests for efficient shared memory scan
+	if (iter == 1) {
+		StreamCompaction::Efficient::scan_components_test();
+	}
+
+
+
 	// wipe the sample buffer
 	cudaMemset(dev_sample, 0, pixelcount * sizeof(glm::vec3));
 
