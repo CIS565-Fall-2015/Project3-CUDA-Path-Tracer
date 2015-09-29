@@ -200,7 +200,7 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 
 		// 3) update the ray in its slot
 		if (nearestGeom) {
-			thrust::default_random_engine rng = random_engine(iter, index, 0);
+			thrust::default_random_engine rng = random_engine(dev_rayPool[index].depth, iter, index);
 			scatterRay(dev_rayPool[index], isx_point, isx_norm,
 				dev_mats[nearestGeom->materialid], rng);
 			dev_rayPool[index].depth--;

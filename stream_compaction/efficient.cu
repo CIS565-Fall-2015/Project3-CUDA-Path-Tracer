@@ -251,7 +251,7 @@ __global__ void block_downsweep(int *dev_data, int n) {
 	__shared__ int block_data[DEVICE_SHARED_MEMORY];
 	block_data[t] = dev_data[t + blockIdx.x * blockDim.x];
 	if (t == blockDim.x - 1) {
-		block_data[t] = 0;
+		block_data[t] = 0; // set the "max value" to 0
 	}
 	int tmp = 0;
 	// for each stage:
@@ -473,22 +473,22 @@ void scan_components_test() {
 	}
 
 	// test efficient scan for power of two!
-	int bigger[24];
-	int biggerScan[24];
-	for (int i = 0; i < 24; i++) {
+	int bigger[16];
+	int biggerScan[16];
+	for (int i = 0; i < 16; i++) {
 		bigger[i] = i;
 	}
 	biggerScan[0] = 0;
-	for (int i = 1; i < 24; i++) {
+	for (int i = 1; i < 16; i++) {
 		biggerScan[i] = biggerScan[i - 1] + bigger[i];
 	}
 
 	int *dev_data;
-	cudaMalloc(&dev_data, 24 * sizeof(int));
-	cudaMemcpy(dev_data, bigger, 24 * sizeof(int), cudaMemcpyHostToDevice);
-	memoryEfficientInclusiveScan(24, dev_data);
-	cudaMemcpy(bigger, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < 24; i++) {
+	cudaMalloc(&dev_data, 16 * sizeof(int));
+	cudaMemcpy(dev_data, bigger, 16 * sizeof(int), cudaMemcpyHostToDevice);
+	memoryEfficientInclusiveScan(16, dev_data);
+	cudaMemcpy(bigger, dev_data, 16 * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < 16; i++) {
 		if (bigger[i] != biggerScan[i]) {
 			printf("power of two efficient scan test FAIL!\n");
 			return;
@@ -560,20 +560,19 @@ void memoryEfficientInclusiveScan(int n, int *dev_data) {
 		cudaMemset(dev_accumulation, 0, sizeof(int));
 	}
 	else {
-		block_upsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
-		block_downsweep << <blocksPerGrid, blockSize >> >(dev_accumulation, numBlocks);
+		dim3 oneblockPerGrid(1, 1);
+		block_upsweep << <oneblockPerGrid, blockSize >> >(dev_accumulation, numBlocks);
+		block_downsweep << <oneblockPerGrid, blockSize >> >(dev_accumulation, numBlocks);
 	}
 	//cudaMemcpy(peek1, dev_data, 24 * sizeof(int), cudaMemcpyDeviceToHost);
 	//cudaMemcpy(peek2, dev_accumulation, 3 * sizeof(int), cudaMemcpyDeviceToHost);
 	//printf("derp\n");
 
-	// add block increments to each element in the corresponding block. stop at n, don't pile on zeros
+	// add block increments to each element in the corresponding block.
 	backAdd << <blocksPerGrid, blockSize >> >(dev_data, n, dev_accumulation, DEVICE_SHARED_MEMORY);
 
 	// free and return!
 	cudaFree(dev_accumulation);
-
-
 }
 
 }
