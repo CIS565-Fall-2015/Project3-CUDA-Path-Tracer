@@ -8,7 +8,7 @@
 namespace StreamCompaction {
 namespace Efficient {
 
-const int threadCount = 16;
+const int threadCount = 32;
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -112,12 +112,12 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	checkCUDAError("BlockWiseScan1");
 
 	int *printData = new int[n];
-	if(DEBUG)
-	{
-		std::cout<<"\nblockWiseScan";
-		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
-		printArray(n, printData);
-	}
+//	if(DEBUG)
+//	{
+//		std::cout<<"\nblockWiseScan";
+//		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+//		printArray(n, printData);
+//	}
 
 	//Then we have to recurse and solve the odata array, So create a new array and solve.
 	int *dev_temp,
@@ -134,12 +134,12 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	createTemp<<<newNumBlocks, numThreads>>>(odata, idata, dev_temp, numThreads);
 	checkCUDAError("createTemp");
 
-	if(DEBUG)
-	{
-		std::cout<<"\ncreateTemp";
-		cudaMemcpy(printData, dev_temp, newN * sizeof(int), cudaMemcpyDeviceToHost);
-		printArray(newN, printData);
-	}
+//	if(DEBUG)
+//	{
+//		std::cout<<"\ncreateTemp";
+//		cudaMemcpy(printData, dev_temp, newN * sizeof(int), cudaMemcpyDeviceToHost);
+//		printArray(newN, printData);
+//	}
 
 	cudaMalloc((void**)&dev_odata, fullN * sizeof(int));
 
@@ -157,12 +157,12 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	updateidata<<<numBlocks, numThreads>>>(n, odata, dev_odata, numThreads);
 	checkCUDAError("updateidata");
 
-	if(DEBUG)
-	{
-		std::cout<<"\nupdate idata";
-		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
-		printArray(n, printData);
-	}
+//	if(DEBUG)
+//	{
+//		std::cout<<"\nupdate idata";
+//		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+//		printArray(n, printData);
+//	}
 
 	cudaFree(dev_temp);
 	cudaFree(dev_odata);
@@ -183,7 +183,10 @@ int compact(int n, RayState *idata)
 			count++;
 	}
 
-	std::cout<<"Count Alive: "<<count<<std::endl;
+//	if(DEBUG)
+//	{
+//		std::cout<<"Count Alive: "<<count<<std::endl;
+//	}
 
 	int oriN = n;
 
@@ -207,18 +210,15 @@ int compact(int n, RayState *idata)
 	StreamCompaction::Common::kernMapToBoolean<<<numBlocks, numThreads>>>(oriN, dev_bool, idata);
 	checkCUDAError("kernMapToBool");
 
-	if(DEBUG)
-	{
-		std::cout<<"\nBools : ";
-		cudaMemcpy(printData, dev_bool, n * sizeof(int), cudaMemcpyDeviceToHost);
-		printArray(n, printData);
-	}
+//	if(DEBUG)
+//	{
+//		std::cout<<"\nBools : ";
+//		cudaMemcpy(printData, dev_bool, n * sizeof(int), cudaMemcpyDeviceToHost);
+//		printArray(n, printData);
+//	}
 
 	exclusiveScan(n, dev_temp, dev_bool, numBlocks, numThreads);
 	checkCUDAError("Exclusive Scan");
-
-//	cudaMemcpy(printData, dev_temp, n * sizeof(int), cudaMemcpyDeviceToHost);
-//	printArray(n, printData);
 
 	setK<<<1,1>>>(dev_k, dev_temp, dev_bool, n-1);
 	int *k = new int;
@@ -230,7 +230,10 @@ int compact(int n, RayState *idata)
 
 	cudaMemcpy(idata, dev_odata, (*k) * sizeof(RayState), cudaMemcpyDeviceToDevice);
 
-	std::cout<<"K :"<<*k<<std::endl;
+//	if(DEBUG)
+//	{
+//		std::cout<<"K :"<<*k<<std::endl;
+//	}
 
 	cudaFree(dev_bool);
 	cudaFree(dev_k);
@@ -238,7 +241,6 @@ int compact(int n, RayState *idata)
 	cudaFree(dev_odata);
 	delete(printData);
 	return (*k);
-//	return 0;
 }
 
 

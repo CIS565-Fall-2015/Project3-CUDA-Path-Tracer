@@ -17,7 +17,7 @@
 
 #include <stream_compaction/efficient.h>
 
-#define DI 0
+#define DI 1
 #define DOF 0
 #define ERRORCHECK 1
 
@@ -144,31 +144,6 @@ void pathtraceFree() {
     cudaFree(dev_light_count);
 
     checkCUDAError("pathtraceFree");
-}
-
-/**
- * Example function to generate static and test the CUDA-GL interop.
- * Delete this once you're done looking at it!
- */
-__global__ void generateStaticDeleteMe(Camera cam, int iter, glm::vec3 *image) {
-    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-    if (x < cam.resolution.x && y < cam.resolution.y) {
-        int index = x + (y * cam.resolution.x);
-
-        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
-
-        // CHECKITOUT: Note that on every iteration, noise gets added onto
-        // the image (not replaced). As a result, the image smooths out over
-        // time, since the output image is the contents of this array divided
-        // by the number of iterations.
-        //
-        // Your renderer will do the same thing, and, over time, it will become
-        // smoother.
-        image[index] += glm::vec3(u01(rng));
-    }
 }
 
 //Kernel function that gets all the ray directions
@@ -327,7 +302,7 @@ __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms
 			if(t > 0)
 			{
 				//Intersection with light, write the color
-				image[r.pixelIndex] += (r.rayColor * materials[geoms[i].materialid].emittance);
+				image[r.pixelIndex] += (r.rayColor);//* materials[geoms[i].materialid].emittance);
 			}
 		}
 	}
@@ -392,36 +367,25 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     numBlocks = (rayCount + numThreads - 1) / numThreads;
 
-    int countThrust, countMine;
-
     for(int i=0; (i<traceDepth && rayCount > 0); ++i)
     {
     	//Take one step, should make dead rays as false
     	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, i, rayCount);
 
-//    	std::cout<<"RayCount Before: "<<rayCount<<std::endl;
     	//Stream compaction using work efficient
-    	countMine = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);//, dev_rays_end);
+//    	rayCount = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);
 
-    	//Compact rays, dev_rays_end points to the new end
-//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
-//    	countThrust = dev_rays_end - dev_rays_begin;
-
-    	rayCount = countMine;
-//    	rayCount = countThrust;
-//    	std::cout<<"RayCount After: "<<rayCount<<std::endl;
+//    	Compact rays, dev_rays_end points to the new end
+    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+    	rayCount = dev_rays_end - dev_rays_begin;
 
     	numBlocks = (rayCount + numThreads - 1) / numThreads;
-
-//    	int as;
-//    	std::cout<<"Input k : ";
-//    	std::cin>>as;
     }
 
     //Direct Illumination
     if(DI && rayCount > 0)
     {
-//    	kernDirectLightPath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, traceDepth, rayCount);
+    	kernDirectLightPath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, traceDepth, rayCount);
     }
 
     // Send results to OpenGL buffer for rendering

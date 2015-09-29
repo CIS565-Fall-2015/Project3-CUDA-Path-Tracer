@@ -77,10 +77,10 @@ EMITTANCE   0
 
 // Camera
 CAMERA
-RES         256 256
+RES         800 800
 FOVY        45
 ITERATIONS  5000
-DEPTH      	5
+DEPTH      	3
 FILE        cornell
 FOCAL		22.92
 APER		1.3
@@ -90,7 +90,7 @@ UP          0 1 0
 
 // Ceiling light
 OBJECT 0
-sphere
+cube
 material 0
 TRANS       0 10 0
 ROTAT       0 0 0
@@ -107,7 +107,7 @@ SCALE       10 .01 10
 // Ceiling
 OBJECT 2
 cube
-material 0
+material 1
 TRANS       0 10 0
 ROTAT       0 0 90
 SCALE       .01 10 10
