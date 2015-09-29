@@ -188,7 +188,10 @@ void KDTree::init(Scene & s)
 	//{
 	//	i++;
 	//	std::cout << i << '\t' << a.parent_idx << '\t' << a.right_idx << '\t' << a.geom_index << '\t' << a.num_geoms << '\n';
+	//	
 	//}
+	//std::cout << "\n" << hst_node.size();
+	//getchar();
 
 	//std::cout << "\n\n\n\n";
 
@@ -196,6 +199,9 @@ void KDTree::init(Scene & s)
 	//{
 	//	std::cout << j << '\t' << hst_geom_idx.at(j) << '\n';
 	//}
+	//std::cout << "\n" << hst_geom_idx.size();
+	//std::cout << "\n" << s.geoms.size();
+	//getchar();
 }
 
 

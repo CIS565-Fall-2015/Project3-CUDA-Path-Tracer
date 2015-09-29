@@ -40,7 +40,7 @@ struct KDNodeConstructWrapper
 class KDTree
 {
 public:
-	const int MAX_LEAF_GEOM_NUM = 5;
+	const int MAX_LEAF_GEOM_NUM = 8;
 	const float MAX_OVERLAP_RATIO = 0.5f;
 
 

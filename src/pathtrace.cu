@@ -309,7 +309,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 	else
 	{
 		//continue search
-		if (fabs(tmax - global_tmax) < RAY_EPSILON)
+		if (fabs(tmax - global_tmax) < EPSILON)
 		{
 			//fail, no collision
 			//end search
@@ -352,7 +352,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb, ray, t0, t1);
 
 				//intersection limited to (tmp_tmin,tmp_tmax)
-				if (t1 < tmp_tmin + RAY_EPSILON)
+				if (t1 < tmp_tmin + EPSILON)
 				{
 					tmp_hit = false;
 				}
@@ -433,7 +433,7 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 		cur_idx = first;
 		//cur_idx = second;
 	}
-	else if( thit <= tmin + RAY_EPSILON)
+	else if( thit <= tmin + EPSILON)
 	{
 		
 		cur_idx = second;
@@ -581,13 +581,17 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[hit_geom_index];
 			Material & material = materials[geom.materialid];
 
-			////test
+			////test, first hit
 			//if (1)
 			//{
 			//	path.terminated = true;
 			//	image[path.image_index] += material.color;
 			//	return;
 			//}
+
+			
+
+			//===================================
 
 
 
@@ -603,6 +607,16 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 				thrust::default_random_engine rng = makeSeededRandomEngine(iter, path.image_index, depth);
 				scatterRay(path.ray, path.color, intersect_point, normal, material, rng);
 			}
+
+
+			////depth hit test
+			//if (depth == iter-1)
+			//{
+			//	//path.terminated = true;
+			//	image[path.image_index] = material.color * (float)(iter);
+			//	//return;
+			//}
+
 
 
 
@@ -668,10 +682,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     // * Finally, handle all of the paths that still haven't terminated.
     //   (Easy way is to make them black or background-colored.)
 
-    // TODO: perform one iteration of path tracing
+   
+	////test
+	//getchar();
+	//printf("%d\n", iter-1);
 
 
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
+
+
 
 	int depth = 0;
 
@@ -702,6 +721,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		//num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
 		
 		checkCUDAError("stream compaction");
+
 	}
 
     ///////////////////////////////////////////////////////////////////////////
@@ -714,4 +734,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     checkCUDAError("pathtrace");
+
+
+
+	
+	
 }
