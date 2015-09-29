@@ -263,7 +263,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 		glm::vec3 tmp_intersect;
 		glm::vec3 tmp_normal;
 		bool tmp_outside = true;
-		int gid = geomsid[n.geom_index] + i;
+		int gid = geomsid[n.geom_index + i];
 		Geom & geom = geoms[gid];
 		if (geom.type == CUBE)
 		{
