@@ -17,6 +17,7 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
+#include "mesh.h"
 
 #define ERRORCHECK 1
 
@@ -166,7 +167,7 @@ __global__ void kern_generateInitRays(Ray *m_rays, Camera cam, glm::vec3 m_upper
 //}
 
 
-__device__ float kern_IntersectionTest(Ray cur_ray, Geom* m_geoms, int num_of_geoms, glm::vec3 &m_intersectionPoint, glm::vec3 &m_normal, bool &m_outside, int &m_index) //currently using brute force algo
+__device__ float kern_IntersectionTest(Ray cur_ray, Geom* m_geoms, int num_of_geoms, cuda_OBJMesh_head* m_objmeshes, int num_of_objmeshes, glm::vec3 &m_intersectionPoint, glm::vec3 &m_normal, bool &m_outside, int &m_materialid) //currently using brute force algo
 {
 	float t = -1;
 	//iterate over all the geom in the scene
@@ -177,6 +178,8 @@ __device__ float kern_IntersectionTest(Ray cur_ray, Geom* m_geoms, int num_of_ge
 	float cur_t;
 	float cur_index; //which geom intersect
 
+	
+	//check intersection with the geoms
 	for (int i = 0; i<num_of_geoms; i++)
 	{
 		if (m_geoms[i].type == CUBE)
@@ -198,7 +201,26 @@ __device__ float kern_IntersectionTest(Ray cur_ray, Geom* m_geoms, int num_of_ge
 			m_intersectionPoint = cur_intersectionPoint;
 			m_normal = cur_normal;
 			m_outside = cur_outside;
-			m_index =  i;
+			m_materialid =  m_geoms[i].materialid;
+
+		}
+	}
+
+	//check the intersection with the objmeshes
+	for (int i = 0; i<num_of_objmeshes; i++)
+	{
+		cur_t = OBJMeshIntersectionTest(m_objmeshes[i], cur_ray, cur_intersectionPoint, cur_normal, cur_outside);
+
+		if ((cur_t>0 && cur_t < t) || (cur_t>0 && t<0))
+		{
+
+
+			t = cur_t;
+
+			m_intersectionPoint = cur_intersectionPoint;
+			m_normal = cur_normal;
+			m_outside = cur_outside;
+			m_materialid = m_objmeshes[i].m_box.materialid;
 
 		}
 	}
@@ -208,7 +230,7 @@ __device__ float kern_IntersectionTest(Ray cur_ray, Geom* m_geoms, int num_of_ge
 	
 }
 
-__global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, glm::vec3 * cumulativeColor, Geom* m_geoms,Material* m_materials,int num_of_geom, int cur_depth,int cur_iter, int max_depth, glm::vec3 *image)
+__global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, glm::vec3 * cumulativeColor, Geom* m_geoms, Material* m_materials, cuda_OBJMesh_head* m_objmeshes, int num_of_geom, int num_of_objmeshes, int cur_depth, int cur_iter, int max_depth, glm::vec3 *image)
 {
 	if (cur_depth == max_depth)
 	{
@@ -230,11 +252,11 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 		glm::vec3 m_normal;
 		bool m_outside;
 		float m_t;
-		int m_geo_index; //which geom intersect
+		int m_material_id; //which geom intersect
 
 		bool is_total_internalReflection = false;
 
-		m_t = kern_IntersectionTest(cur_ray, m_geoms, num_of_geom, m_intersectionPoint, m_normal, m_outside, m_geo_index);
+		m_t = kern_IntersectionTest(cur_ray, m_geoms, num_of_geom, m_objmeshes,num_of_objmeshes,m_intersectionPoint, m_normal, m_outside, m_material_id);
 
 		if (m_t == -1) //no intersection
 		{
@@ -244,11 +266,17 @@ __global__ void kern_calCurDepthColor(Ray *m_rays, Camera cam, bool* is_alive, g
 		}
 		else  //update the new Ray & update current cumulative color
 		{
-			int m_mat_id = m_geoms[m_geo_index].materialid;
+			int m_mat_id = m_material_id;
 			if (m_materials[m_mat_id].emittance != 0) // light
 			{
 				
-				//image[index] += glm::vec3(0.98f, 0.98f, 0.98f);
+				////debug
+				//glm::vec3 visualize_normal;
+				//visualize_normal.x = glm::abs(m_normal.x);
+				//visualize_normal.y = glm::abs(m_normal.y);
+				//visualize_normal.z = glm::abs(m_normal.z);
+				//visualize_normal = glm::normalize(visualize_normal);
+				//image[index] += visualize_normal;
 				image[index] += m_materials[m_mat_id].emittance * m_materials[m_mat_id].color * cumulativeColor[index];
 				is_alive[index] = false;
 				return;
@@ -334,6 +362,7 @@ bool is_ray_init;
 
 int cur_depth;
 int num_of_geoms;
+int num_of_objmeshes;
 
 static thrust::device_vector<Ray> dev_ray_vec;
 
@@ -345,10 +374,92 @@ static thrust::device_vector<Geom> dev_geoms;
 
 static thrust::device_vector<Material> dev_materials;
 
+static thrust::device_vector<cuda_OBJMesh_head> dev_objmeshes;
 
+static cuda_OBJMesh_head* dev_obj_ptr = NULL;
 
 //===== pathtracer fucntion =====
 
+
+void copyOBJMeshData(Scene *hst_scene)
+{
+	
+	cout << "start Copy Mesh data... " << endl;
+	cudaMalloc((&dev_obj_ptr), num_of_objmeshes*sizeof(cuda_OBJMesh_head));
+	
+	cuda_OBJMesh* hst_obj_ptr = hst_scene->cuda_objmeshes.data();
+	
+	//cout << "start Copy Mesh data One by One... " << endl;
+	//copy data one by one
+	for (int i = 0; i<num_of_objmeshes; i++)
+	{
+		cout << i << endl;
+		int cur_num_v = hst_obj_ptr[i].m_vertices.size();
+		int cur_num_tri = hst_obj_ptr[i].m_triangle_list.size()/3;
+		
+		cout << cur_num_v << endl;
+		cout << cur_num_tri << endl;
+
+
+		//cout << "start Memset... " << endl;
+		cudaMemcpy(&dev_obj_ptr[i].num_of_v, &cur_num_v, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&dev_obj_ptr[i].num_of_tri, &cur_num_tri, sizeof(int), cudaMemcpyHostToDevice);
+		
+		//cout << "start Memcpy... " << endl;
+		cudaMemcpy(&dev_obj_ptr[i].m_box, &hst_obj_ptr[i].m_box, sizeof(Geom),cudaMemcpyHostToDevice);
+		cout << "check 1... " << endl;
+		
+		glm::vec3* tmp_add1;
+		cudaMalloc((&tmp_add1), cur_num_v*sizeof(glm::vec3));
+		cudaMemcpy(tmp_add1, &hst_obj_ptr[i].m_vertices[0], cur_num_v*sizeof(glm::vec3), cudaMemcpyHostToDevice);
+		cudaMemcpy(&dev_obj_ptr[i].m_v, &tmp_add1, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+		
+		
+		//cudaMalloc(&dev_obj_ptr[i].m_v, cur_num_v*sizeof(glm::vec3));
+		//cudaMemcpy(dev_obj_ptr[i].m_v, &hst_obj_ptr[i].m_vertices[0], cur_num_v*sizeof(glm::vec3), cudaMemcpyHostToDevice);
+		
+		
+		
+		cout << "check 2... " << endl;
+		
+		glm::vec3* tmp_add2;
+		cudaMalloc((&tmp_add2), cur_num_tri*sizeof(glm::vec3));
+		cudaMemcpy(tmp_add2, &hst_obj_ptr[i].m_per_tri_normals[0], cur_num_tri*sizeof(glm::vec3), cudaMemcpyHostToDevice);
+		cudaMemcpy(&dev_obj_ptr[i].m_n, &tmp_add2, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+		
+		//cout << "check 3... " << endl;
+		
+		unsigned int* tmp_add3;
+		cudaMalloc((&tmp_add3), 3*cur_num_tri*sizeof(unsigned int));
+		cudaMemcpy(tmp_add3, &hst_obj_ptr[i].m_triangle_list[0], 3*cur_num_tri*sizeof(unsigned int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&dev_obj_ptr[i].m_tri_list, &tmp_add3, sizeof(unsigned int*), cudaMemcpyHostToDevice);
+
+		//cout << "check 4... " << endl;
+		
+		
+		glm::vec3* aa;
+		cudaMemcpy(&aa, &dev_obj_ptr[i].m_v, sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+		cout << aa << endl;
+
+		cout << tmp_add1 << endl;
+
+		glm::vec3 bb;
+		cudaMemcpy(&bb, &tmp_add1[1], sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+		cout << bb.x << bb.y << bb.z << endl;
+
+
+
+		/*unsigned int aa;
+		cudaMemcpy(&aa, dev_obj_ptr[i].m_tri_list, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+		cout << aa << endl;*/
+		
+		
+		checkCUDAError("copyOBJdata");
+		
+	}
+
+	cout << "finish Copy Mesh data... " << endl;
+}
 
 
 void pathtraceInit(Scene *scene) {
@@ -369,7 +480,16 @@ void pathtraceInit(Scene *scene) {
 
 	dev_geoms = hst_scene->geoms;
 
+	//dev_objmeshes = hst_scene->cuda_objmeshes;
+
+	
+	
+	num_of_objmeshes = hst_scene->cuda_objmeshes.size();
+	copyOBJMeshData(hst_scene);
+	
 	num_of_geoms = hst_scene->geoms.size();
+
+	
 
 	dev_materials = hst_scene->materials;
 
@@ -391,10 +511,12 @@ void pathtraceInit(Scene *scene) {
 
 
     checkCUDAError("pathtraceInit");
+
+	cout << "pathtraceInit Succeed... " << endl;
 }
 
 void pathtraceFree() {
-    cudaFree(dev_image);  // no-op if dev_image is null
+	cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
 	dev_ray_vec.clear();
@@ -402,6 +524,7 @@ void pathtraceFree() {
 	dev_cumulativeColor.clear();
 	dev_geoms.clear();
 	dev_materials.clear();
+	dev_objmeshes.clear();
 
 	cout << "pathtraceFree Succeed... " << endl;
 
@@ -485,11 +608,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	glm::vec3* cumulativeColor_ptr = thrust::raw_pointer_cast(dev_cumulativeColor.data());
 	Geom* geoms_ptr = thrust::raw_pointer_cast(dev_geoms.data());
 	Material* materials_ptr = thrust::raw_pointer_cast(dev_materials.data());
+	
 
 	//interatively calculate color of each pixel 
 	for (int i = 0; i < traceDepth; i++)
 	{
-		kern_calCurDepthColor << <blocksPerGrid, blockSize >> >(ray_vec_ptr, cam, is_alive_ptr, cumulativeColor_ptr, geoms_ptr, materials_ptr, num_of_geoms, i, iter, traceDepth, dev_image);
+		kern_calCurDepthColor << <blocksPerGrid, blockSize >> >(ray_vec_ptr, cam, is_alive_ptr, cumulativeColor_ptr, geoms_ptr, materials_ptr, dev_obj_ptr, num_of_geoms, num_of_objmeshes, i, iter, traceDepth, dev_image);
 	}
 
 

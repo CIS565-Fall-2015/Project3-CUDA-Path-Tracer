@@ -28,8 +28,15 @@ Scene::Scene(string filename) {
                 loadCamera();
                 cout << " " << endl;
             }
+			else if (strcmp(tokens[0].c_str(), "MESH") == 0) {
+				loadMesh(tokens[1]);
+				cout << " " << endl;
+			}
+
         }
     }
+
+	convertOBJMeshesToCUDAObjMeshes();
 }
 
 int Scene::loadGeom(string objectid) {
@@ -179,4 +186,87 @@ int Scene::loadMaterial(string materialid) {
         materials.push_back(newMaterial);
         return 1;
     }
+}
+
+int Scene::loadMesh(string objectid)
+{
+	int id = atoi(objectid.c_str());
+	if (id != objmesh.size()) {
+		cout << "ERROR: OBJECT ID does not match expected number of objmesh" << endl;
+		return -1;
+	}
+	else {
+		cout << "Loading objmesh " << id << "..." << endl;
+		ObjMesh newObjMesh;
+		string line;
+
+		//load material
+		utilityCore::safeGetline(fp_in, line);
+		if (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			newObjMesh.materialid = atoi(tokens[1].c_str());
+			cout << "Connecting ObjMesh " << objectid << " to Material " << newObjMesh.materialid << "..." << endl;
+		}
+
+		//load file path
+		utilityCore::safeGetline(fp_in, line);
+		if (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			newObjMesh.filePath = tokens[1];
+			cout << "Loading ObjMesh " << objectid << " from " << newObjMesh.filePath << "..." << endl;
+		}
+
+		//load scale factor
+		utilityCore::safeGetline(fp_in, line);
+		if (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			newObjMesh.scale_factor = stof(tokens[1]);
+			cout << "Setting ObjMesh scale factor to " << newObjMesh.scale_factor << "..." << endl;
+		}
+
+		//load Trans and Rotate
+		utilityCore::safeGetline(fp_in, line);
+		if (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			newObjMesh.m_translate = glm::vec3(stof(tokens[1]), stof(tokens[2]), stof(tokens[3]));
+		}
+
+		utilityCore::safeGetline(fp_in, line);
+		if (!line.empty() && fp_in.good()) {
+			vector<string> tokens = utilityCore::tokenizeString(line);
+			newObjMesh.m_rotate = glm::vec3(stof(tokens[1]), stof(tokens[2]), stof(tokens[3]));
+		}
+
+
+		newObjMesh.transform = utilityCore::buildTransformationMatrix(
+			newObjMesh.m_translate, newObjMesh.m_rotate, glm::vec3(1.f));
+		newObjMesh.inverseTransform = glm::inverse(newObjMesh.transform);
+		newObjMesh.invTranspose = glm::inverseTranspose(newObjMesh.transform);
+
+
+		newObjMesh.Init();
+		newObjMesh.PrintMeshInfo();
+		objmesh.push_back(newObjMesh);
+		return 1;
+	}
+
+}
+
+
+void Scene::convertOBJMeshesToCUDAObjMeshes()
+{
+	cuda_objmeshes.resize(objmesh.size());
+	
+	for (unsigned int i = 0; i < objmesh.size(); i++)
+	{
+		cuda_objmeshes[i].m_vertices = objmesh[i].m_vertices;
+		cuda_objmeshes[i].m_normals = objmesh[i].m_normals;
+		cuda_objmeshes[i].m_per_tri_normals = objmesh[i].m_per_tri_normals;
+		cuda_objmeshes[i].m_triangle_list = objmesh[i].m_triangle_list;
+		cuda_objmeshes[i].m_box = objmesh[i].m_AABB.m_box;
+		
+		
+
+
+	}
 }

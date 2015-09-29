@@ -15,6 +15,10 @@ set(SOURCE_FILES
     "preview.cpp"
     "utilities.cpp"
     "utilities.h"
+	"mesh.h"
+	"mesh.cpp"
+	"AABB.h"
+	"AABB.cpp"
     )
 
 cuda_add_library(src

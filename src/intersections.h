@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include "glm/gtx/intersect.hpp"
 
 #include "sceneStructs.h"
 #include "utilities.h"
@@ -141,3 +142,125 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+__host__ __device__ float triangle_intersection(Ray &ray_world, glm::vec3 &v1, glm::vec3 &v2, glm::vec3 &v3)
+{
+
+	glm::vec3 dir = ray_world.direction;
+	glm::vec3 ori = ray_world.origin;
+
+
+
+	glm::vec3 e1, e2;
+	e1 = v2 - v1;
+	e2 = v3 - v1;
+
+	glm::vec3 P = glm::cross(dir, e2);
+	float det = glm::dot(e1, P);
+
+	float m_EPSILON = 1.e-8;
+	if (det > -m_EPSILON && det < m_EPSILON)
+	{
+		return -1;
+	}
+
+	float inv_det = 1.f / det;
+
+	glm::vec3 T = ori - v1;
+
+	float u = glm::dot(T, P)*inv_det;
+
+	if (u<0.f || u>1.f)
+	{
+		return -1;
+	}
+
+	glm::vec3 Q = glm::cross(T, e1);
+
+	float v = glm::dot(dir, Q)*inv_det;
+
+	if (v<0.f || u + v>1.f)
+	{
+		return -1;
+	}
+
+	float t = glm::dot(e2, Q)*inv_det;
+
+	//return t;
+	if (t > m_EPSILON)
+	{
+		return t;
+	}
+
+
+	return -1;
+
+
+
+
+}
+
+
+
+__host__ __device__ float OBJMeshIntersectionTest(cuda_OBJMesh_head mesh, Ray r,
+	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
+
+	//bounding box to pre check the intersection
+	float cur_t = boxIntersectionTest(mesh.m_box, r, intersectionPoint, normal, outside);
+
+	if (cur_t == -1) return -1;
+
+	cur_t = -1;
+
+	int triangle_index = -1;
+	int num_of_triangles = mesh.num_of_tri;
+
+	for (unsigned int i = 0; i<num_of_triangles; i++)
+	{
+		glm::vec3 v1 = mesh.m_v[mesh.m_tri_list[3 * i]];
+		glm::vec3 v2 = mesh.m_v[mesh.m_tri_list[3 * i + 1]];
+		glm::vec3 v3 = mesh.m_v[mesh.m_tri_list[3 * i + 2]];
+
+		float tmp_t = triangle_intersection(r, v1, v2, v3);
+		
+		/*if (tmp_t == -1)
+		tmp_t = triangle_intersection(r, v1, v3, v2);*/
+
+		
+
+		if (tmp_t!=-1)
+		{
+			if (cur_t == -1)
+			{
+				cur_t = tmp_t;
+				triangle_index = i;
+			}
+			else if (tmp_t < cur_t)
+			{
+				cur_t = tmp_t;
+				triangle_index = i;
+			}
+			
+		}
+		else
+		{
+			continue;
+		}
+	}
+
+	if (cur_t == -1) 
+	{
+		return -1;
+	}
+
+	intersectionPoint = r.origin + r.direction * (cur_t - 0.00001f);
+	
+	
+	glm::vec3 cur_normal = glm::normalize(mesh.m_n[triangle_index]);
+	float dot_product = glm::dot(cur_normal, r.direction);
+	normal = dot_product > 0 ? -cur_normal : cur_normal;
+	outside = dot_product > 0 ? false : true;
+
+	return cur_t;
+}
+

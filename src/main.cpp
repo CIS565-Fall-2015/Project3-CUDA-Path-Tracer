@@ -1,6 +1,7 @@
 #include "main.h"
 #include "preview.h"
 #include <cstring>
+#include "glm/gtx/intersect.hpp"
 
 static std::string startTimeString;
 static bool camchanged = false;
@@ -18,12 +19,84 @@ int height;
 //-------------MAIN--------------
 //-------------------------------
 
+
+float main_triangle_intersection(glm::vec3 ori,glm::vec3 dir , glm::vec3 &v1, glm::vec3 &v2, glm::vec3 &v3)
+{
+
+	
+
+
+
+	glm::vec3 e1, e2;
+	e1 = v2 - v1;
+	e2 = v3 - v1;
+
+	glm::vec3 P = glm::cross(dir, e2);
+	float det = glm::dot(e1, P);
+
+	float m_EPSILON = 1.e-6;
+	if (det > -m_EPSILON && det < m_EPSILON)
+	{
+		return -1;
+	}
+
+	float inv_det = 1.f / det;
+
+	glm::vec3 T = ori - v1;
+
+	float u = glm::dot(T, P)*inv_det;
+
+	if (u<0.f || u>1.f)
+	{
+		return -1;
+	}
+
+	glm::vec3 Q = glm::cross(T, e1);
+
+	float v = glm::dot(dir, Q)*inv_det;
+
+	if (v<0.f || u + v>1.f)
+	{
+		return -1;
+	}
+
+	float t = glm::dot(e2, Q)*inv_det;
+
+	//return t;
+	if (t > m_EPSILON)
+	{
+		return t;
+	}
+
+
+	return -1;
+
+
+
+
+}
+
+
 int main(int argc, char** argv) {
     
 	////test 
-	//glm::vec3 a  (1.f, 2.f, 3.f);
+	//glm::vec3 a(3.f, 0.f, 1.f);
+	//glm::vec3 c(3.f, 0.f, -1.f);
+	//glm::vec3 b(3.f, 1.f, 0.f);
 
-	//glm::vec3 b = a*a;
+	//glm::vec3 ori(0.f,0.f,0.f);
+	//glm::vec3 dir(1.f,0.f,0.f);
+	//
+
+
+	//float tmp_t = main_triangle_intersection(ori,dir, a, b, c);
+
+	//cout << tmp_t << endl;
+
+	//glm::vec3 bary_coord;
+	//bool is_intersect = glm::intersectRayTriangle(ori, dir, a, b, c, bary_coord);
+	//
+	//cout << is_intersect << bary_coord.x << bary_coord.y << bary_coord.z << endl;
 	//
 	
 	startTimeString = currentTimeString();

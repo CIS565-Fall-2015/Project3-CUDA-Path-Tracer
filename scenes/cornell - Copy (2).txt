@@ -128,12 +128,27 @@ TRANS       5 5 0
 ROTAT       0 0 0
 SCALE       .01 10 10
 
-//.obj file
-MESH 0
+// Sphere diffuse
+OBJECT 6
+sphere
 material 1
-DIR ../obj/bunny_low.obj
-SCALE 2.0
-TRANS 0 3 0
-ROTAT 0 0 0
+TRANS       0 6 -1
+ROTAT       0 0 0
+SCALE       3 3 3
 
 
+// Sphere glass
+OBJECT 7
+sphere
+material 5
+TRANS       3 2 0
+ROTAT       0 0 0
+SCALE       3 3 3
+
+// Sphere mirror
+OBJECT 8
+sphere
+material 4
+TRANS       -2 3 1
+ROTAT       0 0 0
+SCALE       3 3 3
