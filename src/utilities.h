@@ -13,8 +13,13 @@
 #define TWO_PI            6.2831853071795864769252867665590057683943f
 #define SQRT_OF_ONE_THIRD 0.5773502691896257645091487805019574556476f
 #define EPSILON           0.00001f
-
+#define WHITE             glm::vec3(1,1,1)
+#define BLACK             glm::vec3(0,0,0)
+#define RED             glm::vec3(1,0,0)
+#define GREEN             glm::vec3(0,1,0)
 namespace utilityCore {
+	extern int ilog2(int x);
+	extern int ilog2ceil(int x);
     extern float clamp(float f, float min, float max);
     extern bool replaceString(std::string& str, const std::string& from, const std::string& to);
     extern glm::vec3 clampRGB(glm::vec3 color);

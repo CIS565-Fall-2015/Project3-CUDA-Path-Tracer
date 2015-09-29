@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     const char *sceneFile = argv[1];
 
     // Load scene file
-    scene = new Scene(sceneFile);
+    scene = new Scene(sceneFile);//marerial, object, camera
 
     // Set up camera stuff from loaded path tracer settings
     iteration = 0;
@@ -41,8 +41,8 @@ int main(int argc, char** argv) {
     init();
 
     // GLFW main loop
-    mainLoop();
-
+    mainLoop();//runCUDA
+//	getchar();
     return 0;
 }
 

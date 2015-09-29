@@ -20,7 +20,17 @@ float utilityCore::clamp(float f, float min, float max) {
         return f;
     }
 }
+int utilityCore::ilog2(int x) {
+	int lg = 0;
+	while (x >>= 1) {
+		++lg;
+	}
+	return lg;
+}
 
+int utilityCore::ilog2ceil(int x) {
+	return ilog2(x - 1) + 1;
+}
 bool utilityCore::replaceString(std::string& str, const std::string& from, const std::string& to) {
     size_t start_pos = str.find(from);
     if (start_pos == std::string::npos)

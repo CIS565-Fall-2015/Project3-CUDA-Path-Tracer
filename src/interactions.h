@@ -9,7 +9,7 @@
  */
 __host__ __device__
 glm::vec3 calculateRandomDirectionInHemisphere(
-        glm::vec3 normal, thrust::default_random_engine &rng) {
+        glm::vec3 normal, thrust::default_random_engine &rng) {//generate a random number
     thrust::uniform_real_distribution<float> u01(0, 1);
 
     float up = sqrt(u01(rng)); // cos(theta)
@@ -47,7 +47,15 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  * A perfect specular surface scatters in the reflected ray direction.
  * In order to apply multiple effects to one surface, probabilistically choose
  * between them.
- *
+ * *   
+ * The visual effect you want is to straight-up add the diffuse and specular  
+ * components. You can do this in a few ways:  
+ * - Always take a 50/50 split between a diffuse bounce and a specular bounce,  
+ *   but multiply the result of either one by 1/0.5 to cancel the 0.5 chance  
+ *   of it happening.  
+ * - Pick the split based on the intensity of each color, and multiply each  
+ *   branch result by the inverse of that branch's probability (same as above). 
+
  * This method applies its changes to the Ray parameter `ray` in place.
  * It also modifies the color `color` of the ray in place.
  *
@@ -65,4 +73,23 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+	//specular
+	//m.specular.color
+	//diffuse:
+	if (m.hasReflective){
+		//perfectly specular
+			glm::vec3 pspecular_ray;
+			pspecular_ray= glm::reflect(ray.direction, normal);
+			ray.direction = pspecular_ray;
+			color = m.specular.color*m.specular.exponent;
+		
+	}
+	//diffuse
+	if ((!m.hasReflective) && (!m.hasRefractive)){
+		glm::vec3 diffuse_ray = calculateRandomDirectionInHemisphere(normal, rng);
+		ray.direction = glm::normalize(diffuse_ray);
+		ray.origin = intersect;
+		color = m.color;
+	}
+	//else color 
 }
