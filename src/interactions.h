@@ -29,7 +29,6 @@ __host__ __device__ glm::vec3 localToWorldTransform(glm::vec3 local,
         + sin(around) * over * perpendicularDirection2;
 }
 
-// CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
  * Used for diffuse lighting.
@@ -85,28 +84,52 @@ void scatterRay(
         bool outside,
         const Material &m,
         thrust::default_random_engine &rng) {
-    if (m.hasReflective > 0) {
-        thrust::uniform_real_distribution<float> u01(0, 1);
-        float prob = m.hasReflective;
-        if (u01(rng) < prob) {
+
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    float rand = u01(rng);
+
+    if (m.hasRefractive > 0) {
+        float n1 = outside  ? 1.0f : m.indexOfRefraction;
+        float n2 = !outside ? 1.0f : m.indexOfRefraction;
+        float r0 = (n1 - n2) / (n1 + n2);
+        r0 = r0 * r0;
+
+        float cos_theta = glm::dot(normal, -1.f * ray.direction);
+        float schlick = r0 + (1.f - r0) * glm::pow(1.f - cos_theta, 5);
+
+        if (rand < schlick) {
+            // Specular
             glm::vec3 specular = sampleSpecular(ray, normal, m, rng);
-            color *= m.specular.color / prob;
+            color *= m.specular.color;
             ray.origin = intersect;
             ray.direction = specular;
         } else {
-            color *= m.color / (1-prob);
+            // Refract
+            float ior = n1 / n2;
+            color *= m.color / (1-schlick);
+            ray.origin = intersect + (ray.direction * 0.001f);
+            ray.direction = glm::refract(ray.direction, normal, ior);
+        }
+    } else {
+        glm::vec3 spec = m.hasReflective > 0 ? m.specular.color : glm::vec3(0.f);
+        float specularIntensity = spec.x + spec.y + spec.z;
+        float diffIntensity     = m.color.x + m.color.y + m.color.z;
+        float totalIntensity    = specularIntensity + diffIntensity;
+        float specularProb = specularIntensity / totalIntensity;
+        float diffProb = diffIntensity / totalIntensity;
+
+        if (rand < specularProb) {
+            // Specular
+            glm::vec3 specular = sampleSpecular(ray, normal, m, rng);
+            color *= m.specular.color / specularProb;
+            ray.origin = intersect;
+            ray.direction = specular;
+        } else {
+            // Diffuse
+            color *= m.color / diffProb;
             ray.origin = intersect;
             ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
         }
-    } else if (m.hasRefractive > 0) {
-        float ior = outside ? 1.f/m.indexOfRefraction : m.indexOfRefraction;
-        color *= m.color;
-        ray.origin = intersect + (ray.direction * 0.001f);
-        ray.direction = glm::refract(ray.direction, normal, ior);
-    } else {
-        color *= m.color;
-        ray.origin = intersect;
-        ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
     }
 
     if (m.emittance > 0) {
