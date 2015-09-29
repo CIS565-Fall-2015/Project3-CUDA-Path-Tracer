@@ -318,7 +318,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 		}
 		else
 		{
-			return -1;
+			//return -1;
 
 			////kd-restart
 			//tmin = tmax;
@@ -350,9 +350,15 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 				}
 
 				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb, ray, t0, t1);
-				if (t1 <= tmp_tmin + RAY_EPSILON)
+
+				//intersection limited to (tmp_tmin,tmp_tmax)
+				if (t1 < tmp_tmin + RAY_EPSILON)
 				{
 					tmp_hit = false;
+				}
+				else if (t0 < tmp_tmin)
+				{
+					t0 = tmp_tmin;
 				}
 			} while (!tmp_hit);
 
@@ -392,10 +398,10 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 
 			//has intersection
 			cur_idx = backtrack_idx;
-			tmin = tmp_tmin+RAY_EPSILON;
-			//tmin = t0;
-			//tmax = t1;
-			tmax = global_tmax;
+			//tmin = tmp_tmin+RAY_EPSILON;
+			tmin = t0;
+			tmax = t1;
+			//tmax = global_tmax;
 			
 			return -2;
 		}
@@ -422,12 +428,12 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 	}
 
 
-	if(thit >= tmax /*|| thit < 0*/)
+	if(thit >= tmax || thit < 0)
 	{
 		cur_idx = first;
 		//cur_idx = second;
 	}
-	else if( thit <= tmin )
+	else if( thit <= tmin + RAY_EPSILON)
 	{
 		
 		cur_idx = second;
@@ -482,6 +488,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 										,Geom * geoms, int geoms_size
 										,Material * materials, int materials_size
 										,Node * nodes
+										,int num_nodes
 										, int * geomsid
 										//,const thrust::device_vector<Geom> & geoms , const thrust::device_vector<Material> & materials
 										)
@@ -541,18 +548,21 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 #else
 
 		//TODO:k-d tree traverse approach
+		//int traverse = 0;
+		int max_traverse = 2 * num_nodes;	//to prevent deadlock
 
 		int state = -2;
 		int cur_idx = 0;		//tmp, root node always 0....
 		float global_tmin, global_tmax;
 		AABBIntersect(nodes[cur_idx].aabb, path.ray, global_tmin, global_tmax);
 		float tmin = global_tmin, tmax = global_tmax;
-		while (state == -2)
+		while (state == -2 /*&& traverse < max_traverse*/)
 		{
-			AABBIntersect(nodes[cur_idx].aabb, path.ray, tmin, tmax);
 			state = kd_search_node(cur_idx, nodes, geoms, geomsid
 				,path.ray, tmin, tmax, global_tmax
 				, intersect_point, normal, outside);
+
+			//traverse++;
 
 		}
 		hit_geom_index = state;
@@ -679,7 +689,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
 			, dev_geom, hst_scene->geoms.size()
 			, dev_material, hst_scene->materials.size()
-			, dev_node, dev_geom_idx);
+			, dev_node, hst_scene->kdtree.hst_node.size(), dev_geom_idx);
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 		depth ++;
