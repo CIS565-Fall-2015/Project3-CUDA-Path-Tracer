@@ -66,7 +66,7 @@ static glm::vec3 *dev_image = NULL;
 static int hst_geomCount; // number of geometries to check against
 static Geom *dev_geoms; // pointer to geometries in global memory
 static Material *dev_mats; // pointer to materials in global memory
-static PathRay *dev_firstBounce; // cache of the first raycast of any iteration
+//static PathRay *dev_firstBounce; // cache of the first raycast of any iteration
 static PathRay *dev_rayPool; // pool of rays "in flight"
 static int pixelcount;
 static glm::vec3 *dev_sample = NULL;
@@ -98,7 +98,7 @@ void pathtraceInit(Scene *scene) {
 	// we'll be casting a ray from every pixel
 	int numPixels = scene->state.camera.resolution.x;
 	numPixels *= scene->state.camera.resolution.y;
-	cudaMalloc(&dev_firstBounce, numPixels * sizeof(PathRay));
+	//cudaMalloc(&dev_firstBounce, numPixels * sizeof(PathRay));
 	cudaMalloc(&dev_rayPool, numPixels * sizeof(PathRay));
 
 	// allocate space for a "sample"
@@ -121,7 +121,7 @@ void pathtraceFree() {
     // TODO: clean up the above static variables
 	cudaFree(dev_geoms);
 	cudaFree(dev_mats);
-	cudaFree(dev_firstBounce);
+	//cudaFree(dev_firstBounce);
 	cudaFree(dev_rayPool);
 	cudaFree(dev_sample);
 

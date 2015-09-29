@@ -42,28 +42,37 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__ float SchlickCosine(float cosTheta, float IORi, float IORt) {
+	float R0 = ((IORi - IORt) / (IORi + IORt));
+	R0 *= R0;
+	return R0 + (1.0f - R0) * pow((1.0f - cosTheta), 5.0f);
+}
+
 __host__ __device__ void reflect(
 	PathRay &rayStep,
 	glm::vec3 intersect,
 	glm::vec3 normal,
 	const Material &m,
-	float reflectionCoefficient
+	float term
 	) {
-	// reflect: http://paulbourke.net/geometry/reflected/
+	// perfect reflection: http://paulbourke.net/geometry/reflected/
 	rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
 		(glm::dot(rayStep.ray.direction, normal));
-	rayStep.ray.origin = intersect;
-	rayStep.color *= m.color * reflectionCoefficient;
-}
-
-__host__ __device__ float Schlick(float thetai, float IORi, float IORt) {
-	float R0 = ((IORi - IORt) / (IORi + IORt));
-	R0 *= R0;
-	if (IORi > IORt) {
-		float thetat = asin((IORi / IORt) * sin(thetai));
-		return R0 + (1.0f - R0) * pow((1.0f - cos(thetat)), 5.0f);
-	}
-	return R0 + (1.0f - R0) * pow((1.0f - cos(thetai)), 5.0f);
+	//rayStep.ray.origin = intersect;
+	//if (m.hasRefractive) {
+	//	// compute using Schlick's approximation
+	//	float cosTheta = glm::dot(rayStep.ray.direction, normal);
+	//	if (cosTheta > 0.0f) {
+	//		float fresnel = SchlickCosine(cosTheta, 1.0f, m.indexOfRefraction);
+	//		glm::vec3 color = m.color;
+	//		color *= term * fresnel;
+	//		rayStep.color *= color;
+	//		return;
+	//	}
+	//}
+	glm::vec3 color = m.color;
+	color *= term;
+	rayStep.color *= color;
 }
 
 __host__ __device__ void refract(
@@ -71,19 +80,12 @@ __host__ __device__ void refract(
 	glm::vec3 intersect,
 	glm::vec3 normal,
 	const Material &m,
-	float transmissionCoefficient
+	float term
 	) {
 	// refract: http://graphics.stanford.edu/courses/cs148-10-summer/docs/2006--degreve--reflection_refraction.pdf
 	float IORi = 1.0f; // THE VOID
 	float IORt = m.indexOfRefraction;
-	// check what direction the normal is to determine which IOR is on which side
-	// if the ray is entering, it's pointing in a direction roughly "opposite"
-	// if the ray is exiting, it's pointing in a direction roughly "similar"
 	float cosAnglei = glm::dot(rayStep.ray.direction, normal);
-	if (cosAnglei > 0.0f) {
-		IORi = IORt;
-		IORt = 1.0f;
-	}
 
 	float sinAnglei = sqrt(1.0f - cosAnglei * cosAnglei);
 	if (sinAnglei > IORt / IORi) { // total internal reflection
@@ -109,7 +111,9 @@ __host__ __device__ void refract(
 	}
 
 	rayStep.ray.origin = intersect + 0.001f * rayStep.ray.direction;
-	rayStep.color *= m.color * transmissionCoefficient;
+	glm::vec3 color = m.color;
+	color *= term;
+	rayStep.color *= color;
 }
 
 /**
@@ -151,34 +155,22 @@ void scatterRay(
 	else if (rayStep.depth <= 0){ // bottoming out
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
-	else if (m.hasReflective > 0.0f) { // hitting a mirrored object
-		reflect(rayStep, intersect, normal, m, 1.0f);
-	}
-	else if (m.hasRefractive > 0.0f) { // hitting a refractive object
-		refract(rayStep, intersect, normal, m, 1.0f);
-		/*
+	else if (m.hasReflective > 0.0f && m.hasRefractive > 0.0f) {
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		float anglei = acos(glm::dot(rayStep.ray.direction, normal));
-		float IORi = 1.0f; // THE VOID
-		float IORt = m.indexOfRefraction;
-		// check what direction the normal is to determine which IOR is on which side
-		// if the ray is entering, it's pointing in a direction roughly "opposite"
-		// if the ray is exiting, it's pointing in a direction roughly "similar"
-		if (anglei > 1.57079633) {
-			IORi = IORt;
-			IORt = 1.0f;
-		}
-
-		float reflCoefficient = Schlick(anglei, IORi, IORt);
-		//printf("%f\n", reflCoefficient);
-
 		// 50/50 split where the ray goes
 		if (u01(rng) <= 0.5f) {
-			refract(rayStep, intersect, normal, m, 1.0f - reflCoefficient);
+			refract(rayStep, intersect, normal, m, 1.0f);
 		}
 		else {
-			reflect(rayStep, intersect, normal, m, reflCoefficient);
-		} */
+			reflect(rayStep, intersect, normal, m, 1.0f);
+		}
+
+	}
+	else if (m.hasReflective > 0.0f && m.hasRefractive < 1.0f) { // hitting a simple mirrored object
+		reflect(rayStep, intersect, normal, m, 1.0f);
+	}
+	else if (m.hasRefractive > 0.0f && m.hasReflective < 1.0f) { // hitting a simple refractive object
+		refract(rayStep, intersect, normal, m, 1.0f);
 	}
 	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.
 	else // hitting just a normal thing
