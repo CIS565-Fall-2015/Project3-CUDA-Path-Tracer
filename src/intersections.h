@@ -39,9 +39,10 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
 
 // recomputes transform, inverse transform, and transpose inverse transform
 // for an object based on the given time in milliseconds and the object's velocity
-__host__ __device__ void recomputeTransforms(Geom object, float t) {
+__host__ __device__ void recomputeTransforms(Geom &object, float t) {
 	// check if there's a speed at all
-	if (object.speed[0] + object.speed[1] + object.speed[2] < 0.001f) return;
+	if (abs(object.speed[0] + object.speed[1] + object.speed[2]) < 0.001f || 
+		t < 0.0f) return;
 
 	glm::vec3 translation_t = object.translation + object.speed * t;
 

@@ -110,6 +110,7 @@ int Scene::loadCamera() {
     cout << "Loading Camera ..." << endl;
     RenderState &state = this->state;
     Camera &camera = state.camera;
+	camera.shutterDuration = -1.0f;
     float fovy;
 
     //load static properties

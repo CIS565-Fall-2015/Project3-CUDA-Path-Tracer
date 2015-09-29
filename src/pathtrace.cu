@@ -261,6 +261,9 @@ __global__ void rayCast(int iter, Camera cam, PathRay* dev_rayPool, int trace_de
 			//}
 			dev_rayPool[index].time = cam.cameraTime + u01(rng) * cam.shutterDuration;
 		}
+		else {
+			dev_rayPool[index].time = -1.0f; // timeless rays
+		}
 
 		//glm::vec3 debug = glm::normalize(p - cam.position);
 		//debug.x = abs(debug.x);
