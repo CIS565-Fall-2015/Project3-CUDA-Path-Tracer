@@ -118,7 +118,7 @@ ITERATIONS  5000
 DEPTH       8
 FILE        cornell
 frame 0
-EYE         0.0 5 18.5
+EYE         0 5 15.5
 VIEW        0 0 -1
 UP          0 1 0
 

@@ -504,24 +504,23 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-	//testCamSetupKernel<<<blocksPerGrid,blockSize>>>(cam,dev_cam,dev_image);
+	//testCamSetupKernel<<<blocksPerGrid,blockSize>>>(cam,dev_direction,dev_image);
     ///////////////////////////////////////////////////////////////////////////
 	int geomNum=hst_scene->geoms.size();
 	int matNum=hst_scene->materials.size();
 	int depth=hst_scene->state.traceDepth;
 	int remain=cam.resolution.x*cam.resolution.y;
 
-	cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	//jitterRay<<<(remain+127)/128,128>>>(dev_origin,dev_direction,origin,dev_V,dev_H,dev_M,cam.resolution.x,iter,remain);
+	//cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	//cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	jitterRay<<<(remain+127)/128,128>>>(dev_origin,dev_direction,origin,dev_V,dev_H,dev_M,cam.resolution.x,iter,remain);
 	initDeviceValue<<<(remain+127)/128,128>>>(dev_copyImage,dev_pixes,dev_pos,dev_terminated,dev_inside,remain);
-	//cout<<"@"<<endl;
+	
 	for(int i=0;i<depth;++i){
 		int bs=256;
 		dim3 gs((remain+bs-1)/bs);
 		pathTraceKernel<<<gs, bs>>>(dev_origin, dev_direction, dev_pixes,dev_inside,dev_terminated,dev_geom, geomNum, dev_material,iter,i,remain);
 		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,dev_terminated,bs);
-		//cout<<remain<<endl;
 	}
 	removeUnterminatedRay<<<(remain+127)/128,128>>>(dev_copyImage,dev_terminated,dev_pos,remain);
 	copyImageToRecord<<<(cam.resolution.x*cam.resolution.y+255)/256,256>>>(dev_image,dev_copyImage,cam.resolution.x*cam.resolution.y);
