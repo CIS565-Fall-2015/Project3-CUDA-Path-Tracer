@@ -59,4 +59,5 @@ mirror box, steam compaction would be a drag instead.)
 
 ## REFERENCES
 
-Patrick Cozzi's lecture notes (https://github.com/CIS565-Fall-2015/cis565-fall-2015.github.io)
+- Patrick Cozzi's lecture notes (https://github.com/CIS565-Fall-2015/cis565-fall-2015.github.io)
+- [PBRT] Physically Based Rendering, Second Edition: From Theory To Implementation. Pharr, Matt and Humphreys, Greg. 2010
