@@ -57,7 +57,7 @@ As mentioned above, this is an emabarrisingly parallel algorithm as all rays are
 ##### Anti Aliasing ->
 A pixel is not a point but a small square area. It is possible that more than one color exists in a pixel and hence the color of the pixel should be the average of all these colors. If we always sample the center of the pixel, we will get the same color and the edges in our final render would be stairstepped. This is called aliasing. To overcome this problem, I jitter the pixel sampling point to select random points within a pixel area. This gives us a better approximation of the color at that pixel and hence a better render. This is called antialiasing. You can see the comparison between the Aliased and an Antialiased image below:
 
-<a href="url"><img src="FinalRenders/aliased.png"  height="400" width="400"></a> <a href="url"><img src="FinalRenders/reference.png"  height="400" width="400"></a>
+<a href="url"><img src="FinalRenders/aliased.png"  height="300" width="300"></a> <a href="url"><img src="FinalRenders/reference.png"  height="300" width="300"></a>
 
 ##### Diffused Surface ->
 For a good approximation of the color at a diffused surface, we need to bounce the ray in all possible directions and average the contributions of the color values of all these rays. To get the bounce direction, we take a direction in a hemishpere in the direction of the intersection normal (code provided). This acts as the ray direction for the next iteration.
@@ -73,18 +73,18 @@ To get a mirror like effect, we reflect the incoming ray from the surface with r
 Materials like glass, water etc are refractive surfaces. To implement this, I take the incoming ray and refract it with inside the object. Next, I take this ray and refract it again to go come out. This gives us a transparency like effect. Make sure you feed the correct refractive indices to the refract function.
 To make the refraction more physically correct, I implemented Fresnels reflection. As per this law, any incoming light is both refracted and reflected by some amount. The probability of each happening is based on the refractive index of the object. For the calculations I refered to PBRT Page 435. This gave me the probability split between reflection and refraction. The next step is to implement both and add their contributions based on the probability. To make a material display fresnel property, make the flag for both refraction and reflection to 1 in the scene file (explained below).
 
-<a href="url"><img src="FinalRenders/noFresnel.png"  height="400" width="400"></a> <a href="url"><img src="FinalRenders/reference.png"  height="400" width="400"></a>
+<a href="url"><img src="FinalRenders/noFresnel.png"  height="300" width="300"></a> <a href="url"><img src="FinalRenders/reference.png"  height="300" width="300"></a>
 
 ##### Depth of Field ->
 This is a very interesting effect that can be observed in many photographs where some part of the image is in sharp focus while the other is blurred out. To implement this effect, I used the focal length and aperture parameters of the camera. Assume that there is a sphere centered at the camera position and of the radius of the focal length. We get the intersection of all intitial rays with this sphere. Next, we keep this as the final point but jitter the ray's origin based on the aperture of the camera. The new ray direction will be from this jittered origin to the intersection point. What happens now is that all the points wihtin that focal length are in focus but all others are out of focus.
 
-<a href="url"><img src="FinalRenders/DOF.png"  height="400" width="400"></a> <a href="url"><img src="FinalRenders/reference.png"  height="400" width="400"></a>
+<a href="url"><img src="FinalRenders/DOF.png"  height="300" width="300"></a> <a href="url"><img src="FinalRenders/reference.png"  height="300" width="300"></a>
 
 ##### Direct Illumination ->
 The concept of direct illumination is that if any ray is alive after the ray depth, then we can take that ray directly to the light. If it can reach the light then we add its contribution to the final image. This helps in generating better looking renders. Also, we can reduce the trace depth and get a similar result with direct illumination.
 The important part of this is sampling the lights. For this I borrowed the code from CIS 560 to sample cubes and spheres. First I randomly select a light and then take a random point on that light. This gives me a good sampling of all the light sources.
 
-<a href="url"><img src="FinalRenders/noDI.png"  height="400" width="400"></a> <a href="url"><img src="FinalRenders/DI.png"  height="400" width="400"></a>
+<a href="url"><img src="FinalRenders/noDI.png"  height="300" width="300"></a> <a href="url"><img src="FinalRenders/DI.png"  height="300" width="300"></a>
 
 ##### Subsurface Scattering ->
 Getting physically accurate subsurface scattering effect is very expensive to compute (Algorithm explained in PBRT). I tried to hack around it and get a very small effect.
@@ -98,7 +98,7 @@ These are real life effects that we get for free with the path tracer. In the im
 Caustics is observed with refractive materials. When the light goes through a refractive surface, it gets concentrated on the other side. This can be observed in the image.
 Soft shadows can be observed because we have area lights.
 
-<a href="url"><img src="FinalRenders/caustics.png"  height="400" width="400"></a>
+<a href="url"><img src="FinalRenders/caustics.png" align="center" height="400" width="400"></a>
 
 ### Scene File Format
 
