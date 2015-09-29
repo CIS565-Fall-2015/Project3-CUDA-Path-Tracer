@@ -33,12 +33,14 @@ Below are material types that this path tracer supports:
 #### Subsurface Scattering
 ![](img/05SSS.png)
 Subsurface scattering is implemented based on Yining Karl Li's [Slides](https://github.com/CIS565-Fall-2015/cis565-fall-2015.github.io/raw/master/lectures/4.1-Path-Tracing-1.pdf)
+
  Subsurface Scattering	|  Compare with diffuse
 :----------------------:|:-------------------------:
 ![](img/05SSS02.png)		|![](img/05SSS01.png)
 
 ### Texture Mapping
 ![](img/06TexMap.png)
+
 Cube Texture Mapping Test |Sphere Texture Mapping test
 :------------------------:|:---------------------------:
 ![](img/06TexMap_cube.png)|![](img/06TexMap_sphere.png)
@@ -52,6 +54,7 @@ With Direct Lighting	|  Without Direct Lighting
 #### Anti-aliasing
 
 Choose a random direction inside each pixel to smooth edges while iterating.
+
 With Anti-Aliasing		|Without Anti-Aliasing
 :----------------------:|:------------------:
 ![](img/03AntiA_on.PNG) |![](img/03AntiA_off.png)
