@@ -9,6 +9,7 @@ CUDA Path Tracer
 ## Description
 An interactive GPU accelerated path tracer with support for diffuse, specular, mirrored, and refractive surfaces. Additional features include depth of field and motion blur effects.
 ![](img/cornell_main_20k.png "Cornell Box")
+Video of real time interaction: [https://youtu.be/Ja_5wvhphvI](https://youtu.be/Ja_5wvhphvI?rel=0)
 
 ## Features
 
