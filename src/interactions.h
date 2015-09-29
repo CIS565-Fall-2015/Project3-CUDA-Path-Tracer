@@ -151,7 +151,7 @@ thrust::default_random_engine &rrr) {
 		float R_thi = R0 + (1 - R0)*pow(1 - cos_thi, 5);
 		if (outside)
 		{
-			if (u01(rrr)<R_thi) ray_type = ReflRay;
+			if (u01(rrr)<R_thi) ray_type = ReflRay; //fresnel
 			else ray_type = RefrRay;
 		}
 		else
@@ -206,7 +206,7 @@ thrust::default_random_engine &rrr) {
 			if (u01(rrr) < specProb) //spec ray
 				ray_type = SpecRay;
 			else//diffuse ray
-				ray_type = DiffRay;				
+				ray_type = DiffRay;			
 		}
 		else 
 			ray_type = DiffRay;
@@ -218,7 +218,7 @@ thrust::default_random_engine &rrr) {
 	case DiffRay:
 	{
 		ray.origin = getPointOnRay(ray, intrT);
-		ray.carry *= m.color*(1.f / (1 - specProb));
+		ray.carry *= m.color;// *(1.f / (1 - specProb));
 		ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
 	}
 		break;
@@ -231,12 +231,23 @@ thrust::default_random_engine &rrr) {
 		break;
 	case RefrRay:
 	{
-		ray.origin = getPointOnRay(ray, intrT + 0.001f);
+		
+		float n = m.indexOfRefraction;
 		if (outside)
-			ray.direction = glm::normalize(glm::refract(ray.direction, normal, 1.f / m.indexOfRefraction));
+			n = 1 / n;
+		float angle = 1.0f - glm::pow(n, 2) * (1.0f - glm::pow(glm::dot(normal, ray.direction), 2));
+		if (angle < 0)
+		{
+			ray.origin = getPointOnRay(ray, intrT);
+			ray.direction = glm::normalize(glm::reflect(ray.direction, normal));
+			ray.carry *= m.specular.color;
+		} 
 		else
-			ray.direction = glm::normalize(glm::refract(ray.direction, normal, m.indexOfRefraction));
-		ray.carry *= m.color; //???diffuse color...
+		{
+			ray.origin = getPointOnRay(ray, intrT + 0.001f);
+			ray.direction = glm::normalize(glm::refract(ray.direction, normal, n));
+			ray.carry *= m.color; 
+		}
 	}
 		break;
 	case SpecRay:
@@ -244,7 +255,7 @@ thrust::default_random_engine &rrr) {
 		ray.origin = getPointOnRay(ray, intrT);
 		glm::vec3 specDir = glm::reflect(ray.direction, normal);
 		ray.direction = glm::normalize(calculateRandomSpecularDirection(specDir, m.specular.exponent, rrr));
-		ray.carry *= m.specular.color *(1.f / specProb);
+		ray.carry *= m.specular.color;// *(1.f / specProb);
 	}
 		break;
 	case SSSRay_o:

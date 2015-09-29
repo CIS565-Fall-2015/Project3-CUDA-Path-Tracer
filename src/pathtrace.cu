@@ -192,8 +192,11 @@ __global__ void kernInitPathRays(Camera cam,Ray * rays,int iter)
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
 
-		float Sx = ((float)x + u01(rng) - 0.5) / (cam.resolution.x - 1);
-		float Sy = ((float)y + u01(rng) - 0.5) / (cam.resolution.y - 1);
+		float rdmX = 1.05*(u01(rng) - 0.5);
+		float rdmY = 1.05*(u01(rng) - 0.5);
+		//anti-aliasing
+		float Sx = ((float)x + rdmX) / (cam.resolution.x - 1);
+		float Sy = ((float)y + rdmY) / (cam.resolution.y - 1);
 		glm::vec3 Pw = M_ - (2 * Sx - 1)*H_ - (2 * Sy - 1)*V_;
 		glm::vec3 Dir_ = Pw - cam.position;
 
