@@ -31,14 +31,12 @@ glm::vec3 calculateRandomDirectionInHemisphere(
     }
 
     // Use not-normal direction to generate two perpendicular directions
-    glm::vec3 perpendicularDirection1 =
+    glm::vec3 perpendicularDirection =
         glm::normalize(glm::cross(normal, directionNotNormal));
-    glm::vec3 perpendicularDirection2 =
-        glm::normalize(glm::cross(normal, perpendicularDirection1));
 
     return up * normal
-        + cos(around) * over * perpendicularDirection1
-        + sin(around) * over * perpendicularDirection2;
+        + cos(around) * over * perpendicularDirection
+		+ sin(around) * over * (glm::normalize(glm::cross(normal, perpendicularDirection)));
 }
 
 /**
@@ -47,7 +45,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
 * http://www.scratchapixel.com/old/lessons/3d-basic-lessons/lesson-14-interaction-light-matter/optics-reflection-and-refraction/
 */
 __host__ __device__
-float calculateRefractionCoefficient(glm::vec3 direction, glm::vec3 normal, float indexOfRefraction) {
+float calculateFresnelReflectionCoefficient(glm::vec3 direction, glm::vec3 normal, float indexOfRefraction) {
 	float r0 = glm::pow((1.0f - indexOfRefraction) / (1.0f + indexOfRefraction), 2);
 	return r0 + (1.0f - r0) * glm::pow(1.0f - glm::dot(normal, -direction), 5);
 }
@@ -77,8 +75,8 @@ glm::vec3 calculateRefractionDirection(glm::vec3 direction, glm::vec3 normal, fl
 __host__ __device__
 void motionBlur(MovingGeom *mgeoms, int id, int iter, int maxIter) {
 	if (iter <= maxIter) {
-		glm::vec3 offset = (mgeoms[id].translations[0] - mgeoms[id].translations[1]) / (float)maxIter;
-		mgeoms[id].translations[0] = mgeoms[id].translations[0] + offset;
+		mgeoms[id].translations[0] = mgeoms[id].translations[0] + 
+			((mgeoms[id].translations[0] - mgeoms[id].translations[1]) / (float)maxIter);
 		mgeoms[id].transforms[0] = utilityCore::buildTransformationMatrix(mgeoms[id].translations[0],
 			mgeoms[id].rotations[0], mgeoms[id].scales[0]);
 		mgeoms[id].inverseTransforms[0] = glm::inverse(mgeoms[id].transforms[0]);
@@ -116,15 +114,10 @@ void scatterRay(
         glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
-	glm::vec3 diffuseColor = m.color;
-	glm::vec3 specularColor = m.specular.color;
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
 	if (m.hasRefractive) {
-		float reflectionCoefficient = calculateRefractionCoefficient(ray.direction, normal, m.indexOfRefraction);
-		float refractionCoefficient = 1.0f - reflectionCoefficient;
-
-		if (u01(rng) < refractionCoefficient) {
+		if (u01(rng) < (1.0f - calculateFresnelReflectionCoefficient(ray.direction, normal, m.indexOfRefraction))) {
 			float eta = 0.0f;
 			if (!ray.inside) {
 				eta = 1.0f / m.indexOfRefraction; // Coming from the air
@@ -154,30 +147,27 @@ void scatterRay(
 		//First must determine if this is perfectly specular or not
 		// is this only when there's an exponent? or when the diffuse is zero?
 		// for now i will go with the exponent being non zero
-		float specularExponent = m.specular.exponent; // Besides activating this, exponent does nothing. Apply to color possibly?
-		if (specularExponent != 0) {
+		if (m.specular.exponent != 0) {
 			// non perfect
 			
 			// Calculate intensity values
-			float specularIntensity = (specularColor.x + specularColor.y + specularColor.z) / 3.0f;
-			float diffuseIntensity = (diffuseColor.x + diffuseColor.y + diffuseColor.z) / 3.0f;
+			float specularIntensity = (m.specular.color.x + m.specular.color.y + m.specular.color.z) / 3.0f;
+			float diffuseIntensity = (m.color.x + m.color.y + m.color.z) / 3.0f;
 
 			float specularProbability = specularIntensity / (diffuseIntensity + specularIntensity);
-			float diffuseProbability = diffuseIntensity / (diffuseIntensity + specularIntensity);
 
-			float randColor = u01(rng);
-			if (randColor <= specularProbability) {
+			if (u01(rng) <= specularProbability) {
 				//spec
 				ray.origin = intersect + normal * EPSILON;
 				ray.direction = calculateReflectionDirection(ray.direction, normal);
-				color *= specularColor * (1.0f / specularProbability);
+				color *= m.specular.color * (1.0f / specularProbability);
 				ray.inside = false;
 			}
 			else {
 				//diffuse
 				ray.origin = intersect + normal * EPSILON;
 				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-				color *= diffuseColor * (1.0f / diffuseProbability);
+				color *= m.color * (1.0f / (diffuseIntensity / (diffuseIntensity + specularIntensity)));
 				ray.inside = false;
 			}
 		}
@@ -185,7 +175,7 @@ void scatterRay(
 			// perfect mirror
 			ray.origin = intersect + normal * EPSILON;
 			ray.direction = calculateReflectionDirection(ray.direction, normal);
-			color *= specularColor;
+			color *= m.specular.color;
 			ray.inside = false;
 		}
 	}
@@ -193,7 +183,7 @@ void scatterRay(
 		// diffuse only
 		ray.origin = intersect + normal * EPSILON;
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color *= diffuseColor;
+		color *= m.color;
 		ray.inside = false;
 	}
 }

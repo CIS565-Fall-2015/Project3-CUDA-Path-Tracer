@@ -142,16 +142,14 @@ __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 		// Depth of field
 		glm::vec3 horizontal, middle, vertical;
 		glm::vec3 pointOnUnitImagePlane, pointOnTrueImagePlane;
-		float jitteredX, jitteredY;
 
 		// Compute point on image plane, then plane at focal distance
 		horizontal = glm::cross(cam.view, cam.up) * glm::sin(-cam.fov.x);
 		vertical = glm::cross(glm::cross(cam.view, cam.up), cam.view) * glm::sin(-cam.fov.y);
 		middle = cam.position + cam.view;
 
-		jitteredX = (uHalf(rng) + x) / (cam.resolution.x - 1);
-		jitteredY = (uHalf(rng) + y) / (cam.resolution.y - 1);
-		pointOnUnitImagePlane = middle + (((2.0f * jitteredX) - 1.0f) * horizontal) + (((2.0f * jitteredY) - 1.0f) * vertical);
+		pointOnUnitImagePlane = middle + (((2.0f * ((uHalf(rng) + x) / (cam.resolution.x - 1))) - 1.0f) 
+			* horizontal) + (((2.0f * ((uHalf(rng) + y) / (cam.resolution.y - 1))) - 1.0f) * vertical);
 		pointOnTrueImagePlane = cam.position + ((pointOnUnitImagePlane - cam.position) * cam.focalDistance);
 
 		 // Sample a random point on the lense
@@ -164,17 +162,14 @@ __global__ void InitializeRays(Camera cam, int iter, Ray* rays) {
 	}
 	else {
 		//No depth of field
-		glm::vec3 v = glm::cross(cam.up, cam.view);
 		float halfResX, halfResY;
-		float magnitudeX, magnitudeY;
 
 		halfResX = cam.resolution.x / 2.0f;
 		halfResY = cam.resolution.y / 2.0f;
-		magnitudeX = (-(halfResX - x + uHalf(rng)) * sin(cam.fov.x)) / halfResX;
-		magnitudeY = ((halfResY - y + uHalf(rng)) * sin(cam.fov.y)) / halfResY;
 
 		rays[index].origin = cam.position;
-		rays[index].direction = cam.view + magnitudeX * v + magnitudeY * cam.up;
+		rays[index].direction = cam.view + ((-(halfResX - x + uHalf(rng)) 
+			* sin(cam.fov.x)) / halfResX) * glm::cross(cam.up, cam.view) + (((halfResY - y + uHalf(rng)) * sin(cam.fov.y)) / halfResY) * cam.up;
 	}
 
 	rays[index].color = glm::vec3(1.0f);
