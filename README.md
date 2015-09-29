@@ -6,7 +6,7 @@ CUDA Path Tracer
 * SANCHIT GARG
 * Tested on: Mac OSX 10.10.4, i7 @ 2.4 GHz, GT 650M 1GB (Personal Computer)
 
-![](FinalRenders/coverPic.png)
+<a href="url"><img src="FinalRenders/coverPic.png" height="100" width="100" ></a>
 
 ### What is a Path Tracer ?
 
