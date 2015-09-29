@@ -165,6 +165,8 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 		float sy = float(y) / ((float) (camera->resolution.y) - 1.0f);
 
 		glm::vec3 rayDir = (camera->M - (2.0f*sx - 1.0f + u01(rng)) * camera->H - (2.0f*sy - 1.0f + u01(rng)) * camera->V);
+
+//		glm::vec3 rayDir = (camera->M - (2.0f*sx - 1.0f) * camera->H - (2.0f*sy - 1.0f) * camera->V);
 		rayDir -= camera->position;
 		rayDir = glm::normalize(rayDir);
 

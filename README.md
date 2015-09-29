@@ -43,7 +43,7 @@ In this project, I aimed at implementing a CUDA base Path Tracer. The features i
 * Direct Illumination by sampling a light source at random
 * Attempted Subsurface Scattering
 * Work Efficient stream compaction with shared memory to remove dead rays quickly
-* Effects like color bleeding and caustics can be observed
+* Effects like color bleeding, caustics, soft shadow can be observed
 
 ### Implementation Details
 
@@ -67,7 +67,7 @@ To get a mirror like effect, we reflect the incoming ray from the surface with r
 
 ##### Refractive Surface and Fresnels Reflectance ->
 Materials like glass, water etc are refractive surfaces. To implement this, I take the incoming ray and refract it with inside the object. Next, I take this ray and refract it again to go come out. This gives us a transparency like effect. Make sure you feed the correct refractive indices to the refract function.
-To make the refraction more physically correct, I implemented Fresnels reflection. As per this law, any incoming light is both refracted and reflected by some amount. The probability of each happening is based on the refractive index of the object. For the calculations I refered to PBRT Page 435. This gave me the probability split between reflection and refraction. The next step is to implement both and add their contributions based on the probability.
+To make the refraction more physically correct, I implemented Fresnels reflection. As per this law, any incoming light is both refracted and reflected by some amount. The probability of each happening is based on the refractive index of the object. For the calculations I refered to PBRT Page 435. This gave me the probability split between reflection and refraction. The next step is to implement both and add their contributions based on the probability. To make a material display fresnel property, make the flag for both refraction and reflection to 1 in the scene file (explained below).
 
 ##### Depth of Field ->
 This is a very interesting effect that can be observed in many photographs where some part of the image is in sharp focus while the other is blurred out. To implement this effect, I used the focal length and aperture parameters of the camera. Assume that there is a sphere centered at the camera position and of the radius of the focal length. We get the intersection of all intitial rays with this sphere. Next, we keep this as the final point but jitter the ray's origin based on the aperture of the camera. The new ray direction will be from this jittered origin to the intersection point. What happens now is that all the points wihtin that focal length are in focus but all others are out of focus.
@@ -83,9 +83,10 @@ In my method, I get a random reflection direction from the intersection point. N
 ##### Work efficient Stream Compaction ->
 In the path tracer, the rays that do not hit any object or hit a light are considered to be dead. If we hit the light then we are done and we can add the color to the corresponding pixel. If it does not hit anything then also we are done. So we mark all these rays as dead. In the next step, we have to remove all these rays from our array and consider only the one's that are alive. The work efficient stream compaction helps speeding this process by doing it in parallel over the shared memory of a block.
 
-##### Color Bleeding and Caustics ->
+##### Color Bleeding, Caustics and Soft Shadow ->
 These are real life effects that we get for free with the path tracer. In the images you can see that the red and green color of the surrounding bleeds into the white back wall giving it a little color. 
 Caustics is observed with refractive materials. When the light goes through a refractive surface, it gets concentrated on the other side. This can be observed in the image.
+Soft shadows can be observed because we have area lights.
 
 
 ### Scene File Format
@@ -133,7 +134,7 @@ Objects are defined in the following fashion:
 The scene files can be found in the `scene/` folder.
 
 
-### Analysis
+### Analysis on Stream Compaction
 
 * Stream compaction helps most after a few bounces. Print and plot the
   effects of stream compaction within a single iteration (i.e. the number of

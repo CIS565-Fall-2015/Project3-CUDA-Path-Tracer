@@ -232,7 +232,7 @@ void scatterRay(
 	{
 		//Diffused material
 		thrust::uniform_real_distribution<float> u01(0, 1);
-		if(m.specular.exponent > 0 && u01(rng) < 0.3f)
+		if(m.specular.exponent > 0 && u01(rng) < 0.2f)
 		{
 			//Do specular reflection
 			int i;
