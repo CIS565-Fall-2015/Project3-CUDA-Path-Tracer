@@ -1,11 +1,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include "common.h"
 #include "efficient.h"
 #include <iostream>
 
 namespace StreamCompaction {
 namespace Efficient {
+
+const int threadCount = 256;
 
 void printArray(int n, int * a)
 {
@@ -29,7 +30,7 @@ __global__ void blockWiseScan(int n, int *odata, int *idata)
 	if(index < n)
 	{
 		//Do block exclusive scans
-		__shared__ int data[4];
+		__shared__ int data[threadCount];
 
 		unsigned int t = threadIdx.x;
 		n = blockDim.x;
@@ -120,52 +121,99 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	cudaFree(dev_odata);
 }
 
-int compact(int n, int *odata, const int *idata) {
+int compact(int n, RayState *odata, RayState *idata) {
 
+	std::cout<<n<<std::endl;
 	int oriN = n;
 
 	int p = ilog2ceil(n);
 	n = pow(2, p);
+	std::cout<<n<<std::endl;
 
-	int numThreads = 4,
+	int numThreads = threadCount,
 		numBlocks = (n + numThreads - 1) / numThreads;
 
-	int *dev_idata,
-		*dev_odata,
-		*dev_k,
+	int	*dev_k,
 		*dev_scanData,
 		*dev_temp;
+	int *printData = new int[n];
 
-	cudaMalloc((void**)&dev_idata, n * sizeof(int));
-	cudaMalloc((void**)&dev_odata, n * sizeof(int));
 	cudaMalloc((void**)&dev_k, sizeof(int));
 	cudaMalloc((void**)&dev_scanData, n * sizeof(int));
 	cudaMalloc((void**)&dev_temp, n * sizeof(int));
 
-	cudaMemset(dev_idata, 0, n * sizeof(int));
-	cudaMemcpy(dev_idata, idata, oriN * sizeof(int), cudaMemcpyHostToDevice);
 
-	StreamCompaction::Common::kernMapToBoolean<<<numBlocks, numThreads>>>(n, dev_scanData, dev_idata);
+	StreamCompaction::Common::kernMapToBoolean<<<numBlocks, numThreads>>>(n, dev_scanData, idata);
+
+	cudaMemcpy(printData, dev_scanData, n * sizeof(int), cudaMemcpyDeviceToHost);
+	printArray(n, printData);
 
 	exclusiveScan(n, dev_temp, dev_scanData, numBlocks, numThreads);
+
+	cudaMemcpy(printData, dev_temp, n * sizeof(int), cudaMemcpyDeviceToHost);
+	printArray(n, printData);
 
 	setK<<<1,1>>>(dev_k, dev_temp, n-1);
 	int *k = new int;
 	cudaMemcpy(k, dev_k, sizeof(int), cudaMemcpyDeviceToHost);
 
-	StreamCompaction::Common::kernScatter<<<numBlocks, numThreads>>>(n, dev_odata, dev_idata, dev_scanData, dev_temp);
+	StreamCompaction::Common::kernScatter<<<numBlocks, numThreads>>>(n, odata, idata, dev_scanData, dev_temp);
 
-	cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
-//	printArray(n, odata);
+	cudaMemcpy(idata, odata, oriN * sizeof(RayState), cudaMemcpyDeviceToDevice);
 
-	cudaFree(dev_idata);
-	cudaFree(dev_odata);
+	std::cout<<*k<<std::endl;
+
 	cudaFree(dev_scanData);
 	cudaFree(dev_k);
 	cudaFree(dev_temp);
 	return (*k);
 }
 
+
+}
+}
+
+
+namespace StreamCompaction {
+namespace Common {
+
+__global__ void kernMapToBoolean(int n, int *bools, const RayState *idata) {
+
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+	if(index < n)
+	{
+//		if(idata[index].isAlive)
+//		{
+//			printf("Here\n");
+//		}
+	bools[index] = (idata[index].isAlive) ? 1 : 0;
+	}
+}
+
+/**
+ * Performs scatter on an array. That is, for each element in idata,
+ * if bools[idx] == 1, it copies idata[idx] to odata[indices[idx]].
+ */
+__global__ void kernScatter(int n, RayState *odata,
+        const RayState *idata, const int *bools, const int *indices) {
+    // TODO
+
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+	if(index < n)
+	{
+		if(bools[index] == 1)
+		{
+			int i = indices[index];
+			odata[i].isAlive = idata[index].isAlive;
+			odata[i].pixelIndex = idata[index].pixelIndex;
+			odata[i].rayColor = idata[index].rayColor;
+			odata[i].ray.direction = idata[index].ray.direction;
+			odata[i].ray.origin = idata[index].ray.origin;
+		}
+	}
+}
 
 }
 }

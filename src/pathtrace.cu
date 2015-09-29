@@ -15,6 +15,8 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#include <stream_compaction/efficient.h>
+
 #define DI 0
 #define DOF 0
 #define ERRORCHECK 1
@@ -387,15 +389,23 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     int numBlocks, numThreads = 64;
     numBlocks = (rayCount + numThreads - 1) / numThreads;
 
+    int countThrust, countMine;
+
     for(int i=0; (i<traceDepth && rayCount > 0); ++i)
     {
     	//Take one step, should make dead rays as false
     	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, i, rayCount);
 
-    	//Compact rays, dev_rays_end points to the new end
-    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+    	//Stream compaction using work efficient
+    	countMine = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin, dev_rays_end);
 
-    	rayCount = dev_rays_end - dev_rays_begin;
+    	//Compact rays, dev_rays_end points to the new end
+    	//dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+    	//countThrust = dev_rays_end - dev_rays_begin;
+
+    	rayCount = countMine;
+    	std::cout<<"RayCount : "<<rayCount<<std::endl;
+
     	numBlocks = (rayCount + numThreads - 1) / numThreads;
     }
 
