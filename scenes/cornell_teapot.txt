@@ -121,8 +121,8 @@ SCALE       .01 10 10
 // teapot
 OBJECT 6
 mesh
-material 2
-TRANS       0 2 0
+material 1
+TRANS       0 3 0
 ROTAT       20 20 20
 SCALE       2.5 2.5 2.5
-FILE		../scenes/teapot.obj
+FILE		../scenes/cube.obj

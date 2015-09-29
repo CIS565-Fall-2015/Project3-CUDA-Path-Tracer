@@ -154,11 +154,8 @@ __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r,
 			mesh.dev_triangleVertices[i + 1], mesh.dev_triangleVertices[i + 2], barycentric);
 		// compute the real position of the intersect in the triangle and its distance
 		// from the ray origin.
-		glm::vec3 isxPosition = barycentric.z * r.direction + r.origin;
-		float distance = glm::distance(isxPosition, r.origin);
-		if (distance > 0.0f && (distance < nearestDistance || nearestDistance < 0.0f)) {
-			nearestDistance = distance;
-			intersectionPoint = isxPosition;
+		if (barycentric.z > 0.0f && (barycentric.z < nearestDistance || nearestDistance < 0.0f)) {
+			nearestDistance = barycentric.z;
 			triangleIndex = i;
 		}
 	}
@@ -169,6 +166,7 @@ __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r,
 		glm::vec3 sideB = mesh.dev_triangleVertices[triangleIndex + 2] -
 			mesh.dev_triangleVertices[triangleIndex];
 		normal = glm::cross(sideA, sideB);
+		intersectionPoint = nearestDistance * r.direction + r.origin;
 	}
 	return nearestDistance;
 };
