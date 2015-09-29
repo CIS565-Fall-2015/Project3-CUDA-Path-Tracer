@@ -3,6 +3,8 @@
 #include <cstring>
 #include <time.h>
 
+
+
 static std::string startTimeString;
 static bool camchanged = false;
 static float theta = 0, phi = 0;
@@ -77,7 +79,7 @@ void saveImage() {
 
     // CHECKITOUT
     img.savePNG(filename);
-    //img.saveHDR(filename);  // Save a Radiance HDR file
+    img.saveHDR(filename);  // Save a Radiance HDR file
 }
 
 void runCuda() {
@@ -153,3 +155,6 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         }
     }
 }
+
+
+
