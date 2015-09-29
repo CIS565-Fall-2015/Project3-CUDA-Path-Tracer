@@ -128,7 +128,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    05.jpg
+TEX	    pp.jpg
 
 // spec violet
 MATERIAL 11
@@ -140,7 +140,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    ppp.jpg
+TEX	    pp.jpg
 
 // Camera
 CAMERA
@@ -149,8 +149,9 @@ FOVY        30
 ITERATIONS  5000
 DEPTH       8
 FILE        cornell
-EYE         -0.7 2 3.5
-VIEW        0.4 -0.1 -1
+//EYE         -0.7 2 3.5
+EYE         0 4 12
+VIEW        0 -0.1 -1
 UP          0 1 0
 
 

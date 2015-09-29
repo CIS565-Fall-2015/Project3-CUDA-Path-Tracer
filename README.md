@@ -26,11 +26,15 @@ This GPU based path tracer with global illumination and anti-alising can render 
  ![alt tag](img/04DiffSpecTrans.png "scene file: \scenes\DiffSpecTrans.txt")
  
 #### Subsurface Scattering
- ![](img/05SSS.png)
+	![](img/05SSS.png)
 
  Subsurface Scattering	|  Compare with diffuse
 :----------------------:|:-------------------------:
 ![](img/05SSS02.png)		|![](img/05SSS01.png)
+
+#### TextureMapping
+	![](img/06TexMap.png)
+	![](img/06TexMap_cube.png)|![](img/06TexMap_sphere.png)
 
 ### Global Illumination
 
@@ -45,24 +49,17 @@ With Anti-Aliasing		|Without Anti-Aliasing
 ![](img/03AntiA_on.PNG) |![](img/03AntiA_off.png)
 
 ### Work-efficient Stream Compaction with Shared Memory
-
-
-## Analysis
-
-### stream compaction
-        (shared mem work-eff/thrust::remove_if/no stream compact)
-### Open vs Closed scenes
+![](img/Analysis/SharedMem.PNG)
+#### Analysis
+** Open vs Closed scenes **
+![](img/Analysis/OpenScene.png)
+![](img/Analysis/CloseScene.png)
 
 ## Appendix
 
-## command line
-
-## control
-
-## scene file
-
-## future work
-
-## base code
-
-## references
+#### command line
+#### control
+#### scene file
+#### future work
+#### base code
+#### references

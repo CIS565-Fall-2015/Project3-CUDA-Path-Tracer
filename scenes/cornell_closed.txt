@@ -63,9 +63,9 @@ CAMERA
 RES         800 800
 FOVY        45
 ITERATIONS  5000
-DEPTH       4
+DEPTH       32
 FILE        cornell
-EYE         0.0 5 10.5
+EYE         0.0 5 4
 VIEW        0 0 -1
 UP          0 1 0
 
@@ -124,3 +124,11 @@ material 4
 TRANS       -1 4 -1
 ROTAT       0 0 0
 SCALE       3 3 3
+
+// front wall
+OBJECT 7
+cube
+material 2
+TRANS       0 5 4.9
+ROTAT       0 0 0
+SCALE       10 10 .1

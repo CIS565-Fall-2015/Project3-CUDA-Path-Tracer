@@ -704,9 +704,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//printf("");	
 			//cudaMemcpy( hst_temp, dev_incre,sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "final. scan");		//dev_temp
-			//printf("before str: %d\t,",why);
+			//printf("Before Stream Compaction: %d rays\t,",why);
 			why = ttRayNum;
-			//printf("after str: %d\t\n", why);
+			//printf("After Stream Compaction: %d rays\t\n", why);
 			totalRays = why;
 		}
 	}
