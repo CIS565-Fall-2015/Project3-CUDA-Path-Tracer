@@ -40,14 +40,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + cos(around) * over * perpendicularDirection1
         + sin(around) * over * perpendicularDirection2;
 }
-__host__ __device__ float R_coeff(float theta){
-	//air :n1=1; ice:1.3
-	float n1, n2;
-	n1 = 1.0; n2 = 1.3;
-	float R0 = pow((n1 - n2) / (n1 + n2), 2);
-	float Rtheta = R0 + (1 - R0)*pow((1 - theta), 5);
-	return Rtheta;
-}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -68,7 +61,15 @@ __host__ __device__ float R_coeff(float theta){
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__ void reflectRay(Ray &r,glm::vec3 normal,glm::vec3 intersection,Material m){
+__host__ __device__ float R_coeff(float theta,float n2){
+	//air :n1=1; ice:1.3
+	
+	float n1 = 1.0; //n2 = 1.3;
+	float R0 = pow((n1 - n2) / (n1 + n2), 2);
+	float Rtheta = R0 + (1 - R0)*pow((1 - theta), 5);
+	return Rtheta;
+}
+__host__ __device__ void reflectRay(Ray &r, glm::vec3 normal, glm::vec3 intersection, Material m){
 	r.direction = glm::reflect(r.direction, normal);
 	r.origin = intersection;
 	r.hitcolor *= m.specular.color;
@@ -79,38 +80,47 @@ __host__ __device__ void refractRay(Ray &r, glm::vec3 normal, glm::vec3 intersec
 	r.origin = intersection;
 	r.hitcolor *= m.specular.color;
 }
+
 __host__ __device__
 void scatterRay(Ray &ray,glm::vec3 &color,glm::vec3 intersect,glm::vec3 normal,glm::vec3 emittedColor,const Material &m,
                 thrust::default_random_engine &rng) {
-    // TODO: implement this.
-    // A basic implementation of pure-diffuse shading will just call the
-    // calculateRandomDirectionInHemisphere defined above.
-	
-	if (m.hasRefractive&&m.hasReflective){
+
+	if (m.hasRefractive){
 
 		float theta = glm::dot(ray.direction, normal);
-		float Rtheta = R_coeff(theta);
+		float Rtheta = R_coeff(theta, m.indexOfRefraction);
 		thrust::uniform_real_distribution <float> u01(0, 1);
-		glm::vec3 refract_ray,reflect_ray;
+		glm::vec3 refract_ray, reflect_ray;
 		if (u01(rng)< Rtheta / (1 - Rtheta))//refract
 		{
 			//ray.direction = glm::refract(ray.direction, normal, 1.0);
 		}
 		else{
-			ray.direction = glm::reflect(-ray.direction, normal);
-		    ray.origin = intersect;
-		//	float Specular = glm::pow(Base, Material.exponent()); 
-		//	color = m.specular.color * Specular
-		
-		
+
+			//ray.direction = glm::reflect(-ray.direction, normal);
+			//ray.origin = intersect;
+			//	float Specular = glm::pow(Base, Material.exponent()); 
+			//	color = m.specular.color * Specular
+		}
+
 	}
+	if (m.hasReflective){
+		if (m.specular.exponent > 1){
+			reflectRay(ray, normal, intersect, m);//perfect mirror
+			//specular high light:
+		}
+	
+	}
+	
+
+	
 	
 	//diffuse
 	if ((!m.hasReflective) && (!m.hasRefractive)){
 		glm::vec3 diffuse_ray = calculateRandomDirectionInHemisphere(normal, rng);
 		ray.direction = glm::normalize(diffuse_ray);
 		ray.origin = intersect;
-		color = m.color;
+	    ray.hitcolor *= m.color;
 	}
 	//else color 
 }
