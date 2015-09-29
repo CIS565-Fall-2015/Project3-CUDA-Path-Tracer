@@ -116,6 +116,7 @@ float intrT,
 glm::vec3 intersect,
 glm::vec3 normal,
 const Material &m,
+image *t,
 thrust::default_random_engine &rrr) {
 	// TODO: implement this.
 	// A basic implementation of pure-diffuse shading will just call the
@@ -136,9 +137,16 @@ thrust::default_random_engine &rrr) {
 	if (ray.terminated)
 		return ray.carry;
 
+	glm::vec3 matColor = m.color;
+	if (m.TexIdx!=-1)
+	{
+		//matColor = t[m.TexIdx].getPixel(1,1);
+		matColor = glm::vec3(0, 1, 0);
+	}
+
 	if (m.emittance > 0)
 	{
-		ray.carry *= m.emittance*m.color;
+		ray.carry *= m.emittance*matColor;// m.color;
 		ray.terminated = true;
 		return ray.carry;
 	}
@@ -202,7 +210,8 @@ thrust::default_random_engine &rrr) {
 		if (m.specular.exponent > 0)
 		{	
 			specProb = glm::length(m.specular.color);
-			specProb = specProb / (specProb + glm::length(m.color));
+			//specProb = specProb / (specProb + glm::length(m.color));
+			specProb = specProb / (specProb + glm::length(matColor));
 			if (u01(rrr) < specProb) //spec ray
 				ray_type = SpecRay;
 			else//diffuse ray
@@ -218,7 +227,7 @@ thrust::default_random_engine &rrr) {
 	case DiffRay:
 	{
 		ray.origin = getPointOnRay(ray, intrT);
-		ray.carry *= m.color;// *(1.f / (1 - specProb));
+		ray.carry *= matColor;//m.color;// *(1.f / (1 - specProb));
 		ray.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rrr));
 	}
 		break;
@@ -246,7 +255,7 @@ thrust::default_random_engine &rrr) {
 		{
 			ray.origin = getPointOnRay(ray, intrT + 0.001f);
 			ray.direction = glm::normalize(glm::refract(ray.direction, normal, n));
-			ray.carry *= m.color; 
+			ray.carry *= matColor;// m.color;
 		}
 	}
 		break;
@@ -262,7 +271,7 @@ thrust::default_random_engine &rrr) {
 	{
 		ray.origin = getPointOnRay(ray, intrT + .0002f);
 		glm::vec3 refraDir = glm::normalize(calculateRandomDirectionInHemisphere(-normal, rrr));
-		ray.carry *= m.color;
+		ray.carry *= matColor;// m.color;
 		ray.direction = refraDir;
 	}
 		break;

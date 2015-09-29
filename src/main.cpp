@@ -71,7 +71,6 @@ void saveImage() {
             img.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
         }
     }
-
     std::string filename = renderState->imageName;
     std::ostringstream ss;
     ss << filename << "." << startTimeString << "." << samples << "samp";

@@ -7,6 +7,7 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
+#include "image.h"
 
 using namespace std;
 
@@ -24,5 +25,6 @@ public:
 	std::vector<int> lightIdxs;
     std::vector<Geom> geoms;
     std::vector<Material> materials;
+	std::vector<image> textures;
     RenderState state;
 };

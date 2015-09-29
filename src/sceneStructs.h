@@ -43,6 +43,7 @@ struct Material {
     float indexOfRefraction;
     float emittance;
 	float bssrdf;
+	int TexIdx;
 };
 
 struct Camera {
