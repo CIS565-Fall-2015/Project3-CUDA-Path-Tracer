@@ -179,6 +179,7 @@ Mesh *Scene::loadObj(string fileName){
 	m->indices=new int[ind.size()];
 	m->indexNum=ind.size();
 	for(int i=0;i<ind.size();++i) m->indices[i]=ind[i];
+	m->averageNormal();
 	m->computeBoundingSphere();
 	initTreeStructure(m);
 	return m;

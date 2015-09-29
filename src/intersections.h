@@ -237,15 +237,15 @@ __host__ __device__ bool cubeImpl(Ray r,float xmax,float xmin,float ymax,float y
 
 __host__ __device__ void kdIntersect(Ray r, kdtree *root,int *treeIdx){
 	int count=0,num=0,n=0;
-	kdtree *kd[800];
+	kdtree *kd[1000];
 	kd[count++]=root;
-	while(count<800&&n!=count){
+	while(count<1000&&n!=count){
 		kdtree *current=kd[n];
 		if(cubeImpl(r,current->xmax,current->xmin,current->ymax,current->ymin,current->zmax,current->zmin)){
 			if(current->lc==nullptr&&current->rc==nullptr) treeIdx[num++]=current->mesh;
 			else{
 				kd[count++]=current->lc;
-				if(count>=800) break;
+				if(count>=1000) break;
 				kd[count++]=current->rc;
 			}
 		}
@@ -253,7 +253,8 @@ __host__ __device__ void kdIntersect(Ray r, kdtree *root,int *treeIdx){
 	}
 }
 
-__host__ __device__ float triIntersectionTest(Ray r, glm::vec3 p1,glm::vec3 p2,glm::vec3 p3,glm::vec3& normal){
+__host__ __device__ float triIntersectionTest(Ray r, glm::vec3 p1,glm::vec3 p2,glm::vec3 p3,glm::vec3& normal,
+											  glm::vec3 n1,glm::vec3 n2,glm::vec3 n3){
 	float t=-1;
 	glm::vec3 v1,v2,v;
 	v1=p2-p1;v2=p3-p2;
@@ -288,7 +289,49 @@ __host__ __device__ float triIntersectionTest(Ray r, glm::vec3 p1,glm::vec3 p2,g
 	if(s<0||s>1||t0<0||(s+t0)>1){
 		return -1;
 	}
-	normal=glm::normalize(v);
+	
+	float t1,t2;
+	glm::vec3 v0=-c1,p4;
+	v0=glm::normalize(v0);
+	s=((p3.x-p2.x)*v0.y+(p2.y-p3.y)*v0.x);
+	d=(p1.x-p3.x)*(p1.y-p2.y)-(p1.x-p2.x)*(p1.y-p3.y);
+	if(fabs(s)<1e-5){
+		s=((p3.x-p2.x)*v0.z+(p2.z-p3.z)*v0.x);
+		d=(p1.x-p3.x)*(p1.z-p2.z)-(p1.x-p2.x)*(p1.z-p3.z);
+	}
+	t1=d/s;
+	p4=p1+t1*v0;
+
+	s=p4.x-p2.x;
+	d=p3.x-p4.x;
+	if(fabs(s)<1e-5){
+		s=p4.y-p2.y;
+		d=p3.y-p4.y;
+		if(fabs(s)<1e-5){
+			s=p4.z-p2.z;
+			d=p3.z-p4.z;
+		}
+	}
+	t2=d/s;
+	t2=t2/(1+t2);
+
+	s=p4.x-center.x;
+	d=center.x-p1.x;
+	if(fabs(s)<1e-5){
+		s=p4.y-center.y;
+		d=center.y-p1.y;
+		if(fabs(s)<1e-5){
+			s=p4.z-center.z;
+			d=center.z-p1.z;
+		}
+	}
+	t1=d/s;
+	t1=1/(1+t1);
+	normal=n2*t2+(1-t2)*n3;
+	normal=glm::normalize(normal);
+	normal=n1*t1+(1-t1)*normal;
+	
+	//normal=glm::normalize(v);
 	if(glm::dot(normal,r.direction)>0) normal=-normal;
 	return t;
 }
@@ -301,10 +344,10 @@ __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r, glm::vec3& inte
 	Ray rt;
     rt.origin = ro;
     rt.direction = rd;
-	int treeIdx[150];
-	for(int i=0;i<150;++i) treeIdx[i]=-1;
+	int treeIdx[180];
+	for(int i=0;i<180;++i) treeIdx[i]=-1;
 	kdIntersect(rt,mesh.mesh->tree,treeIdx);
-	for(int i=0;i<150;++i){
+	for(int i=0;i<180;++i){
 		if(treeIdx[i]==-1) break;
 		//int index1=mesh.mesh->indices[i];
 		//int index2=mesh.mesh->indices[i+1];
@@ -312,8 +355,11 @@ __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r, glm::vec3& inte
 		glm::vec3 p1=mesh.mesh->vertex[mesh.mesh->indices[3*treeIdx[i]]];
 		glm::vec3 p2=mesh.mesh->vertex[mesh.mesh->indices[3*treeIdx[i]+1]];
 		glm::vec3 p3=mesh.mesh->vertex[mesh.mesh->indices[3*treeIdx[i]+2]];
+		glm::vec3 n1=mesh.mesh->normal[mesh.mesh->indices[3*treeIdx[i]]];
+		glm::vec3 n2=mesh.mesh->normal[mesh.mesh->indices[3*treeIdx[i]+1]];
+		glm::vec3 n3=mesh.mesh->normal[mesh.mesh->indices[3*treeIdx[i]+2]];
 		glm::vec3 tmpNormal;
-		float tmp=triIntersectionTest(rt,p1,p2,p3,tmpNormal);
+		float tmp=triIntersectionTest(rt,p1,p2,p3,tmpNormal,n1,n2,n3);
 		//float tmp=triIntersectionTest(rt,mesh.mesh->vertex[index1],mesh.mesh->vertex[index2],mesh.mesh->vertex[index3],tmpNormal);
 		if(tmp!=-1&&(t==-1||tmp<t)){
 			normal=tmpNormal;

@@ -61,6 +61,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 
 static glm::vec3 *cameraOrigin=NULL;
 static glm::vec3 *cameraDirection=NULL;
+static glm::vec3 *origin;
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static glm::vec3 *dev_origin,*dev_direction;
@@ -70,6 +71,12 @@ static bool *dev_inside,*inside;
 static int *dev_terminated,*dev_pos,*pos,*terminated;
 static Geom *geom,*dev_geom;
 static Material *material,*dev_material;
+static glm::vec3 *dev_M,*dev_H,*dev_V;
+
+static int *dev_scanned;
+static glm::vec3 *origin_copy,*direction_copy,*pixes_copy;
+static int *pos_copy;
+static bool *inside_copy;
 
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
@@ -94,6 +101,7 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_terminated, pixelcount*sizeof(int));
 	cudaMalloc(&dev_pixes, pixelcount*sizeof(glm::vec3));
 	cudaMalloc(&dev_pos,pixelcount*sizeof(int));
+	cudaMalloc(&dev_scanned,pow(2,ilog2ceil(pixelcount))*sizeof(int));
 
 	for(int i=0;i<pixelcount;++i) copyImage[i]=glm::vec3(1);
 	for(int i=0;i<pixelcount;++i) inside[i]=false;
@@ -101,12 +109,12 @@ void pathtraceInit(Scene *scene) {
 	for(int i=0;i<pixelcount;++i) pixes[i]=glm::vec3(1);
 	for(int i=0;i<pixelcount;++i) pos[i]=i;
 
-	/*cudaMemcpy(dev_copyImage,copyImage,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_inside,inside,pixelcount*sizeof(bool),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_terminated,terminated,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_pixes,pixes,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_pos,pos,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
-	*/
+	cudaMalloc(&origin_copy,pixelcount*sizeof(glm::vec3));
+	cudaMalloc(&direction_copy,pixelcount*sizeof(glm::vec3));
+	cudaMalloc(&pixes_copy,pixelcount*sizeof(glm::vec3));
+	cudaMalloc(&pos_copy,pixelcount*sizeof(int));
+	cudaMalloc(&inside_copy,pixelcount*sizeof(bool));
+
 	initRay(cam);
 	initGeom();
 	initMaterial();
@@ -133,17 +141,21 @@ void initGeom(){
 	for(int i=0;i<hst_scene->geoms.size();++i){ 
 		geom[i]=hst_scene->geoms[i];
 		if(geom[i].mesh!=nullptr){
-			glm::vec3 *dev_vertex;
+			glm::vec3 *dev_vertex,*dev_normal;
 			Mesh *dev_mesh,*mesh;
 			int *dev_index;
 			mesh=geom[i].mesh;
 			cudaMalloc(&dev_vertex, sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum);
 			cudaMemcpy(dev_vertex,hst_scene->geoms[i].mesh->vertex,sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum,cudaMemcpyHostToDevice);
 
+			cudaMalloc(&dev_normal, sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum);
+			cudaMemcpy(dev_normal,hst_scene->geoms[i].mesh->normal,sizeof(glm::vec3)*hst_scene->geoms[i].mesh->vertexNum,cudaMemcpyHostToDevice);
+
 			cudaMalloc(&dev_index, sizeof(int)*hst_scene->geoms[i].mesh->indexNum);
 			cudaMemcpy(dev_index,hst_scene->geoms[i].mesh->indices,sizeof(int)*hst_scene->geoms[i].mesh->indexNum,cudaMemcpyHostToDevice);
 			
 			mesh->vertex=dev_vertex;
+			mesh->normal=dev_normal;
 			mesh->indices=dev_index;
 			
 			mesh->tree=initTree(mesh->tree);
@@ -176,6 +188,18 @@ void pathtraceFree() {
 	cudaFree(dev_pixes);
 	cudaFree(dev_inside);
 	cudaFree(dev_terminated);
+
+	cudaFree(dev_M);
+	cudaFree(dev_H);
+	cudaFree(dev_V);
+
+	cudaFree(dev_scanned);
+	cudaFree(origin_copy);
+	cudaFree(direction_copy);
+	cudaFree(pos_copy);
+	cudaFree(pixes_copy);
+	cudaFree(inside_copy);
+
     checkCUDAError("pathtraceFree");
 	cout<<"Memory is released"<<endl;
 }
@@ -338,15 +362,6 @@ __global__ void pathTraceKernel(glm::vec3 *dev_origin,glm::vec3 *dev_direction,g
 		Ray r;r.direction=dev_direction[index];r.origin=dev_origin[index];
 		glm::vec3 result(1);
 		bool inside=dev_inside[index];
-		/*for(int i=0;i<=depth;++i){
-			if(i==depth) result=glm::vec3(0,0,0);
-			else{
-				glm::vec3 color(1);
-				bool end=pathTraceThread(r,color,geom,geomNum,material,iter,index,i,inside);
-				result=result*color;
-				if(end) break;
-			}
-		}*/
 		glm::vec3 color(1);
 		bool end=pathTraceThread(r,color,geom,geomNum,material,iter,index,depth,inside);
 		result=result*color;
@@ -390,6 +405,14 @@ void initRay(const Camera &cam){
 			cameraDirection[i*cam.resolution.x+j]=glm::normalize(R-cam.position);
 		}
 	}
+	cudaMalloc(&dev_M, sizeof(glm::vec3));
+	cudaMemcpy(dev_M,&M,sizeof(glm::vec3),cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_H, sizeof(glm::vec3));
+	cudaMemcpy(dev_H,&H,sizeof(glm::vec3),cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_V, sizeof(glm::vec3));
+	cudaMemcpy(dev_V,&V,sizeof(glm::vec3),cudaMemcpyHostToDevice);
+	cudaMalloc(&origin, sizeof(glm::vec3));
+	cudaMemcpy(origin,&cam.position,sizeof(glm::vec3),cudaMemcpyHostToDevice);
 }
 
 void camSetup(int imageCount){
@@ -397,22 +420,6 @@ void camSetup(int imageCount){
 	cudaMemcpy(dev_origin, cameraOrigin, imageCount* sizeof(glm::vec3), cudaMemcpyHostToDevice);
 	cudaMalloc(&dev_direction, imageCount*sizeof(glm::vec3));
 	cudaMemcpy(dev_direction, cameraDirection, imageCount* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-}
-
-__global__ void test(glm::vec3 *pixes, glm::vec3 * copyImage,int *terminated,int N){
-	int index=blockIdx.x*blockDim.x+threadIdx.x;
-	if(index<N){
-		if(terminated[index]==1)
-			copyImage[index]*=pixes[index];
-		else{ 
-			if(pixes[index]==glm::vec3(0))
-				copyImage[index]=glm::vec3(0);
-			else{
-				copyImage[index]*=pixes[index];
-				pixes[index]=glm::vec3(1);
-			}
-		}
-	}
 }
 
 __global__ void removeUnterminatedRay(glm::vec3 * copyImage,int *terminated,int *pos,int N){
@@ -438,6 +445,20 @@ __global__ void initDeviceValue(glm::vec3 *image,glm::vec3 *pixes,int *pos,int *
 		pos[index]=index;
 		terminated[index]=1;
 		inside[index]=false;
+	}
+}
+
+__global__ void jitterRay(glm::vec3 *dev_origin,glm::vec3 *dev_direction,glm::vec3 *origin,glm::vec3 *V,glm::vec3 *H,glm::vec3 *M,int reso,int iter,int N){
+	int index=blockIdx.x*blockDim.x+threadIdx.x;
+	if(index<N){
+		dev_origin[index]=origin[0];
+		int y=index/reso;
+		int x=index%reso;
+		float ran1=getRandomNum(iter,index,iter+index);
+		float ran2=getRandomNum(index,iter,iter-index);
+		float sx=(1.0*x+ran1)/reso;
+		float sy=(1.0*y+ran2)/reso;
+		dev_direction[index]=glm::normalize(M[0]+(1-2*sx)*H[0]+(1-2*sy)*V[0]-origin[0]);
 	}
 }
 
@@ -483,7 +504,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     // TODO: perform one iteration of path tracing
 
-    //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
 	//testCamSetupKernel<<<blocksPerGrid,blockSize>>>(cam,dev_cam,dev_image);
     ///////////////////////////////////////////////////////////////////////////
 	int geomNum=hst_scene->geoms.size();
@@ -493,23 +513,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
 	cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
 	cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	/*cudaMemcpy(dev_copyImage,copyImage,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_inside,inside,pixelcount*sizeof(bool),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_terminated,terminated,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_pixes,pixes,pixelcount*sizeof(glm::vec3),cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_pos,pos,pixelcount*sizeof(int),cudaMemcpyHostToDevice);
-	*/
+	//jitterRay<<<(remain+127)/128,128>>>(dev_origin,dev_direction,origin,dev_V,dev_H,dev_M,cam.resolution.x,iter,remain);
 	initDeviceValue<<<(remain+127)/128,128>>>(dev_copyImage,dev_pixes,dev_pos,dev_terminated,dev_inside,remain);
-
+	//cout<<"@"<<endl;
 	for(int i=0;i<depth;++i){
-		int bs=128;
+		int bs=256;
 		dim3 gs((remain+bs-1)/bs);
 		pathTraceKernel<<<gs, bs>>>(dev_origin, dev_direction, dev_pixes,dev_inside,dev_terminated,dev_geom, geomNum, dev_material,iter,i,remain);
-		//int *idata=new int[remain];
-		//cudaMemcpy(idata,dev_terminated,remain*sizeof(int),cudaMemcpyDeviceToHost);
 		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,dev_terminated,bs);
-		//delete(idata);
-		//cudaMemcpy(dev_terminated,terminated,remain*sizeof(int),cudaMemcpyHostToDevice);
+		//cout<<remain<<endl;
 	}
 	removeUnterminatedRay<<<(remain+127)/128,128>>>(dev_copyImage,dev_terminated,dev_pos,remain);
 	copyImageToRecord<<<(cam.resolution.x*cam.resolution.y+255)/256,256>>>(dev_image,dev_copyImage,cam.resolution.x*cam.resolution.y);
@@ -521,7 +533,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
             pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
     checkCUDAError("pathtrace");
-	//cout<<"one iter"<<endl;
 }
 
 
@@ -616,7 +627,6 @@ void scan(int n, int newN,int *odata,int blockSize) {
 	dim3 blockPerGrid=((newN+blockSize-1)/blockSize);
 	cudaMalloc(&dev_sum, blockPerGrid.x*sizeof(int));
 	cudaMemset(dev_sum,0,blockPerGrid.x*sizeof(int));
-
 	SwapOnGPU<<<blockPerGrid,blockSize,blockSize*sizeof(int)>>>(odata,n,newN,dev_sum);
 	
 	int *dev_tmp;
@@ -629,7 +639,7 @@ void scan(int n, int newN,int *odata,int blockSize) {
 		int *dev_tmp1;
 		cudaMalloc(&dev_tmp1, sizeof(int));
 		
-		SwapOnGPU<<<1,blockSize,blockSize*sizeof(int)>>>(dev_tmp,blockPerGrid1.x,128,dev_tmp1);
+		SwapOnGPU<<<1,blockSize,blockSize*sizeof(int)>>>(dev_tmp,blockPerGrid1.x,256,dev_tmp1);
 
 		addOffset<<<blockPerGrid1,blockSize>>>(dev_sum,blockPerGrid.x,dev_tmp);
 
@@ -637,17 +647,6 @@ void scan(int n, int newN,int *odata,int blockSize) {
 	}
 	addOffset<<<blockPerGrid,blockSize>>>(odata,n,dev_sum);
 	cudaFree(dev_tmp);
-	
-	/*int step=1;
-	while(step<newN){
-		upSwapOnGPU<<<blockPerGrid,blockSize>>>(dev_idata,step,n,newN);
-		step*=2;
-	}
-	step/=2;
-	while(step!=0){
-		downSwapOnGPU<<<blockPerGrid,blockSize>>>(dev_idata,step,n,newN);
-		step/=2;
-	}*/
 	
 	cudaFree(dev_sum);
 }
@@ -658,11 +657,12 @@ __global__ void compactAll(int *idata,int *scanned,glm::vec3 *origin,glm::vec3 *
 	int index=blockIdx.x*blockDim.x+threadIdx.x;
 	if(index<N){
 		if(idata[index]==1){
-			origin[scanned[index]]=origin_copy[index];
-			direction[scanned[index]]=direction_copy[index];
-			inside[scanned[index]]=inside_copy[index];
-			pixes[scanned[index]]=pixes_copy[index];
-			pos[scanned[index]]=pos_copy[index];
+			int tmp=scanned[index];
+			origin[tmp]=origin_copy[index];
+			direction[tmp]=direction_copy[index];
+			inside[tmp]=inside_copy[index];
+			pixes[tmp]=pixes_copy[index];
+			pos[tmp]=pos_copy[index];
 		}
 		idata[index]=1;
 	}
@@ -722,51 +722,41 @@ __global__ void multiplyColor(int *idata,glm::vec3 *pixes,glm::vec3 *images,int 
 	}
 }
 
+__global__ void copyAll(int *idata,int *scanned,glm::vec3 *origin,glm::vec3 *origin_copy,
+						   glm::vec3 *direction,glm::vec3 *direction_copy,glm::vec3 *pixes,glm::vec3 *pixes_copy,
+						   bool *inside, bool *inside_copy, int *pos,int *pos_copy,int N){
+	int index=blockIdx.x*blockDim.x+threadIdx.x;
+	if(index<N){
+		origin_copy[index]=origin[index];
+		direction_copy[index]=direction[index];
+		pixes_copy[index]=pixes[index];
+		pos_copy[index]=pos[index];
+		inside_copy[index]=inside[index];
+	}
+}
+
 int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *pixes,
 			glm::vec3 *image,bool *inside,int *dev_idata,int blockSize) {
     int *scanned=new int[n],*idata=new int[n];
 	int newN=pow(2,ilog2ceil(n));
-	int *dev_scanned;
-	glm::vec3 *origin_copy,*direction_copy,*pixes_copy;
-	int *pos_copy;
-	bool *inside_copy;
-
-	cudaMalloc(&dev_scanned,newN*sizeof(int));
+	
+	//cudaMalloc(&dev_scanned,newN*sizeof(int));
 	cudaMemcpy(dev_scanned,dev_idata,n*sizeof(int),cudaMemcpyDeviceToDevice);
 	scan(n,newN,dev_scanned,blockSize);
 
-	cudaMalloc(&origin_copy,n*sizeof(glm::vec3));
-	cudaMalloc(&direction_copy,n*sizeof(glm::vec3));
-	cudaMalloc(&pixes_copy,n*sizeof(glm::vec3));
-	cudaMalloc(&pos_copy,n*sizeof(int));
-	cudaMalloc(&inside_copy,n*sizeof(bool));
-	cudaMemcpy(origin_copy,origin,n*sizeof(glm::vec3),cudaMemcpyDeviceToDevice);
-	cudaMemcpy(direction_copy,direction,n*sizeof(glm::vec3),cudaMemcpyDeviceToDevice);
-	cudaMemcpy(pixes_copy,pixes,n*sizeof(glm::vec3),cudaMemcpyDeviceToDevice);
-	cudaMemcpy(pos_copy,pos,n*sizeof(int),cudaMemcpyDeviceToDevice);
-	cudaMemcpy(inside_copy,inside,n*sizeof(bool),cudaMemcpyDeviceToDevice);
-
 	dim3 gridSize((n+blockSize-1)/blockSize);
+	copyAll<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,direction,
+		direction_copy,pixes,pixes_copy,inside,inside_copy,pos,pos_copy,n);
+	
 	multiplyColor<<<gridSize,blockSize>>>(dev_idata,pixes,image,pos,n);
-	/*compactOrigin<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,n);
-	compactDirection<<<gridSize,blockSize>>>(dev_idata,dev_scanned,direction,direction_copy,n);
-	compactPos<<<gridSize,blockSize>>>(dev_idata,dev_scanned,pos,pos_copy,n);
-	compactInside<<<gridSize,blockSize>>>(dev_idata,dev_scanned,inside,inside_copy,n);
-	compactPixes<<<gridSize,blockSize>>>(dev_idata,dev_scanned,pixes,pixes_copy,n);
-	*/
-	compactAll<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,direction,direction_copy,pixes,pixes_copy,inside,inside_copy,
-		pos,pos_copy,n);
+	
+	compactAll<<<gridSize,blockSize>>>(dev_idata,dev_scanned,origin,origin_copy,direction,
+		direction_copy,pixes,pixes_copy,inside,inside_copy,pos,pos_copy,n);
 	cudaMemcpy(idata,dev_idata,n*sizeof(int),cudaMemcpyDeviceToHost);
 	cudaMemcpy(scanned,dev_scanned,n*sizeof(int),cudaMemcpyDeviceToHost);
-	
-	cudaFree(dev_scanned);
-	cudaFree(origin_copy);
-	cudaFree(direction_copy);
-	cudaFree(pos_copy);
-	cudaFree(pixes_copy);
-	cudaFree(inside_copy);
 
 	int count=scanned[n-1]+idata[n-1];
+	
 	delete(scanned);
 	delete(idata);
 

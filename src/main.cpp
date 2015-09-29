@@ -82,7 +82,7 @@ void runCuda() {
         cam.position += cammove.x * r + cammove.y * u + cammove.z * v;
         theta = phi = 0;
         cammove = glm::vec3();
-        camchanged = false;
+		camchanged = false;
     }
 
     // Map OpenGL buffer object for writing from CUDA on a single GPU

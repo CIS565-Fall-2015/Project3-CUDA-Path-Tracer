@@ -40,6 +40,33 @@ struct Mesh{
 		}
 		radius=max_length;
 	}
+
+	void averageNormal(){
+		glm::vec3 v1,v2;
+		float xmax,xmin,ymax,ymin,zmax,zmin;
+		xmax=ymax=zmax=-1e10;xmin=ymin=zmin=1e10;
+		normal=new glm::vec3[vertexNum];
+		for(int i=0;i<vertexNum;i++){
+			normal[i]=glm::vec3(0,0,0);
+			if(xmax<vertex[i].x) xmax=vertex[i].x;
+			if(xmin>vertex[i].x) xmin=vertex[i].x;
+			if(ymax<vertex[i].y) ymax=vertex[i].y;
+			if(ymin>vertex[i].y) ymin=vertex[i].y;
+			if(zmax<vertex[i].z) zmax=vertex[i].z;
+			if(zmin>vertex[i].z) zmin=vertex[i].z;
+		}
+	
+		for(int i=0;i<indexNum;i+=3){
+			v1=vertex[indices[i+2]]-vertex[indices[i+1]];
+			v2=vertex[indices[i]]-vertex[indices[i+1]];
+			normal[indices[i]]=normal[indices[i]]+glm::cross(v1,v2);
+			normal[indices[i+1]]=normal[indices[i+1]]+glm::cross(v1,v2);
+			normal[indices[i+2]]=normal[indices[i+2]]+glm::cross(v1,v2);
+		}
+		for(int i=0;i<vertexNum;i++){
+			normal[i]=glm::normalize(normal[i]);
+		}
+	}
 };
 
 struct Geom {
