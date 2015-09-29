@@ -12,7 +12,13 @@ enum GeomType {
 
 struct Ray {
     glm::vec3 origin;
-    glm::vec3 direction;
+	glm::vec3 direction;
+};
+
+struct RayInfo{
+	Ray ray;
+	glm::vec3 color = glm::vec3(1,1,1);
+	int index;
 };
 
 struct Geom {
@@ -35,7 +41,14 @@ struct Material {
     float hasReflective;
     float hasRefractive;
     float indexOfRefraction;
-    float emittance;
+	float emittance;
+	int textureid = -1;
+};
+
+struct Texture{
+	int width;
+	int height;
+	glm::vec3 *d_img;
 };
 
 struct Camera {

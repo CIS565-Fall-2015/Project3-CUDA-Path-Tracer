@@ -41,6 +41,47 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+//compute specular ray
+
+__host__ __device__
+glm::vec3 calculateRandomDirectionSpecular(
+glm::vec3 normal, thrust::default_random_engine &rng, float shininess) {
+	thrust::uniform_real_distribution<float> u01(0, 1);
+
+	float theta = acos(powf(u01(rng), 1 / (shininess + 1)));
+	float phi = TWO_PI * u01(rng);
+
+
+	float x = cos(phi) * sin(theta);
+	float y = sin(phi) * sin(theta);
+	float z = cos(theta);
+
+	// Find a direction that is not the normal based off of whether or not the
+	// normal's components are all equal to sqrt(1/3) or whether or not at
+	// least one component is less than sqrt(1/3). Learned this trick from
+	// Peter Kutz.
+
+	glm::vec3 directionNotNormal;
+	if (abs(normal.x) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(1, 0, 0);
+	}
+	else if (abs(normal.y) < SQRT_OF_ONE_THIRD) {
+		directionNotNormal = glm::vec3(0, 1, 0);
+	}
+	else {
+		directionNotNormal = glm::vec3(0, 0, 1);
+	}
+
+	// Use not-normal direction to generate two perpendicular directions
+	glm::vec3 perpendicularDirection1 =
+		glm::normalize(glm::cross(normal, directionNotNormal));
+	glm::vec3 perpendicularDirection2 =
+		glm::normalize(glm::cross(normal, perpendicularDirection1));
+
+	return z * normal
+		+ y * perpendicularDirection1
+		+ x * perpendicularDirection2;
+}
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -65,14 +106,57 @@ glm::vec3 calculateRandomDirectionInHemisphere(
  * You may need to change the parameter list for your purposes!
  */
 __host__ __device__
-void scatterRay(
+bool scatterRay(
         Ray &ray,
         glm::vec3 &color,
         glm::vec3 intersect,
         glm::vec3 normal,
-        const Material &m,
-        thrust::default_random_engine &rng) {
+		bool outside,
+        const Material &m, 
+		thrust::default_random_engine rng,
+		glm::vec2 uv,
+		Texture* d_texture) {
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+
+	glm::vec3 diffuseColor = m.color;
+	if (m.textureid != -1){
+		Texture t = d_texture[m.textureid];
+		int x = uv[0] * t.width;
+		int y = uv[1] * t.height;
+
+		diffuseColor = t.d_img[x + y * t.width];
+	}
+
+
+	if (m.emittance > 0) {	//light source
+		color *= m.color * m.emittance;
+		return false;
+	}
+
+	if (m.hasReflective > 0){
+		ray.direction = glm::reflect(ray.direction, normal);
+		ray.origin = intersect + ray.direction * 0.001f;
+		color *= diffuseColor;
+		return true;
+	}else{
+		//diffuse-specular
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		float result = u01(rng);
+
+		if (m.specular.exponent == 0 || result < 0.5){
+			//diffuse
+			ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+			ray.origin = intersect + ray.direction * 0.001f;
+			color *= diffuseColor;
+		}
+		else{
+			//specular
+			ray.direction = calculateRandomDirectionSpecular(normal, rng, m.specular.exponent);
+			ray.origin = intersect + ray.direction * 0.001f;
+			color *= m.specular.color;
+		}
+	}
+	return true;
 }

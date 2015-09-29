@@ -6,12 +6,14 @@
 
 image::image(int x, int y) :
         xSize(x),
-        ySize(y),
-        pixels(new glm::vec3[x * y]) {
+        ySize(y){
+	for (int i = 0; i < x; i++){
+		for (int j = 0; j < x; j++)
+			pixels.push_back(glm::vec3());
+	}
 }
 
 image::~image() {
-    delete pixels;
 }
 
 void image::setPixel(int x, int y, const glm::vec3 &pixel) {
@@ -40,6 +42,6 @@ void image::savePNG(const std::string &baseFilename) {
 
 void image::saveHDR(const std::string &baseFilename) {
     std::string filename = baseFilename + ".hdr";
-    stbi_write_hdr(filename.c_str(), xSize, ySize, 3, (const float *) pixels);
+    stbi_write_hdr(filename.c_str(), xSize, ySize, 3, (const float *) &(pixels[0]));
     std::cout << "Saved " + filename + "." << std::endl;
 }

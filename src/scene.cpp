@@ -3,6 +3,7 @@
 #include <cstring>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include <stb_image.h>
 
 Scene::Scene(string filename) {
     cout << "Reading scene from " << filename << " ..." << endl;
@@ -27,7 +28,10 @@ Scene::Scene(string filename) {
             } else if (strcmp(tokens[0].c_str(), "CAMERA") == 0) {
                 loadCamera();
                 cout << " " << endl;
-            }
+			} else if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
+				loadTexture(tokens[1]);
+				cout << " " << endl;
+			}
         }
     }
 }
@@ -154,7 +158,7 @@ int Scene::loadMaterial(string materialid) {
         Material newMaterial;
 
         //load static properties
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 8; i++) {
             string line;
             utilityCore::safeGetline(fp_in, line);
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -174,9 +178,53 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.indexOfRefraction = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "EMITTANCE") == 0) {
                 newMaterial.emittance = atof(tokens[1].c_str());
-            }
+            } else if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
+				newMaterial.textureid = atoi(tokens[1].c_str());
+			}
         }
         materials.push_back(newMaterial);
         return 1;
     }
+}
+
+int Scene::loadTexture(string textureid) {
+	int id = atoi(textureid.c_str());
+	if (id != textures.size()) {
+		cout << "ERROR: TEXTURE ID does not match expected number of textures" << endl;
+		return -1;
+	}
+	else {
+		string line;
+		utilityCore::safeGetline(fp_in, line);
+		vector<string> tokens = utilityCore::tokenizeString(line);
+
+		int xSize = -1, ySize = -1, comp;
+		unsigned char* loadPic = stbi_load(tokens[0].c_str(), &xSize, &ySize, &comp, STBI_rgb_alpha);
+
+		if (xSize <= 0 || ySize <= 0){
+			cout << "TEXTURE LOADING ERROR!" << endl;
+			return -1;
+		}
+
+		image i(xSize, ySize);
+
+		for (int y = 0; y < ySize; y++)
+		{
+			for (int x = 0; x < xSize; x++)
+			{
+				uint32_t offset = (x + y * xSize) * 4;
+
+				unsigned char nRed = loadPic[offset + 0];
+				unsigned char nGreen = loadPic[offset + 1];
+				unsigned char nBlue = loadPic[offset + 2];
+				unsigned char nAlpha = loadPic[offset + 3];
+
+				i.setPixel(x, y, glm::vec3(nRed/255.0, nGreen/255.0, nBlue/255.0));
+			}
+		}
+
+		stbi_image_free(loadPic);
+
+		textures.push_back(i);
+	}
 }
