@@ -81,11 +81,51 @@ void scatterRay(
 	else if (rayStep.depth <= 0){ // bottoming out
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
-	else if (m.specular.exponent > 0.0f) { // hitting a mirrored object
+	else if (m.hasReflective > 0.0f) { // hitting a mirrored object
 		// reflect: http://paulbourke.net/geometry/reflected/
 		rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
 			(glm::dot(rayStep.ray.direction, normal));
 		rayStep.ray.origin = intersect;
+		rayStep.color *= m.color;
+	}
+	else if (m.hasRefractive > 0.0f) { // hitting a refractive object
+		// refract:
+		float IORi = 1.0f; // THE VOID
+		float IORt = m.indexOfRefraction;
+		// check what direction the normal is to determine which IOR is on which side
+		// if the ray is entering, it's pointing in a direction roughly "opposite"
+		// if the ray is exiting, it's pointing in a direction roughly "similar"
+		float cosAnglei = glm::dot(rayStep.ray.direction, normal);
+		if (cosAnglei > 0.0f) {
+			IORi = IORt;
+			IORt = 1.0f;
+		}
+
+		float sinAnglei = sqrt(1.0f - cosAnglei * cosAnglei);
+		if (sinAnglei > IORt / IORi) { // total internal reflection
+			rayStep.depth = 0;
+			rayStep.color[0] = 0;
+			rayStep.color[1] = 0;
+			rayStep.color[2] = 0;
+			return;
+		}
+
+		// http://graphics.stanford.edu/courses/cs148-10-summer/docs/2006--degreve--reflection_refraction.pdf
+		float underSqrt = 1.0f - (((IORi * IORi) / (IORt * IORt)) * (1.0f - cosAnglei * cosAnglei));
+
+		if (underSqrt > 0.0f) {
+			rayStep.ray.direction = (IORi / IORt) * rayStep.ray.direction;
+			rayStep.ray.direction += ((IORi / IORt) * cosAnglei - sqrt(underSqrt)) * normal;
+		}
+		else {
+			rayStep.depth = 0;
+			rayStep.color[0] = 0;
+			rayStep.color[1] = 0;
+			rayStep.color[2] = 0;
+			return;
+		}
+
+		rayStep.ray.origin = intersect + 0.001f * rayStep.ray.direction;
 		rayStep.color *= m.color;
 	}
 	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.

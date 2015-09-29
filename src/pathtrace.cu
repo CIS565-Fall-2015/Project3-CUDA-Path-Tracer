@@ -200,7 +200,7 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 
 		// 3) update the ray in its slot
 		if (nearestGeom) {
-			thrust::default_random_engine rng = random_engine(dev_rayPool[index].depth, iter, index);
+			thrust::default_random_engine rng = random_engine(iter, index, dev_rayPool[index].depth);
 			scatterRay(dev_rayPool[index], isx_point, isx_norm,
 				dev_mats[nearestGeom->materialid], rng);
 			dev_rayPool[index].depth--;
@@ -276,9 +276,9 @@ __global__ void mergeSample(glm::vec3 *sample, glm::vec3 *image) {
  */
 void pathtrace(uchar4 *pbo, int frame, int iter) {
 	// on iteration 1, run tests for efficient shared memory scan
-	if (iter == 1) {
-		StreamCompaction::Efficient::scan_components_test();
-	}
+	//if (iter == 1) {
+	//	StreamCompaction::Efficient::scan_components_test();
+	//}
 
 
 
