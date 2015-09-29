@@ -29,7 +29,7 @@ two mirrors facing each other.)
 
 ![](img/Capture2.PNG)
 
-# TWEAKS
+## TWEAKS
 
 ### Work Efficient Steam Compaction
 
