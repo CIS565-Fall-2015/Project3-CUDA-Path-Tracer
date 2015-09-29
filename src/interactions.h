@@ -220,7 +220,7 @@ void scatterRay(
 		{
 			hemiIntersect -= 0.0001f * hemiNormal;
 			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(hemiNormal, rng) - hemiIntersect);
-			r.origin = hemiIntersect + 0.01f * r.direction;
+			r.origin = hemiIntersect + 0.001f * r.direction;
 		}
 
 		else
@@ -232,32 +232,20 @@ void scatterRay(
 	else if(m.hasReflective == 0 && m.hasRefractive == 0)
 	{
 		//Diffused material
-
-		if(m.specular.exponent > 0)
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		if(m.specular.exponent > 0 && u01(rng) < 0.3f)
 		{
-			thrust::uniform_real_distribution<float> u01(0, 1);
-			if(u01(rng) > 0.3f)
-			{
-				//Do perfect diffused
-				ray.rayColor *= (m.color);
-				r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
-				r.origin = intersect + 0.001f * r.direction;
-			}
+			//Do specular reflection
+			int i;
+			glm::vec3 lightVector = glm::normalize(getRandomPointOnLight(g, lightIndices, lightCount, rng, i) - intersect);
+			glm::vec3 camVector = glm::normalize(camPosition - intersect);
 
-			else
-			{
-				//Do specular reflection
-				int i;
-				glm::vec3 lightVector = glm::normalize(getRandomPointOnLight(g, lightIndices, lightCount, rng, i) - intersect);
-				glm::vec3 camVector = glm::normalize(camPosition - intersect);
+			float specTerm = glm::dot(normal, glm::normalize(lightVector+camVector));
+			specTerm = powf(specTerm, m.specular.exponent);
 
-				float specTerm = glm::dot(normal, glm::normalize(lightVector+camVector));
-				specTerm = powf(specTerm, m.specular.exponent);
-
-				ray.rayColor *= ( m.specular.color * specTerm );
-				r.direction = glm::reflect(r.direction, normal);
-				r.origin = intersect + 0.001f * r.direction;
-			}
+			ray.rayColor *= ( m.specular.color * specTerm );
+			r.direction = glm::reflect(r.direction, normal);
+			r.origin = intersect + 0.001f * r.direction;
 		}
 
 		else
@@ -265,7 +253,7 @@ void scatterRay(
 			//Do perfect diffused
 			ray.rayColor *= (m.color);
 			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
-			r.origin = intersect + 0.0001f * r.direction;
+			r.origin = intersect + 0.001f * r.direction;
 		}
 	}
 
