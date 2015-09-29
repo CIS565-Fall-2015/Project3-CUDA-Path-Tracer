@@ -56,7 +56,7 @@ As mentioned above, this is an emabarrisingly parallel algorithm as all rays are
 
 ##### Anti Aliasing ->
 A pixel is not a point but a small square area. It is possible that more than one color exists in a pixel and hence the color of the pixel should be the average of all these colors. If we always sample the center of the pixel, we will get the same color and the edges in our final render would be stairstepped. This is called aliasing. To overcome this problem, I jitter the pixel sampling point to select random points within a pixel area. This gives us a better approximation of the color at that pixel and hence a better render. This is called antialiasing. You can see the comparison between the Aliased and an Antialiased image below:
-![](FinalRenders/aliased.png) ![](FinalRenders/reference.png)
+![](FinalRenders/aliased.png =400x400) ![](FinalRenders/reference.png =400x400)
 
 ##### Diffused Surface ->
 For a good approximation of the color at a diffused surface, we need to bounce the ray in all possible directions and average the contributions of the color values of all these rays. To get the bounce direction, we take a direction in a hemishpere in the direction of the intersection normal (code provided). This acts as the ray direction for the next iteration.
