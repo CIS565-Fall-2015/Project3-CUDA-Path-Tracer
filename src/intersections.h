@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtx/intersect.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include "sceneStructs.h"
 #include "utilities.h"
@@ -35,6 +37,38 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
     return glm::vec3(m * v);
 }
 
+// recomputes transform, inverse transform, and transpose inverse transform
+// for an object based on the given time in milliseconds and the object's velocity
+__host__ __device__ void recomputeTransforms(Geom object, float t) {
+	// check if there's a speed at all
+	if (object.speed[0] + object.speed[1] + object.speed[2] < 0.001f) return;
+
+	glm::vec3 translation_t = object.translation + object.speed * t;
+
+	// recompute transform
+	glm::mat4 translationMat = glm::translate(glm::mat4(), translation_t);
+	glm::mat4 rotationMat = glm::rotate(glm::mat4(), object.rotation.x * (float)PI / 180, glm::vec3(1, 0, 0));
+	rotationMat = rotationMat * glm::rotate(glm::mat4(), object.rotation.y * (float)PI / 180, glm::vec3(0, 1, 0));
+	rotationMat = rotationMat * glm::rotate(glm::mat4(), object.rotation.z * (float)PI / 180, glm::vec3(0, 0, 1));
+	glm::mat4 scaleMat = glm::scale(glm::mat4(), object.scale);
+	object.transform = translationMat * rotationMat * scaleMat;
+
+	// recompute inverse
+	// there's no reason this shouldn't work too :(
+	//translationMat = glm::translate(glm::mat4(), -translation_t);
+	//rotationMat = glm::rotate(glm::mat4(), -object.rotation.x * (float)PI / 180, glm::vec3(1, 0, 0));
+	//rotationMat = rotationMat * glm::rotate(glm::mat4(), -object.rotation.y * (float)PI / 180, glm::vec3(0, 1, 0));
+	//rotationMat = rotationMat * glm::rotate(glm::mat4(), -object.rotation.z * (float)PI / 180, glm::vec3(0, 0, 1));
+	//glm::vec3 inverseScale = glm::vec3(1.0f / object.scale.x, 1.0f / object.scale.y, 1.0f / object.scale.z);
+	//scaleMat = glm::scale(glm::mat4(), inverseScale);
+	//object.inverseTransform = scaleMat * rotationMat * translationMat;
+
+	object.inverseTransform = glm::inverse(object.transform);
+
+	// recompute inverse transpose
+	object.invTranspose = glm::inverseTranspose(object.transform);
+}
+
 // CHECKITOUT
 /**
  * Test intersection between a ray and a transformed cube. Untransformed,
@@ -45,7 +79,9 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
 __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
-        glm::vec3& intersectionPoint, glm::vec3& normal) {
+        glm::vec3& intersectionPoint, glm::vec3& normal, float time) {
+	recomputeTransforms(box, time);
+
     Ray q;
     q.origin    =                multiplyMV(box.inverseTransform, glm::vec4(r.origin   , 1.0f));
     q.direction = glm::normalize(multiplyMV(box.inverseTransform, glm::vec4(r.direction, 0.0f)));
@@ -100,7 +136,9 @@ __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
 __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
-        glm::vec3& intersectionPoint, glm::vec3& normal) {
+        glm::vec3& intersectionPoint, glm::vec3& normal, float time) {
+	recomputeTransforms(sphere, time);
+
     bool outside = false;
     float radius = .5;
 
@@ -145,7 +183,9 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 }
 
 __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r,
-	glm::vec3& intersectionPoint, glm::vec3& normal) {
+		glm::vec3& intersectionPoint, glm::vec3& normal, float time) {
+	recomputeTransforms(mesh, time);
+
 	glm::vec3 ro = multiplyMV(mesh.inverseTransform, glm::vec4(r.origin, 1.0f));
 	glm::vec3 rd = glm::normalize(multiplyMV(mesh.inverseTransform, glm::vec4(r.direction, 0.0f)));
 

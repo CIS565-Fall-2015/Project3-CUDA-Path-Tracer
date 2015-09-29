@@ -89,6 +89,8 @@ int Scene::loadGeom(string objectid) {
                 newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
 			} else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
 				filenames.push_back(tokens[1]);
+			} else if (strcmp(tokens[0].c_str(), "SPEED") == 0) {
+				newGeom.speed = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
 			}
 
             utilityCore::safeGetline(fp_in, line);
@@ -118,15 +120,19 @@ int Scene::loadCamera() {
         if (strcmp(tokens[0].c_str(), "RES") == 0) {
             camera.resolution.x = atoi(tokens[1].c_str());
             camera.resolution.y = atoi(tokens[2].c_str());
-        } else if (strcmp(tokens[0].c_str(), "FOVY") == 0) {
+        } 
+		else if (strcmp(tokens[0].c_str(), "FOVY") == 0) {
             fovy = atof(tokens[1].c_str());
-        } else if (strcmp(tokens[0].c_str(), "ITERATIONS") == 0) {
+        } 
+		else if (strcmp(tokens[0].c_str(), "ITERATIONS") == 0) {
             state.iterations = atoi(tokens[1].c_str());
-        } else if (strcmp(tokens[0].c_str(), "DEPTH") == 0) {
+        } 
+		else if (strcmp(tokens[0].c_str(), "DEPTH") == 0) {
             state.traceDepth = atoi(tokens[1].c_str());
-        } else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
+        } 
+		else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
             state.imageName = tokens[1];
-        }
+		}
     }
 
     string line;
@@ -139,7 +145,12 @@ int Scene::loadCamera() {
             camera.view = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
         } else if (strcmp(tokens[0].c_str(), "UP") == 0) {
             camera.up = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        }
+        } else if (strcmp(tokens[0].c_str(), "CAMERATIME") == 0) {
+			camera.cameraTime = atof(tokens[1].c_str());
+		}
+		else if (strcmp(tokens[0].c_str(), "SHUTTERDURATION") == 0) {
+			camera.shutterDuration = atof(tokens[1].c_str());
+		}
 
         utilityCore::safeGetline(fp_in, line);
     }

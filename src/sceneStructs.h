@@ -21,12 +21,14 @@ struct PathRay {
 	glm::vec3 color;
 	int depth;
 	int pixelIndex;
+	float time; // in milliseconds
 };
 
 struct Geom {
     enum GeomType type;
     int materialid;
     glm::vec3 translation;
+	glm::vec3 speed; // "speed" in units per millisecond
     glm::vec3 rotation;
     glm::vec3 scale;
     glm::mat4 transform;
@@ -55,6 +57,8 @@ struct Camera {
     glm::vec3 view;
     glm::vec3 up;
     glm::vec2 fov;
+	float cameraTime;
+	float shutterDuration;
 };
 
 struct RenderState {

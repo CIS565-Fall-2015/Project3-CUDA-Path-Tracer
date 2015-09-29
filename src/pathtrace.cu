@@ -184,15 +184,15 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 			glm::vec3 candidate_isx_norm;
 			if (dev_geoms[i].type == CUBE) {
 				candidate_t = boxIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
-					candidate_isx_point, candidate_isx_norm);
+					candidate_isx_point, candidate_isx_norm, dev_rayPool[index].time);
 			}
 			else if (dev_geoms[i].type == SPHERE) {
 				candidate_t = sphereIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
-					candidate_isx_point, candidate_isx_norm);
+					candidate_isx_point, candidate_isx_norm, dev_rayPool[index].time);
 			}
 			else if (dev_geoms[i].type == MESH) {
 				candidate_t = meshIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
-					candidate_isx_point, candidate_isx_norm);
+					candidate_isx_point, candidate_isx_norm, dev_rayPool[index].time);
 			}
 			if (candidate_t > 0.0f && candidate_t < t) {
 				t = candidate_t;
@@ -226,7 +226,7 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 }
 
 // generates the initial raycasts
-__global__ void rayCast(Camera cam, PathRay* dev_rayPool, int trace_depth) {
+__global__ void rayCast(int iter, Camera cam, PathRay* dev_rayPool, int trace_depth) {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	
 	// compute x and y screen coordinates by reversing int index = x + (y * resolution.x);
@@ -250,6 +250,17 @@ __global__ void rayCast(Camera cam, PathRay* dev_rayPool, int trace_depth) {
 		dev_rayPool[index].color = glm::vec3(1.0f);
 		dev_rayPool[index].depth = trace_depth;
 		dev_rayPool[index].pixelIndex = index;
+
+		// jitter rays in time
+		if (cam.shutterDuration > 0.0f) {
+			thrust::default_random_engine rng = random_engine(iter, index, 0);
+			thrust::uniform_real_distribution<float> u01(0, 1);
+			//float time = cam.cameraTime + u01(rng) * cam.shutterDuration;
+			//if (index < 100) {
+			//	printf("%f\n", time);
+			//}
+			dev_rayPool[index].time = cam.cameraTime + u01(rng) * cam.shutterDuration;
+		}
 
 		//glm::vec3 debug = glm::normalize(p - cam.position);
 		//debug.x = abs(debug.x);
@@ -334,7 +345,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	dim3 iterBlocksPerGrid((unfinishedRays + iterBlockSize.x - 1) /
 		iterBlockSize.x);
 
-	rayCast <<<iterBlocksPerGrid, iterBlockSize >>>(cam, dev_rayPool, traceDepth);
+	rayCast <<<iterBlocksPerGrid, iterBlockSize >>>(iter, cam, dev_rayPool, traceDepth);
 	
 	while (unfinishedRays > 0) {
 		iterBlocksPerGrid.x = (unfinishedRays + iterBlockSize.x - 1) /
