@@ -122,7 +122,7 @@ SCALE       .01 10 10
 OBJECT 6
 mesh
 material 1
-TRANS       0 3 0
+TRANS       0 1 0
 ROTAT       20 20 20
 SCALE       2.5 2.5 2.5
 FILE		../scenes/cube.obj

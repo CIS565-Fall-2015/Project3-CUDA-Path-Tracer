@@ -146,27 +146,44 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 
 __host__ __device__ float meshIntersectionTest(Geom mesh, Ray r,
 	glm::vec3& intersectionPoint, glm::vec3& normal) {
+	glm::vec3 ro = multiplyMV(mesh.inverseTransform, glm::vec4(r.origin, 1.0f));
+	glm::vec3 rd = glm::normalize(multiplyMV(mesh.inverseTransform, glm::vec4(r.direction, 0.0f)));
+
+	Ray rt;
+	rt.origin = ro;
+	rt.direction = rd;
+
 	float nearestDistance = -1.0f;
 	int triangleIndex = -1;
 	for (int i = 0; i < mesh.numTriangles; i += 3) {
 		glm::vec3 barycentric;
-		glm::intersectRayTriangle(r.origin, r.direction, mesh.dev_triangleVertices[i],
+		bool intersects = false;
+		intersects = glm::intersectRayTriangle(rt.origin, rt.direction, mesh.dev_triangleVertices[i],
 			mesh.dev_triangleVertices[i + 1], mesh.dev_triangleVertices[i + 2], barycentric);
-		// compute the real position of the intersect in the triangle and its distance
-		// from the ray origin.
-		if (barycentric.z > 0.0f && (barycentric.z < nearestDistance || nearestDistance < 0.0f)) {
+		// intersectRayTriangle gives z in barycentric as the distance along the ray.
+		if (intersects && barycentric.z > 0.0f && 
+			(barycentric.z < nearestDistance || nearestDistance < 0.0f)) {
 			nearestDistance = barycentric.z;
 			triangleIndex = i;
 		}
 	}
-	if (triangleIndex > -1) {
+	if (triangleIndex > -1 && nearestDistance > 0.0f) {
+		glm::vec3 local_normal;
 		// compute normal using triangle's indices. assume cclockwise face.
 		glm::vec3 sideA = mesh.dev_triangleVertices[triangleIndex + 1] - 
 			mesh.dev_triangleVertices[triangleIndex];
 		glm::vec3 sideB = mesh.dev_triangleVertices[triangleIndex + 2] -
 			mesh.dev_triangleVertices[triangleIndex];
-		normal = glm::cross(sideA, sideB);
-		intersectionPoint = nearestDistance * r.direction + r.origin;
+		sideA = glm::normalize(sideA);
+		sideB = glm::normalize(sideB);
+		local_normal = glm::cross(sideA, sideB);
+		glm::vec3 objspaceIntersection = getPointOnRay(rt, nearestDistance);
+
+		intersectionPoint = multiplyMV(mesh.transform, glm::vec4(objspaceIntersection, 1.f));
+		normal = glm::normalize(multiplyMV(mesh.invTranspose, glm::vec4(local_normal, 0.f)));
+		return glm::length(r.origin - intersectionPoint);
+
 	}
-	return nearestDistance;
+	return -1;
+
 };
