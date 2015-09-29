@@ -16,20 +16,23 @@ This GPU based path tracer with global illumination and anti-alising can render 
 
 ## Features
 
-#### Materials
+### Materials
 
- * Diffuse
- * Perfect Specular Materials (Mirrors)
- * Specular
- * Transparent (w fresnel)
+ * **Diffuse**
+ * **Perfect Specular Materials (Mirrors)**
+ * **Specular**
+ * **Transparent (with fresnel reflection)**
+ * **Subsurface Scattering**
  ![alt tag](img/04DiffSpecTrans.png "scene file: \scenes\DiffSpecTrans.txt")
- * Subsurface Scattering
+ 
+## Subsurface Scattering
  ![](img/05SSS.png)
+
  Subsurface Scattering	|  Compare with diffuse
 :----------------------:|:-------------------------:
-![](img/SSS02.png)		|![](img/05SSS01.png)
+![](img/05SSS02.png)		|![](img/05SSS01.png)
 
-#### Global Illumination
+### Global Illumination
 
 With Direct Lighting	|  Without Direct Lighting
 :----------------------:|:-------------------------:
@@ -41,7 +44,7 @@ With Anti-Aliasing		|Without Anti-Aliasing
 :----------------------:|:------------------:
 ![](img/03AntiA_on.PNG) |![](img/03AntiA_off.png)
 
-#### Work-efficient Stream Compaction with Shared Memory
+### Work-efficient Stream Compaction with Shared Memory
 
 
 ## Analysis
