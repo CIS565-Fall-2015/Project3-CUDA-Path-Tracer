@@ -126,13 +126,14 @@ void pathtraceInit(Scene *scene) {
 
 	
 	//KD-tree
-	
+#ifdef USE_KDTREE_FLAG	
 
 	cudaMalloc(&dev_node, (scene->kdtree.hst_node.size()) * sizeof(Node) );
 	cudaMemcpy(dev_node, scene->kdtree.hst_node.data(), (scene->kdtree.hst_node.size()) * sizeof(Node), cudaMemcpyHostToDevice);
 
 	cudaMalloc(&dev_geom_idx, (scene->kdtree.hst_geom_idx.size()) * sizeof(int));
 	cudaMemcpy(dev_geom_idx, scene->kdtree.hst_geom_idx.data(), (scene->kdtree.hst_geom_idx.size()) * sizeof(int), cudaMemcpyHostToDevice);
+#endif
 
 	
     checkCUDAError("pathtraceInit");
@@ -142,8 +143,10 @@ void pathtraceFree() {
     cudaFree(dev_image);  // no-op if dev_image is null
     // TODO: clean up the above static variables
 
+#ifdef USE_KDTREE_FLAG
 	cudaFree(dev_node);
 	cudaFree(dev_geom_idx);
+#endif
 	
 	cudaFree(dev_path);
 
@@ -310,11 +313,12 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 		{
 			//fail, no collision
 			//end search
+			//printf("end\n");
 			return -1;
 		}
 		else
 		{
-			//return -1;
+			return -1;
 
 			////kd-restart
 			//tmin = tmax;
@@ -346,7 +350,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 				}
 
 				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb, ray, t0, t1);
-				if (t0 <= tmp_tmin - RAY_EPSILON || t1 >= tmp_tmax + RAY_EPSILON)
+				if (t1 <= tmp_tmin + RAY_EPSILON)
 				{
 					tmp_hit = false;
 				}
@@ -388,8 +392,10 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 
 			//has intersection
 			cur_idx = backtrack_idx;
-			tmin = t0;
-			tmax = t1;
+			tmin = tmp_tmin+RAY_EPSILON;
+			//tmin = t0;
+			//tmax = t1;
+			tmax = global_tmax;
 			
 			return -2;
 		}
@@ -416,12 +422,14 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 	}
 
 
-	if(thit >= tmax || thit < 0)
+	if(thit >= tmax /*|| thit < 0*/)
 	{
 		cur_idx = first;
+		//cur_idx = second;
 	}
-	else if( thit <= tmin)
+	else if( thit <= tmin )
 	{
+		
 		cur_idx = second;
 	}
 	else
@@ -563,13 +571,13 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[hit_geom_index];
 			Material & material = materials[geom.materialid];
 
-			//test
-			if (1)
-			{
-				path.terminated = true;
-				image[path.image_index] += material.color;
-				return;
-			}
+			////test
+			//if (1)
+			//{
+			//	path.terminated = true;
+			//	image[path.image_index] += material.color;
+			//	return;
+			//}
 
 
 
