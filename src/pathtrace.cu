@@ -110,6 +110,23 @@ void pathtraceFree() {
     checkCUDAError("pathtraceFree");
 }
 
+__device__ void setDOF(Ray &ray, Camera cam,
+        thrust::default_random_engine rng) {
+    if (cam.dof.x < 0) { return; }
+
+    float focalLength = cam.dof.x;
+    float aperture = cam.dof.y;
+
+    thrust::uniform_real_distribution<float> u0a(0, aperture);
+
+    glm::vec3 focusedPoint = ray.origin + ray.direction * focalLength;
+    float x_offset = u0a(rng) - aperture/2;
+    float y_offset = u0a(rng) - aperture/2;
+    float z_offset = u0a(rng) - aperture/2;
+    ray.origin += glm::vec3(x_offset, y_offset, z_offset);
+    ray.direction = glm::normalize(focusedPoint - ray.origin);
+}
+
 __global__ void generateCameraRays(Camera cam, Pixel *pixels, int iter,
         glm::vec3 cam_right, glm::vec3 cam_up) {
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -134,6 +151,8 @@ __global__ void generateCameraRays(Camera cam, Pixel *pixels, int iter,
         Ray r;
         r.origin = cam.position;
         r.direction = ray_dir;
+
+        setDOF(r, cam, rng);
 
         Pixel px;
         px.terminated = false;
