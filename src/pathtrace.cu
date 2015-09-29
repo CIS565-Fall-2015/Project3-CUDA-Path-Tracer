@@ -4,7 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
-#include <thrust\device_ptr.h>
+
 #include "sceneStructs.h"
 #include "scene.h"
 #include "glm/glm.hpp"
@@ -35,8 +35,9 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 	getchar();
 #  endif
 	exit(EXIT_FAILURE);
-#endif
+# endif
 }
+
 
 
 __host__ __device__
@@ -68,6 +69,9 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 	}
 }
 
+
+
+
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
@@ -87,8 +91,8 @@ static Ray *dev_compatedRay = NULL;
 static bool * dev_terminate = NULL;
 
 
-__global__ void SetDevRay(Camera cmr, Ray  *dev_ray, int iter){//Ray *dev_ray
-	//camera_ray = new Ray();
+__global__ void SetDevRay(Camera cmr, Ray  *dev_ray, int iter){
+
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
@@ -194,7 +198,7 @@ __global__ void generateIamge(Camera cam, int iter, glm::vec3 *image, Ray *r) {
 		}
 	}
 }
-__device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int light, Material m_light,int iter,int id){
+__device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int light, Material m_light, int iter, int id){
 	Ray light_ray;
 	//find random place
 	glm::vec3 point;
@@ -211,7 +215,7 @@ __device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int lig
 		result[(c + 2) % 3] = y01(rng);
 		point = glm::vec3(result[0], result[1], result[2]);
 
-		glm::vec4 pt =glm::vec4(point,1)* dev_geom[light].transform;
+		glm::vec4 pt = glm::vec4(point, 1)* dev_geom[light].transform;
 		point = glm::vec3(pt[0], pt[1], pt[2]);
 	}
 
@@ -233,7 +237,7 @@ __device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int lig
 		point *= dev_geom[light].translation;
 	}
 
-	light_ray.direction = point-r.origin ;
+	light_ray.direction = point - r.origin;
 	light_ray.origin = r.origin;
 	float t;
 	glm::vec3 intersectionPoint;
@@ -255,7 +259,7 @@ __device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int lig
 		r.hitcolor *= m_light.emittance*m_light.color;
 	}
 }
-__global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,int nM, Material *dev_m, int iter, int traced, int currentd)
+__global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
 {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (id < CurrentRayNumber){
@@ -298,7 +302,7 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 					F_normal = normal;
 					F_outside = outside;
 					F_t = t;
-			
+
 					thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, currentd);
 					thrust::uniform_real_distribution<float> uee(0, EPSILON * 10);
 					float offset = uee(rng);
@@ -324,13 +328,11 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 				else{
 					if (currentd == traced - 1){
 						r[id].terminate = true;
-						directlightcheking(r[id], dev_geom, nG, light, m_light,iter,id);
+						directlightcheking(r[id], dev_geom, nG, light, m_light, iter, id);
 					}
-					thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth);
 					thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, currentd);
-			    	scatterRay(r[id], color, F_intersectionPoint, F_normal, emmited_c, m, rng);
-					//if ((!m.hasReflective) && (!m.hasRefractive))//diffuse
-					r[id].hitcolor *= m.color;
+					scatterRay(r[id], color, F_intersectionPoint, F_normal, emmited_c, m, rng);
+					//r[id].hitcolor *= color;
 				}
 			}
 		}
@@ -394,9 +396,9 @@ __global__ void EfficientScan(int * indata, int *outdata, int n){//current size
 	int blocks = blockIdx.x * blockDim.x * 2;
 
 	temp[2 * thid] = indata[2 * thid + blocks];
-	temp[2 * thid + 1] = indata[2 * thid + blocks * 2+ 1];
+	temp[2 * thid + 1] = indata[2 * thid + blocks * 2 + 1];
 	//...do in block maybe..
-//	int n = blockDim.x * 2;
+	//	int n = blockDim.x * 2;
 	for (int d = n >> 1; d > 0; d >>= 1) //d = 0 to log2 n – 1
 	{
 		__syncthreads();
@@ -425,8 +427,8 @@ __global__ void EfficientScan(int * indata, int *outdata, int n){//current size
 	}
 	__syncthreads();
 
-	outdata[2*thid+blocks] = indata[2 * thid];
-	outdata[2 * thid + blocks+1] = indata[2 * thid + 1];
+	outdata[2 * thid + blocks] = indata[2 * thid];
+	outdata[2 * thid + blocks + 1] = indata[2 * thid + 1];
 }
 
 __global__ void BlockSums(int n, int * newdata, const int *dev_outdata, const int *dev_indata) {
@@ -446,122 +448,122 @@ __global__ void BlcockIncrement(int n, int *dev_data, const int *increments) {
 
 
 
-	void pathtrace(uchar4 *pbo, int frame, int iter) {
-		const int traceDepth = hst_scene->state.traceDepth;
-		const Camera &cam = hst_scene->state.camera;
-		const int pixelcount = cam.resolution.x * cam.resolution.y;
+void pathtrace(uchar4 *pbo, int frame, int iter) {
+	const int traceDepth = hst_scene->state.traceDepth;
+	const Camera &cam = hst_scene->state.camera;
+	const int pixelcount = cam.resolution.x * cam.resolution.y;
 
 
-		const dim3 blockSize2d(8, 8);
-		const dim3 blocksPerGrid2d(
-			(cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
-			(cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
+	const dim3 blockSize2d(8, 8);
+	const dim3 blocksPerGrid2d(
+		(cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
+		(cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
-		//	const int &nG = hst_scene->geoms.size();ite
-		//const int &nM = hst_scene->materials.size();
-	
-		const int &nG = hst_scene->geoms.size();
-		const int &nM = hst_scene->materials.size();
+	//	const int &nG = hst_scene->geoms.size();ite
+	//const int &nM = hst_scene->materials.size();
 
-		///////////////////////////////////////////////////////////////////////////
+	const int &nG = hst_scene->geoms.size();
+	const int &nM = hst_scene->materials.size();
 
-		// Recap:
-		// * Initialize array of path rays (using rays that come out of the camera)
-		//   * You can pass the Camera object to that kernel.
-		//   * Each path ray is a (ray, color) pair, where color starts as the
-		//     multiplicative identity, white = (1, 1, 1).
-		//   * For debugging, you can output your ray directions as colors.
-		// * For each depth:
-		//   * Compute one new (ray, color) pair along each path (using scatterRay).
-		//     Note that many rays will terminate by hitting a light or hitting
-		//     nothing at all. You'll have to decide how to represent your path rays
-		//     and how you'll mark terminated rays.
-		//     * Color is attenuated (multiplied) by reflections off of any object
-		//       surface.
-		//     * You can debug your ray-scene intersections by displaying various
-		//       values as colors, e.g., the first surface normal, the first bounced
-		//       ray direction, the first unlit material color, etc.
-		//   * Add all of the terminated rays' results into the appropriate pixels.
-		//   * Stream compact away all of the terminated paths.
-		//     You may use either your implementation or `thrust::remove_if` or its
-		//     cousins.
-		//     * Note that you can't really use a 2D kernel launch any more - switch
-		//       to 1D.
-		// * Finally, handle all of the paths that still haven't terminated.
-		//   (Easy way is to make them black or background-colored.)
+	///////////////////////////////////////////////////////////////////////////
 
-		// TODO: perform one iteration of path tracing
-		//}//use 256 warp erro
+	// Recap:
+	// * Initialize array of path rays (using rays that come out of the camera)
+	//   * You can pass the Camera object to that kernel.
+	//   * Each path ray is a (ray, color) pair, where color starts as the
+	//     multiplicative identity, white = (1, 1, 1).
+	//   * For debugging, you can output your ray directions as colors.
+	// * For each depth:
+	//   * Compute one new (ray, color) pair along each path (using scatterRay).
+	//     Note that many rays will terminate by hitting a light or hitting
+	//     nothing at all. You'll have to decide how to represent your path rays
+	//     and how you'll mark terminated rays.
+	//     * Color is attenuated (multiplied) by reflections off of any object
+	//       surface.
+	//     * You can debug your ray-scene intersections by displaying various
+	//       values as colors, e.g., the first surface normal, the first bounced
+	//       ray direction, the first unlit material color, etc.
+	//   * Add all of the terminated rays' results into the appropriate pixels.
+	//   * Stream compact away all of the terminated paths.
+	//     You may use either your implementation or `thrust::remove_if` or its
+	//     cousins.
+	//     * Note that you can't really use a 2D kernel launch any more - switch
+	//       to 1D.
+	// * Finally, handle all of the paths that still haven't terminated.
+	//   (Easy way is to make them black or background-colored.)
+
+	// TODO: perform one iteration of path tracing
+	//}//use 256 warp erro
 
 
-		//SetDevRay << <blocksPerGrid2d, blockSize2d >> >(cam, dev_ray, iter);
-		const dim3 Grid_256 = (pixelcount + 256 - 1) / 256;
-		const dim3 B_256 = 256;
-		const dim3 Grid_128 = (pixelcount + 128 - 1) / 128;
-		const dim3 B_128 = 128;
-		int current_ray = pixelcount;
-		for (int i = 0; i < traceDepth; i++)
-		{//remove the ray number from pixel count,so the Grid size needs to be changed
-			dim3 CurGrid_128 = (current_ray + 128 - 1) / 128;
-			if (!i)
-			{
-				cudaMalloc(&dev_ray, current_ray*sizeof(Ray));
-				SetDevRay << <blocksPerGrid2d, blockSize2d >> >(cam, dev_ray, iter);//shoot ray first time&one time
-			}
-			//(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
-			raytracing << <CurGrid_128, B_128 >> >(dev_ray, current_ray, dev_geo, nG,nM, dev_m, iter, traceDepth, i);
-			checkCUDAError("raytrace");
-			//**********streamCompaction***************//
-			//*****************************************//
-			//step1.compute temp bool ray
-/*			cudaMalloc(&dev_comBool, current_ray * sizeof(int));
-			mapBool << <CurGrid_128, B_128 >> >(dev_ray, dev_comBool, current_ray);
-			int p0 = (current_ray + 128 - 1) / 128 / 128;
-			while (p0 > 1){
-				//step2.divide the array into blocks: CurGrid_128 * 128;128threads each block
-				//step3.scan over each block
-				EfficientScan << <CurGrid_128, B_128 >> >(dev_comBool, dev_comResult, current_ray);
-				//step4.write total sum of each block to  a new array.
-				//return the sum of each block
-
-				dim3 gBlockSum = p0;
-				BlockSums << <gBlockSum, B_128 >> >(p0, dev_blockSums, dev_comResult, dev_comBool);//39*128
-				int p0 = p0 / 128;
-			}
-			BlcockIncrement << << CurGrid_128, B_128 >> > (current_ray, dev_comResult, dev_scannResult);
-		
-			//
-			//step3.scatter
-
-			kernScatter << <CurGrid_128, B_128 >> >(current_ray, dev_compatedRay, dev_ray, dev_comBool, dev_comResult);
-			cudaMemcpy(dev_ray, dev_compacted, sizeof(Ray)*current_ray, cudaMemcpyDeviceToDevice);
-			//free pointer so I can malloc again?
-			cudaFree(dev_comBool);
-			checkCUDAError("compact");
-			//************************************/
-			
+	//SetDevRay << <blocksPerGrid2d, blockSize2d >> >(cam, dev_ray, iter);
+	const dim3 Grid_256 = (pixelcount + 256 - 1) / 256;
+	const dim3 B_256 = 256;
+	const dim3 Grid_128 = (pixelcount + 128 - 1) / 128;
+	const dim3 B_128 = 128;
+	int current_ray = pixelcount;
+	for (int i = 0; i < traceDepth; i++)
+	{//remove the ray number from pixel count,so the Grid size needs to be changed
+		dim3 CurGrid_128 = (current_ray + 128 - 1) / 128;
+		if (!i)
+		{
+			cudaMalloc(&dev_ray, current_ray*sizeof(Ray));
+			SetDevRay << <blocksPerGrid2d, blockSize2d >> >(cam, dev_ray, iter);//shoot ray first time&one time
 		}
-		generateIamge << <Grid_128, B_128 >> >(cam, iter, dev_image, dev_ray);
-		cudaFree(dev_ray);
-		///////////////////////////////////////////////////////////////////////////
+		//(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
+		raytracing << <CurGrid_128, B_128 >> >(dev_ray, current_ray, dev_geo, nG, nM, dev_m, iter, traceDepth, i);
+		checkCUDAError("raytrace");
+		//**********streamCompaction***************//
+		//*****************************************//
+		//step1.compute temp bool ray
+		/*			cudaMalloc(&dev_comBool, current_ray * sizeof(int));
+					mapBool << <CurGrid_128, B_128 >> >(dev_ray, dev_comBool, current_ray);
+					int p0 = (current_ray + 128 - 1) / 128 / 128;
+					while (p0 > 1){
+					//step2.divide the array into blocks: CurGrid_128 * 128;128threads each block
+					//step3.scan over each block
+					EfficientScan << <CurGrid_128, B_128 >> >(dev_comBool, dev_comResult, current_ray);
+					//step4.write total sum of each block to  a new array.
+					//return the sum of each block
 
-		// Send results to OpenGL buffer for rendering
-		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> >(pbo, cam.resolution, iter, dev_image);
+					dim3 gBlockSum = p0;
+					BlockSums << <gBlockSum, B_128 >> >(p0, dev_blockSums, dev_comResult, dev_comBool);//39*128
+					int p0 = p0 / 128;
+					}
+					BlcockIncrement << << CurGrid_128, B_128 >> > (current_ray, dev_comResult, dev_scannResult);
 
-		// Retrieve image from GPU
-		cudaMemcpy(hst_scene->state.image.data(), dev_image,
-			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+					//
+					//step3.scatter
 
-		checkCUDAError("pathtrace");
+					kernScatter << <CurGrid_128, B_128 >> >(current_ray, dev_compatedRay, dev_ray, dev_comBool, dev_comResult);
+					cudaMemcpy(dev_ray, dev_compacted, sizeof(Ray)*current_ray, cudaMemcpyDeviceToDevice);
+					//free pointer so I can malloc again?
+					cudaFree(dev_comBool);
+					checkCUDAError("compact");
+					//************************************/
+
 	}
-	void pathtraceFree() {
-		cudaFree(dev_image);  // no-op if dev_image is null
-		// TODO: clean up the above static variables
-		cudaFree(dev_ray);
-		cudaFree(dev_compacted);
-		cudaFree(dev_m);
-		cudaFree(dev_geo);
-		cudaFree(dev_colormap);
+	generateIamge << <Grid_128, B_128 >> >(cam, iter, dev_image, dev_ray);
+	cudaFree(dev_ray);
+	///////////////////////////////////////////////////////////////////////////
 
-		checkCUDAError("pathtraceFree");
-	}
+	// Send results to OpenGL buffer for rendering
+	sendImageToPBO << <blocksPerGrid2d, blockSize2d >> >(pbo, cam.resolution, iter, dev_image);
+
+	// Retrieve image from GPU
+	cudaMemcpy(hst_scene->state.image.data(), dev_image,
+		pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+
+	checkCUDAError("pathtrace");
+}
+void pathtraceFree() {
+	cudaFree(dev_image);  // no-op if dev_image is null
+	// TODO: clean up the above static variables
+	cudaFree(dev_ray);
+	cudaFree(dev_compacted);
+	cudaFree(dev_m);
+	cudaFree(dev_geo);
+	cudaFree(dev_colormap);
+
+	checkCUDAError("pathtraceFree");
+}
