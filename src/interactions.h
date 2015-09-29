@@ -42,6 +42,76 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__ void reflect(
+	PathRay &rayStep,
+	glm::vec3 intersect,
+	glm::vec3 normal,
+	const Material &m,
+	float reflectionCoefficient
+	) {
+	// reflect: http://paulbourke.net/geometry/reflected/
+	rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
+		(glm::dot(rayStep.ray.direction, normal));
+	rayStep.ray.origin = intersect;
+	rayStep.color *= m.color * reflectionCoefficient;
+}
+
+__host__ __device__ float Schlick(float thetai, float IORi, float IORt) {
+	float R0 = ((IORi - IORt) / (IORi + IORt));
+	R0 *= R0;
+	if (IORi > IORt) {
+		float thetat = asin((IORi / IORt) * sin(thetai));
+		return R0 + (1.0f - R0) * pow((1.0f - cos(thetat)), 5.0f);
+	}
+	return R0 + (1.0f - R0) * pow((1.0f - cos(thetai)), 5.0f);
+}
+
+__host__ __device__ void refract(
+	PathRay &rayStep,
+	glm::vec3 intersect,
+	glm::vec3 normal,
+	const Material &m,
+	float transmissionCoefficient
+	) {
+	// refract: http://graphics.stanford.edu/courses/cs148-10-summer/docs/2006--degreve--reflection_refraction.pdf
+	float IORi = 1.0f; // THE VOID
+	float IORt = m.indexOfRefraction;
+	// check what direction the normal is to determine which IOR is on which side
+	// if the ray is entering, it's pointing in a direction roughly "opposite"
+	// if the ray is exiting, it's pointing in a direction roughly "similar"
+	float cosAnglei = glm::dot(rayStep.ray.direction, normal);
+	if (cosAnglei > 0.0f) {
+		IORi = IORt;
+		IORt = 1.0f;
+	}
+
+	float sinAnglei = sqrt(1.0f - cosAnglei * cosAnglei);
+	if (sinAnglei > IORt / IORi) { // total internal reflection
+		rayStep.depth = 0;
+		rayStep.color[0] = 0;
+		rayStep.color[1] = 0;
+		rayStep.color[2] = 0;
+		return;
+	}
+
+	float underSqrt = 1.0f - (((IORi * IORi) / (IORt * IORt)) * (1.0f - cosAnglei * cosAnglei));
+
+	if (underSqrt > 0.0f) {
+		rayStep.ray.direction = (IORi / IORt) * rayStep.ray.direction;
+		rayStep.ray.direction += ((IORi / IORt) * cosAnglei - sqrt(underSqrt)) * normal;
+	}
+	else {
+		rayStep.depth = 0;
+		rayStep.color[0] = 0;
+		rayStep.color[1] = 0;
+		rayStep.color[2] = 0;
+		return;
+	}
+
+	rayStep.ray.origin = intersect + 0.001f * rayStep.ray.direction;
+	rayStep.color *= m.color * transmissionCoefficient;
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -82,51 +152,33 @@ void scatterRay(
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
 	else if (m.hasReflective > 0.0f) { // hitting a mirrored object
-		// reflect: http://paulbourke.net/geometry/reflected/
-		rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
-			(glm::dot(rayStep.ray.direction, normal));
-		rayStep.ray.origin = intersect;
-		rayStep.color *= m.color;
+		reflect(rayStep, intersect, normal, m, 1.0f);
 	}
 	else if (m.hasRefractive > 0.0f) { // hitting a refractive object
-		// refract:
+		refract(rayStep, intersect, normal, m, 1.0f);
+		/*
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		float anglei = acos(glm::dot(rayStep.ray.direction, normal));
 		float IORi = 1.0f; // THE VOID
 		float IORt = m.indexOfRefraction;
 		// check what direction the normal is to determine which IOR is on which side
 		// if the ray is entering, it's pointing in a direction roughly "opposite"
 		// if the ray is exiting, it's pointing in a direction roughly "similar"
-		float cosAnglei = glm::dot(rayStep.ray.direction, normal);
-		if (cosAnglei > 0.0f) {
+		if (anglei > 1.57079633) {
 			IORi = IORt;
 			IORt = 1.0f;
 		}
 
-		float sinAnglei = sqrt(1.0f - cosAnglei * cosAnglei);
-		if (sinAnglei > IORt / IORi) { // total internal reflection
-			rayStep.depth = 0;
-			rayStep.color[0] = 0;
-			rayStep.color[1] = 0;
-			rayStep.color[2] = 0;
-			return;
-		}
+		float reflCoefficient = Schlick(anglei, IORi, IORt);
+		//printf("%f\n", reflCoefficient);
 
-		// http://graphics.stanford.edu/courses/cs148-10-summer/docs/2006--degreve--reflection_refraction.pdf
-		float underSqrt = 1.0f - (((IORi * IORi) / (IORt * IORt)) * (1.0f - cosAnglei * cosAnglei));
-
-		if (underSqrt > 0.0f) {
-			rayStep.ray.direction = (IORi / IORt) * rayStep.ray.direction;
-			rayStep.ray.direction += ((IORi / IORt) * cosAnglei - sqrt(underSqrt)) * normal;
+		// 50/50 split where the ray goes
+		if (u01(rng) <= 0.5f) {
+			refract(rayStep, intersect, normal, m, 1.0f - reflCoefficient);
 		}
 		else {
-			rayStep.depth = 0;
-			rayStep.color[0] = 0;
-			rayStep.color[1] = 0;
-			rayStep.color[2] = 0;
-			return;
-		}
-
-		rayStep.ray.origin = intersect + 0.001f * rayStep.ray.direction;
-		rayStep.color *= m.color;
+			reflect(rayStep, intersect, normal, m, reflCoefficient);
+		} */
 	}
 	// basic diffuse. "deploy a new ray" in a random cosine weighted direction.
 	else // hitting just a normal thing
@@ -135,5 +187,4 @@ void scatterRay(
 		rayStep.ray.origin = intersect;
 		rayStep.color *= m.color;
 	}
-	//float absorbance = 1.0f - glm::max(m.color.r, glm::max(m.color.g, m.color.b));
 }
