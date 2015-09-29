@@ -8,11 +8,16 @@
 image::image(int x, int y) :
         xSize(x),
         ySize(y),
-        pixels(new glm::vec3[x * y]) {
+        pixels(new glm::vec3[x * y]),
+		isTex(false){
 }
 
 image::~image() {
-    delete pixels;
+	if (!isTex)
+	{
+		delete pixels;
+	}
+    
 }
 
 void image::setPixel(int x, int y, const glm::vec3 &pixel) {
@@ -66,6 +71,7 @@ image::image(const std::string &baseFilename)
 			pixels[i].z = (float)bytes[3 * i + 2] / 255.f;
 		}
 	}
+	isTex = true;
 	//setPixel(,);
 	std::cout << "loaded " << baseFilename << "." << std::endl;
 	delete[] bytes;
@@ -95,4 +101,7 @@ void image::loadPNG(const std::string &baseFilename) {
 
 	delete[] bytes;
 }
-
+int image::getSize()
+{
+	return xSize*ySize;
+}

@@ -2,6 +2,8 @@
 
 #include "intersections.h"
 
+
+
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -108,6 +110,15 @@ glm::vec3 specDir,float specExp, thrust::default_random_engine &rng) {
  *
  * You may need to change the parameter list for your purposes!
  */
+
+__host__ __device__ glm::vec3 ColorInTex(int texId,glm::vec3**texs,glm::vec2*info,int x,int y)
+{
+	int xSize = info[texId].x;
+	int ySize = info[texId].y;
+	if (x < 0 || y < 0 || x >= xSize || y >= ySize) return glm::vec3(0, 0, 0);
+	return texs[texId][(y * xSize) + x];
+}
+
 __host__ __device__
 glm::vec3 scatterRay(
 Ray &ray,
@@ -116,7 +127,8 @@ float intrT,
 glm::vec3 intersect,
 glm::vec3 normal,
 const Material &m,
-image *t,
+glm::vec3**t,
+glm::vec2*info,
 thrust::default_random_engine &rrr) {
 	// TODO: implement this.
 	// A basic implementation of pure-diffuse shading will just call the
@@ -140,8 +152,8 @@ thrust::default_random_engine &rrr) {
 	glm::vec3 matColor = m.color;
 	if (m.TexIdx!=-1)
 	{
-		//matColor = t[m.TexIdx].getPixel(1,1);
-		matColor = glm::vec3(0, 1, 0);
+		matColor = ColorInTex(m.TexIdx,t,info, 700,100);
+		//matColor = glm::vec3(0, 1, 0);
 	}
 
 	if (m.emittance > 0)

@@ -20,7 +20,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX         05SSS.png
+TEX         _0T1.png
 
 // Diffuse red
 MATERIAL 2
@@ -44,7 +44,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX         05SS.png
+TEX         _0T2.png
 
 // Specular white
 MATERIAL 4

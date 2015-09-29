@@ -188,16 +188,8 @@ int Scene::loadMaterial(string materialid) {
 				if (textureFile != "NULL")
 				{
 					newMaterial.TexIdx = textures.size();
-					printf("tid:%d\n", newMaterial.TexIdx);
-
 					image newTexture(textureFile);
-					//glm::vec3 aa = newTexture.getPixel(10, 10);
-					//printf("l:%3f,%3f,%3f\n", aa.x, aa.y, aa.z);
-					cin.get();
-
 					textures.push_back(newTexture);
-					//printf("Texture file : %s loaded\n\n",textureFile);
-					cin.get();
 				}
 				else newMaterial.TexIdx = -1;
 			}
@@ -207,10 +199,7 @@ int Scene::loadMaterial(string materialid) {
 			lightIdx = materials.size();
 			lightIdxs.push_back(lightIdx);
 		}
-
-
         materials.push_back(newMaterial);
-
         return 1;
     }
 }

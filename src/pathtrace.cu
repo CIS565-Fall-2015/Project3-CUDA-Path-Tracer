@@ -68,11 +68,15 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
     }
 }
 
-static Scene *hst_scene= NULL;
+
+static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Geom *dev_geoms;
 static Material *dev_mats;
-static image *dev_textures;
+
+glm::vec3 **dev_textures;
+glm::vec2 * dev_texInfo;
+
 bool doStreamCompact = false;
 Ray * dev_rays;
 Ray * dev_rays_temp;
@@ -117,9 +121,24 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	cudaMemcpy(dev_mats, hst_scene->materials.data(), matSize, cudaMemcpyHostToDevice);
 
 	//Copy materials to dev_textures
-	//int texSize = hst_scene->textures.size()*sizeof(image);
-	//cudaMalloc((void**)&dev_textures, texSize);
-	//cudaMemcpy(dev_textures, hst_scene->textures.data(), texSize, cudaMemcpyHostToDevice);
+	int texSize = hst_scene->textures.size()*sizeof(glm::vec3 *);
+	int texInfoSize = hst_scene->textures.size()*sizeof(glm::vec2);
+	cudaMalloc((void**)&dev_textures, texSize);
+	cudaMalloc((void**)&dev_texInfo, texInfoSize);
+	std::vector<glm::vec3*> tempImg;
+	std::vector<glm::vec2> tempInfo;
+	for (int i = 0; i < hst_scene->textures.size(); i++)
+	{
+		glm::vec3 * dev_img;
+		int imgSize = hst_scene->textures[i].getSize()*sizeof(glm::vec3);
+		cudaMalloc((void**)&dev_img, imgSize);
+		cudaMemcpy(dev_img, hst_scene->textures[i].pixels, imgSize, cudaMemcpyHostToDevice);
+		tempImg.push_back(dev_img);
+		tempInfo.push_back(glm::vec2(hst_scene->textures[i].xSize, hst_scene->textures[i].ySize));
+	}
+	cudaMemcpy(dev_textures, tempImg.data(), texSize, cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_texInfo, tempInfo.data(), texInfoSize, cudaMemcpyHostToDevice);
+
 
 	//Copy lightIdxs to dev_lightIdxs
 	ttlLights = hst_scene->lightIdxs.size();
@@ -130,7 +149,6 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	// dev_image initialize
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
-    // TODO: initialize the above static variables added above
 
     checkCUDAError("pathtraceInit");
 }
@@ -145,9 +163,15 @@ void pathtraceFree() {
 	cudaFree(dev_rays_temp);
 	cudaFree(dev_geoms);
 	cudaFree(dev_mats);
-	cudaFree(dev_textures);
+	
     cudaFree(dev_image);// no-op if dev_image is null
 
+	//for (int i = 0; i < hst_scene->textures.size(); i++)
+	//{
+	//	cudaFree(dev_textures[i]);
+	//}
+	cudaFree(dev_texInfo);
+	cudaFree(dev_textures);
     checkCUDAError("pathtraceFree");
 }
 
@@ -237,7 +261,7 @@ __device__ float rayIntersection(Geom geometry, Ray r,glm::vec3& intersectionPoi
 	return temp_T;
 }
 
-__global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * dev_mat ,image*dev_textures,Geom * dev_geo, int geoNum,int iter,int depth)
+__global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * dev_mat ,glm::vec3**dev_textures,glm::vec2 * dev_texInfo,Geom * dev_geo, int geoNum,int iter,int depth)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -278,7 +302,7 @@ __global__ void kernComputeRay(int raysNum,Camera cam, Ray * rays, Material * de
 		if (intrT > 0)//intersect with obj, update ray
 		{
 			thrust::default_random_engine rr = makeSeededRandomEngine(iter, index, depth);
-			scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx],dev_textures, rr);
+			scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[intrMatIdx],dev_textures,dev_texInfo, rr);
 			rays[index].origMatIdx = intrMatIdx;
 			rays[index].lastObjIdx = intrOutside;
 		}
@@ -308,7 +332,7 @@ __global__ void kernUpdateImage(int raysNum,Camera cam, Ray * rays, glm::vec3 *i
 
 }
 
-__global__ void kernFinalImage(int iter, int raysNum,image * dev_textures,Camera cam, Ray * rays, glm::vec3 *image, Geom * dev_geo, Material * dev_mat,int * dev_lightIdxs,int geoNum,int totalLights)
+__global__ void kernFinalImage(int iter, int raysNum, glm::vec3** dev_textures, Camera cam, Ray * rays, glm::vec3 *image, glm::vec2*dev_texInfo, Geom * dev_geo, Material * dev_mat, int * dev_lightIdxs, int geoNum, int totalLights)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -367,7 +391,7 @@ __global__ void kernFinalImage(int iter, int raysNum,image * dev_textures,Camera
 				//!!! later : reduce bounce
 				color = dev_mat[lightIndex].emittance*dev_mat[lightIndex].color;
 				color *= rays[index].carry;
-				scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], dev_textures,rng);
+				scatterRay(rays[index], intrOutside, intrT, intrPoint, intrNormal, dev_mat[rays[index].origMatIdx], dev_textures,dev_texInfo,rng);
 				color *= max(0.0f, glm::dot(glm::normalize(-rays[index].direction), glm::normalize(surToLight.direction)));
 			}
 		}
@@ -554,14 +578,14 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		// a. Compute one ray along each path
 		if (raySel)
 		{
-			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays, dev_mats, dev_textures,dev_geoms, geoNum, iter, i);
+			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays, dev_mats, dev_textures,dev_texInfo,dev_geoms, geoNum, iter, i);
 			// b. Add all terminated rays results into pixels
 			kernUpdateImage << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays, dev_image);
 			// c. Stream compact away/thrust::remove_if all terminated paths.
 		}
 		else
 		{
-			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays_temp, dev_mats,dev_textures, dev_geoms, geoNum, iter, i);
+			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays_temp, dev_mats,dev_textures,dev_texInfo, dev_geoms, geoNum, iter, i);
 			// b. Add all terminated rays results into pixels
 			kernUpdateImage << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays_temp, dev_image);
 			// c. Stream compact away/thrust::remove_if all terminated paths.
@@ -652,11 +676,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
 	if (raySel)
 	{
-		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays,dev_textures,  cam, dev_rays, dev_image, dev_geoms, dev_mats,dev_lightIdxs, geoNum, ttlLights);
+		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays,dev_textures,  cam, dev_rays, dev_image, dev_texInfo,dev_geoms, dev_mats,dev_lightIdxs, geoNum, ttlLights);
 	}
 	else
 	{
-		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays,dev_textures, cam, dev_rays_temp, dev_image, dev_geoms, dev_mats, dev_lightIdxs, geoNum, ttlLights);
+		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays,dev_textures, cam, dev_rays_temp, dev_image, dev_texInfo,dev_geoms, dev_mats, dev_lightIdxs, geoNum, ttlLights);
 	}
 	
 

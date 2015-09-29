@@ -6,11 +6,13 @@ using namespace std;
 
 class image {
 private:
-    int xSize;
-    int ySize;
-    glm::vec3 *pixels;
+
+   
 
 public:
+	int xSize;
+    int ySize;
+	glm::vec3 *pixels;
     image(int x, int y);
 	image(const std::string &baseFilename);
     ~image();
@@ -19,4 +21,7 @@ public:
     void savePNG(const std::string &baseFilename);
     void saveHDR(const std::string &baseFilename);
 	void loadPNG(const std::string &baseFilename);
+	int getSize();
+	bool isTex;
 };
+
