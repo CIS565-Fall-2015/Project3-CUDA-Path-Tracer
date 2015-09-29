@@ -23,11 +23,14 @@ int height;
 //MY
 void sceneInitKDTree()
 {
+	std::cout << "init kd tree..." << std::endl;
 	scene->kdtree.init(*scene);
 
-	std::cout << sizeof(Node) << std::endl;
-	std::cout << (scene->kdtree.last_idx) << std::endl;
-	std::cout << scene->kdtree.hst_node.size() << std::endl;
+	std::cout << "done!" << std::endl;
+	
+	//std::cout << sizeof(Node) << std::endl;
+	//std::cout << (scene->kdtree.last_idx) << std::endl;
+	//std::cout << scene->kdtree.hst_node.size() << std::endl;
 }
 
 

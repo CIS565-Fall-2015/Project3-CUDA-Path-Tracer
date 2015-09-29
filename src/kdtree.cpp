@@ -181,21 +181,21 @@ void KDTree::init(Scene & s)
 	//geoms_using.clear();
 
 
-	//test output for release mode
-	std::cout << "i" << '\t' << "p_id" <<'\t' << "r_id" << '\t' << "gid" << '\t' << "num" << '\n';
-	i=-1;
-	for (auto a : hst_node)
-	{
-		i++;
-		std::cout << i << '\t' << a.parent_idx << '\t' << a.right_idx << '\t' << a.geom_index << '\t' << a.num_geoms << '\n';
-	}
+	////test output for release mode
+	//std::cout << "i" << '\t' << "p_id" <<'\t' << "r_id" << '\t' << "gid" << '\t' << "num" << '\n';
+	//i=-1;
+	//for (auto a : hst_node)
+	//{
+	//	i++;
+	//	std::cout << i << '\t' << a.parent_idx << '\t' << a.right_idx << '\t' << a.geom_index << '\t' << a.num_geoms << '\n';
+	//}
 
-	std::cout << "\n\n\n\n";
+	//std::cout << "\n\n\n\n";
 
-	for (int j = 0; j < hst_geom_idx.size(); j++)
-	{
-		std::cout << j << '\t' << hst_geom_idx.at(j) << '\n';
-	}
+	//for (int j = 0; j < hst_geom_idx.size(); j++)
+	//{
+	//	std::cout << j << '\t' << hst_geom_idx.at(j) << '\n';
+	//}
 }
 
 

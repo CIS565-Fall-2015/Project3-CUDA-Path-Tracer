@@ -314,40 +314,78 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 		}
 		else
 		{
+			//return -1;
+
+			////kd-restart
+			//tmin = tmax;
+			//tmax = global_tmax;
+			//cur_idx = 0;
+			//return -2;
+
+
+			//-------------------------------------
+
+			//kd-backtrack
+
 			float tmp_tmin = tmax,tmp_tmax = global_tmax;
 			float t0, t1;
 
 			//backtrack
-			bool tmp_hit = AABBIntersect(n.aabb,ray,t0,t1);
+
+			bool tmp_hit;
 			int backtrack_idx = cur_idx;
-			if (!(t0 >= tmp_tmin && t1 <= tmp_tmax))
+			
+			do
 			{
-				tmp_hit = false;
-			}
-
-			while(!tmp_hit)
-			{
-				//tmp_tmin = tmax;
-				//tmp_tmax = global_tmax;
-				
-				//call backtrack again
 				backtrack_idx = nodes[backtrack_idx].parent_idx;
-
 				if (backtrack_idx < 0)
 				{
-					//error...
-					//should happen
-					//printf("ERROR: kd tree backtrack to root!\n");
+					//shouldn't happen
+					//end
 					return -1;
 				}
 
-				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,t0,t1);
-				if (! (t0 >= tmp_tmin && t1 <= tmp_tmax ) )
+				tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb, ray, t0, t1);
+				if (t0 <= tmp_tmin - RAY_EPSILON || t1 >= tmp_tmax + RAY_EPSILON)
 				{
 					tmp_hit = false;
 				}
-			}
+			} while (!tmp_hit);
+
+
+
+			//bool tmp_hit = AABBIntersect(n.aabb,ray,t0,t1);
+			//int backtrack_idx = cur_idx;
+			//if (!(t0 >= tmp_tmin && t1 <= tmp_tmax))
+			//{
+			//	tmp_hit = false;
+			//}
+
+			//while(!tmp_hit)
+			//{
+			//	//tmp_tmin = tmax;
+			//	//tmp_tmax = global_tmax;
+			//	
+			//	//call backtrack again
+			//	backtrack_idx = nodes[backtrack_idx].parent_idx;
+
+			//	if (backtrack_idx < 0)
+			//	{
+			//		//error...
+			//		//shouldn't happen
+			//		//printf("ERROR: kd tree backtrack to root!\n");
+			//		return -1;
+			//	}
+
+			//	tmp_hit = AABBIntersect(nodes[backtrack_idx].aabb,ray,t0,t1);
+			//	if (! (t0 >= tmp_tmin && t1 <= tmp_tmax ) )
+			//	{
+			//		tmp_hit = false;
+			//	}
+			//}
 			
+
+
 			//has intersection
 			cur_idx = backtrack_idx;
 			tmin = t0;
