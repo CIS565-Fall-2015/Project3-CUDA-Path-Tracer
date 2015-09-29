@@ -45,13 +45,14 @@ with Shared Memory. However, given the length of the ray array (equals width x l
 640000 for a 640x640 image in the beginning of every iteration), it needs to be  divided into 
 small sets to fit each block, perform a scan on each block, then compute the offset by pulling out
 the biggest number in each block into another array to be scanned. If this array is still too large,
-it needs to go through the same process (recursively). After the offset array is scanned. We add
+it needs to go through the same process (recursively). After the offset array is scanned, we add
 the sorted number back to all the member of each blocks, and then we will get an array with
 accumulated sums.
 
 Since steam compaction's benefit is to reduce the number of rays we need to go through, it will
 only benefit in the scene that such conditions happen. (i.e. if we put the camera in a 6-sided
-mirror box, steam compaction would be a drag instead.)
+mirror box with a lot of object that blocks the ray from reaching the light source, 
+steam compaction might be a drag instead.)
 
 ## REFERENCES
 
