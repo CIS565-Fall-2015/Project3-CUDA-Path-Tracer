@@ -37,24 +37,7 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 	exit(EXIT_FAILURE);
 #endif
 }
-__device__ float rayIntersection(Geom geometry, Ray r, glm::vec3& intersectionPoint, glm::vec3& normal, int &materIdx, bool &outside)
-{
-	float temp_T = -1;
-	switch (geometry.type)
-	{
-	case SPHERE:
-		temp_T = sphereIntersectionTest(geometry, r, intersectionPoint, normal, outside);
-		materIdx = geometry.materialid;
-		break;
-	case CUBE:
-		temp_T = boxIntersectionTest(geometry, r, intersectionPoint, normal, outside);
-		materIdx = geometry.materialid;// glm::vec3(0, 1, 0); 
-		break;
-	default:
-		break;
-	}
-	return temp_T;
-}
+
 
 __host__ __device__
 thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth) {
@@ -211,9 +194,46 @@ __global__ void generateIamge(Camera cam, int iter, glm::vec3 *image, Ray *r) {
 		}
 	}
 }
-__device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int light, Material m_light){
+__device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int light, Material m_light,int iter,int id){
 	Ray light_ray;
-	light_ray.direction = r.origin - dev_geom[light].translation;
+	//find random place
+	glm::vec3 point;
+	float result[3];
+	if (dev_geom[light].type == CUBE){
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, 1);
+		thrust::uniform_real_distribution <float> side(0, 6);
+		thrust::uniform_real_distribution <float> x01(-0.5, 0.5);
+		thrust::uniform_real_distribution <float> y01(-0.5, 0.5);
+		int s = (int)side(rng);
+		int c = s % 3;
+		result[c] = s > 2.0 ? 1.f : 0.f;
+		result[(c + 1) % 3] = x01(rng);
+		result[(c + 2) % 3] = y01(rng);
+		point = glm::vec3(result[0], result[1], result[2]);
+
+		glm::vec4 pt =glm::vec4(point,1)* dev_geom[light].transform;
+		point = glm::vec3(pt[0], pt[1], pt[2]);
+	}
+
+	if (dev_geom[light].type == SPHERE){
+		thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, 1);
+		thrust::uniform_real_distribution <float> u01(0, 1);
+		thrust::uniform_real_distribution <float> v01(0, 1);
+
+		//float radius = dev_geom[light].scale
+		float u = u01(rng);
+		float v = v01(rng);
+		float theta = 2 * PI * u;
+		float phi = acos(2 * v - 1);
+		float x = 0.5 * sin(phi) * cos(theta);
+		float y = 0.5 * sin(phi) * sin(theta);
+		float z = 0.5 * cos(phi);
+
+		point = glm::vec3(x, y, z);
+		point *= dev_geom[light].translation;
+	}
+
+	light_ray.direction = point-r.origin ;
 	light_ray.origin = r.origin;
 	float t;
 	glm::vec3 intersectionPoint;
@@ -304,7 +324,7 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 				else{
 					if (currentd == traced - 1){
 						r[id].terminate = true;
-						directlightcheking(r[id], dev_geom, nG, light, m_light);
+						directlightcheking(r[id], dev_geom, nG, light, m_light,iter,id);
 					}
 					thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth);
 					thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, currentd);
@@ -317,23 +337,6 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 	}
 }
 
-//input:ray
-
-/*
-for (int d = 0; d <= ilog2ceil(num) - 1; d++){
-p1 = pow(2, d);
-p2 = pow(2, d + 1);
-Uscan << <1, num >> >(p1, p2, dev_boolb);//change end to n
-}
-put0 << <1, 1 >> >(dev_boolb, num);
-output[n-1]=0;
-//cudaMemcpy(&hst, &dev_idata[6], sizeof(int), cudaMemcpyDeviceToHost);
-//std::cout << hst << "ss1";
-for (int d = ilog2ceil(num) - 1; d >= 0; d--){
-p1 = pow(2, d);
-p2 = pow(2, d + 1);
-Dscan << <1, num >> >(p1, p2, dev_boolb);
-}*/
 __global__ void mapBool(Ray * dev_ray, int *dev_bool, int currentmount){
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -448,14 +451,15 @@ __global__ void BlcockIncrement(int n, int *dev_data, const int *increments) {
 		const Camera &cam = hst_scene->state.camera;
 		const int pixelcount = cam.resolution.x * cam.resolution.y;
 
+
 		const dim3 blockSize2d(8, 8);
 		const dim3 blocksPerGrid2d(
 			(cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
 			(cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
-		//	const int &nG = hst_scene->geoms.size();
+		//	const int &nG = hst_scene->geoms.size();ite
 		//const int &nM = hst_scene->materials.size();
-
+	
 		const int &nG = hst_scene->geoms.size();
 		const int &nM = hst_scene->materials.size();
 
