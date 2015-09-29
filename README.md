@@ -36,7 +36,8 @@ two mirrors facing each other.)
 
 ## TWEAKS
 
-- Work Efficient Steam Compaction
+#Work Efficient Steam Compaction
+
 At the end of each depth, our "Steam Compaction" function will remove the rays that 
 are marked as "terminate" out, so that there are less rays to go through and compute (=faster!)
 
