@@ -2,6 +2,33 @@
 
 #include "intersections.h"
 
+__host__ __device__ glm::vec3 localToWorldTransform(glm::vec3 local,
+        float up, float over, float around) {
+
+    // Find a direction that is not the normal based off of whether or not the
+    // normal's components are all equal to sqrt(1/3) or whether or not at
+    // least one component is less than sqrt(1/3). Learned this trick from
+    // Peter Kutz.
+    glm::vec3 otherDirection;
+    if (abs(local.x) < SQRT_OF_ONE_THIRD) {
+        otherDirection = glm::vec3(1, 0, 0);
+    } else if (abs(local.y) < SQRT_OF_ONE_THIRD) {
+        otherDirection = glm::vec3(0, 1, 0);
+    } else {
+        otherDirection = glm::vec3(0, 0, 1);
+    }
+
+    // Use not-normal direction to generate two perpendicular directions
+    glm::vec3 perpendicularDirection1 =
+        glm::normalize(glm::cross(local, otherDirection));
+    glm::vec3 perpendicularDirection2 =
+        glm::normalize(glm::cross(local, perpendicularDirection1));
+
+    return up * local
+        + cos(around) * over * perpendicularDirection1
+        + sin(around) * over * perpendicularDirection2;
+}
+
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -15,30 +42,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
     float up = sqrt(u01(rng)); // cos(theta)
     float over = sqrt(1 - up * up); // sin(theta)
     float around = u01(rng) * TWO_PI;
-
-    // Find a direction that is not the normal based off of whether or not the
-    // normal's components are all equal to sqrt(1/3) or whether or not at
-    // least one component is less than sqrt(1/3). Learned this trick from
-    // Peter Kutz.
-
-    glm::vec3 directionNotNormal;
-    if (abs(normal.x) < SQRT_OF_ONE_THIRD) {
-        directionNotNormal = glm::vec3(1, 0, 0);
-    } else if (abs(normal.y) < SQRT_OF_ONE_THIRD) {
-        directionNotNormal = glm::vec3(0, 1, 0);
-    } else {
-        directionNotNormal = glm::vec3(0, 0, 1);
-    }
-
-    // Use not-normal direction to generate two perpendicular directions
-    glm::vec3 perpendicularDirection1 =
-        glm::normalize(glm::cross(normal, directionNotNormal));
-    glm::vec3 perpendicularDirection2 =
-        glm::normalize(glm::cross(normal, perpendicularDirection1));
-
-    return up * normal
-        + cos(around) * over * perpendicularDirection1
-        + sin(around) * over * perpendicularDirection2;
+    return localToWorldTransform(normal, up, over, around);
 }
 
 __host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
@@ -57,24 +61,7 @@ __host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
     float around = glm::sin(phi) * glm::sin(theta);
     float up = glm::cos(theta);
 
-    glm::vec3 directionNotSpecular;
-    if (abs(specular.x) < SQRT_OF_ONE_THIRD) {
-        directionNotSpecular = glm::vec3(1, 0, 0);
-    } else if (abs(specular.y) < SQRT_OF_ONE_THIRD) {
-        directionNotSpecular = glm::vec3(0, 1, 0);
-    } else {
-        directionNotSpecular = glm::vec3(0, 0, 1);
-    }
-
-    // Use not-normal direction to generate two perpendicular directions
-    glm::vec3 perpendicularDirection1 =
-        glm::normalize(glm::cross(specular, directionNotSpecular));
-    glm::vec3 perpendicularDirection2 =
-        glm::normalize(glm::cross(specular, perpendicularDirection1));
-
-    return up * specular
-        + cos(around) * over * perpendicularDirection1
-        + sin(around) * over * perpendicularDirection2;
+    return localToWorldTransform(specular, up, over, around);
 }
 
 /**
@@ -95,6 +82,7 @@ void scatterRay(
         glm::vec3 &color,
         glm::vec3 intersect,
         glm::vec3 normal,
+        bool outside,
         const Material &m,
         thrust::default_random_engine &rng) {
     if (m.hasReflective > 0) {
@@ -110,6 +98,11 @@ void scatterRay(
             ray.origin = intersect;
             ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
         }
+    } else if (m.hasRefractive > 0) {
+        float ior = outside ? 1.f/m.indexOfRefraction : m.indexOfRefraction;
+        color *= m.color;
+        ray.origin = intersect + (ray.direction * 0.001f);
+        ray.direction = glm::refract(ray.direction, normal, ior);
     } else {
         color *= m.color;
         ray.origin = intersect;

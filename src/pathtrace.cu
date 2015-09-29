@@ -145,7 +145,7 @@ __global__ void generateCameraRays(Camera cam, Pixel *pixels, int iter,
 }
 
 __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount,
-        Geom& nearest, glm::vec3 &intersection, glm::vec3 &normal) {
+        Geom& nearest, glm::vec3 &intersection, glm::vec3 &normal, bool &outside) {
     float nearest_t = -1;
     for (int i = 0; i < geomCount; i++) {
         Geom g = geoms[i];
@@ -153,10 +153,10 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount,
 
         switch (g.type) {
         case SPHERE:
-            t = sphereIntersectionTest(g, r, intersection, normal);
+            t = sphereIntersectionTest(g, r, intersection, normal, outside);
             break;
         case CUBE:
-            t = boxIntersectionTest(g, r, intersection, normal);
+            t = boxIntersectionTest(g, r, intersection, normal, outside);
             break;
         }
 
@@ -180,22 +180,26 @@ __global__ void intersect(Camera cam, glm::vec3 *image, Pixel *pixels,
         if (px.terminated == false) {
             glm::vec3 intersection = glm::vec3(0, 0, 0);
             glm::vec3 normal = glm::vec3(0, 0, 0);
+            bool outside;
             Geom nearest;
             float t = nearestIntersectionGeom(px.ray, geoms, geomCount, nearest,
-                    intersection, normal);
+                    intersection, normal, outside);
 
             if (t > 0) {
                 Material m = mats[nearest.materialid];
                 thrust::default_random_engine rng = random_engine(iter, index, depth);
                 scatterRay(pixels[index].ray, pixels[index].color,
-                        intersection, normal, m, rng);
+                        intersection, normal, outside, m, rng);
 
                 if (m.emittance > 0) {
                     pixels[index].terminated = true;
                 }
 
                 // Debug
-                //pixels[index].terminated = true;
+                if (m.hasRefractive > 0) {
+                    //pixels[index].terminated = true;
+                }
+                //  pixels[index].color = glm::abs(pixels[index].ray.direction);
                 //pixels[index].color = glm::abs(pixels[index].ray.direction);
                 //pixels[index].color = glm::abs(intersection/5.f);
             } else {
