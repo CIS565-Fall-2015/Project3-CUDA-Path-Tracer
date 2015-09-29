@@ -457,7 +457,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		bool outside = true;
 
 
-#ifdef USE_KDTREE_FLAG
+#ifndef USE_KDTREE_FLAG
 		//naive parse through global geoms
 
 		for (int i = 0; i < geoms_size; i++)
@@ -526,12 +526,13 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Material & material = materials[geom.materialid];
 
 			//test
-			//if (1)
-			//{
-			//	path.terminated = true;
-			//	image[path.image_index] += glm::vec3(1.0f,1.0f,0);
-			//	return;
-			//}
+			if (1)
+			{
+				path.terminated = true;
+				image[path.image_index] += material.color;
+				return;
+			}
+
 
 
 			if (material.emittance > EPSILON)
