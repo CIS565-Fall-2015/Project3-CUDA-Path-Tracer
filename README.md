@@ -16,7 +16,7 @@ GPU Path Tracer
 Path tracer is one way of rendering a CG scene. This time, we do it on GPU 
 (which has wayyyy higher throughput)
 
-![](img/Capture.png)
+![](img/Capture.PNG)
 
 In the beginning of each iteration, we calculate rays that are shot from the camera 
 through each pixels, and then stored it inside an array on the GPU (global memory).
@@ -32,7 +32,7 @@ two mirrors facing each other.)
 
 ## FEATURES
 
-![](img/Capture2.png)
+![](img/Capture2.PNG)
 
 ## TWEAKS
 
