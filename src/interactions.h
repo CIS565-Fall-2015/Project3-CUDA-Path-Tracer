@@ -135,12 +135,36 @@ bool scatterRay(
 		return false;
 	}
 
-	if (m.hasReflective > 0){
+	if (m.hasRefractive > 0){
+		glm::vec3 reflectDir = glm::reflect(ray.direction, normal);
+
+		float r0 = pow((1 - m.indexOfRefraction) / (1 + m.indexOfRefraction), 2);
+		float schlick = r0 + (1 - r0)*pow(1 - dot(normal, reflectDir), 5);
+
+		thrust::uniform_real_distribution<float> u01(0, 1);
+		float result = u01(rng);
+
+		if (result < schlick){
+			ray.direction = reflectDir;
+			ray.origin = intersect + ray.direction * 0.001f;
+			color *= m.specular.color;
+		}
+		else{
+			float eta = m.indexOfRefraction;
+			if (outside){
+				eta = 1.0 / m.indexOfRefraction;
+			}
+
+			ray.direction = glm::refract(ray.direction, normal, eta);
+			ray.origin = intersect + ray.direction * 0.1f;
+		}
+	}
+	else if (m.hasReflective > 0){
 		ray.direction = glm::reflect(ray.direction, normal);
 		ray.origin = intersect + ray.direction * 0.001f;
 		color *= diffuseColor;
-		return true;
-	}else{
+	}
+	else {
 		//diffuse-specular
 		thrust::uniform_real_distribution<float> u01(0, 1);
 		float result = u01(rng);

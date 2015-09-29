@@ -336,7 +336,7 @@ __global__ void iterate(RayInfo* d_rayInfo, glm::vec3* d_image, int activeRayNo,
 		float nearestT = -1;
 		glm::vec3 nearestiPoint;
 		glm::vec3 nearestNormal;
-		glm::vec2 uv;
+		glm::vec2 nearestUV;
 		bool nearestOutside;
 		int matId;
 
@@ -346,6 +346,7 @@ __global__ void iterate(RayInfo* d_rayInfo, glm::vec3* d_image, int activeRayNo,
 			glm::vec3 intersectionPoint;
 			glm::vec3 normal;
 			bool outside;
+			glm::vec2 uv;
 			
 			if (g.type == GeomType::CUBE){
 				t = boxIntersectionTest(g, r.ray, intersectionPoint, normal, outside);
@@ -360,13 +361,14 @@ __global__ void iterate(RayInfo* d_rayInfo, glm::vec3* d_image, int activeRayNo,
 				nearestNormal = normal;
 				nearestOutside = outside;
 				matId = g.materialid;
+				nearestUV = uv;
 			}
 		}
 
 		if (nearestT != -1){
 			thrust::default_random_engine rng = makeSeededRandomEngine(iter, i, depth);
 
-			if (scatterRay(r.ray, r.color, nearestiPoint, nearestNormal, nearestOutside, d_mat[matId], rng, uv, d_texture)){
+			if (scatterRay(r.ray, r.color, nearestiPoint, nearestNormal, nearestOutside, d_mat[matId], rng, nearestUV, d_texture)){
 				d_rayInfo[i].ray = r.ray;
 				d_rayInfo[i].color = r.color;
 				return;
