@@ -1,5 +1,6 @@
 #include "main.h"
 #include "preview.h"
+#include <src/scene.h>
 #include <cstring>
 
 #include <stream_compaction/stream_compaction.h>
@@ -10,13 +11,25 @@ static std::string startTimeString;
 static bool camchanged = false;
 static float theta = 0, phi = 0;
 static glm::vec3 cammove;
-
+//Scene scene;
 Scene *scene;
 RenderState *renderState;
 int iteration;
 
 int width;
 int height;
+
+
+//MY
+void sceneInitKDTree()
+{
+	scene->kdtree.init(*scene);
+
+	std::cout << sizeof(Node) << std::endl;
+	std::cout << (scene->kdtree.last_idx) << std::endl;
+	std::cout << scene->kdtree.hst_node.size() << std::endl;
+}
+
 
 //-------------------------------
 //-------------MAIN--------------
@@ -33,8 +46,8 @@ int main(int argc, char** argv) {
 	//std::cout<<sizeof(Geom)<<std::endl;
 	//std::cout<<sizeof(Material)<<std::endl;
 	
-
-
+	Scene myScene;
+	scene = &myScene;
 
 
 #ifdef STREAM_COMPACTION_TEST
@@ -123,11 +136,16 @@ int main(int argc, char** argv) {
     const char *sceneFile = argv[1];
 
     // Load scene file
-    scene = new Scene(sceneFile);
+    //scene = new Scene(sceneFile);
+	scene->loadScene(sceneFile);
+#ifdef USE_KDTREE_FLAG
+	sceneInitKDTree();
+#endif
 
     // Set up camera stuff from loaded path tracer settings
     iteration = 0;
     renderState = &scene->state;
+	//renderState = &scene.state;
     width = renderState->camera.resolution.x;
     height = renderState->camera.resolution.y;
 
@@ -137,7 +155,7 @@ int main(int argc, char** argv) {
     // GLFW main loop
     mainLoop();
 
-	delete scene;
+	//delete scene;
 
     return 0;
 }
@@ -165,15 +183,7 @@ void saveImage() {
     //img.saveHDR(filename);  // Save a Radiance HDR file
 }
 
-//MY
-void sceneInitKDTree()
-{
-	scene->kdtree.init(*scene);
 
-	std::cout<<sizeof(Node)<<std::endl;
-	std::cout<<(scene->kdtree.last_idx)<<std::endl;
-	std::cout<<scene->kdtree.hst_node.size()<<std::endl;
-}
 
 
 void runCuda() {
@@ -196,25 +206,22 @@ void runCuda() {
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer
 
     if (iteration == 0) {
-        pathtraceFree();
-
-#ifdef USE_KDTREE_FLAG
-		sceneInitKDTree();
-#endif
-
+		pathtraceFree();
+		
 		
         pathtraceInit(scene);
     }
+	
 
     if (iteration < renderState->iterations) {
         uchar4 *pbo_dptr = NULL;
         iteration++;
         cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
-
+		
         // execute the kernel
         int frame = 0;
         pathtrace(pbo_dptr, frame, iteration);
-
+		
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     } else {

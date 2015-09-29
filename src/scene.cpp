@@ -9,7 +9,7 @@
 
 
 
-Scene::Scene(string filename) {
+void Scene::loadScene(string filename) {
     cout << "Reading scene from " << filename << " ..." << endl;
     cout << " " << endl;
     char* fname = (char*)filename.c_str();

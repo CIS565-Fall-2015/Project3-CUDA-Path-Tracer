@@ -180,34 +180,49 @@ void KDTree::init(Scene & s)
 	//}
 	//geoms_using.clear();
 
-	
 
+	//test output for release mode
+	std::cout << "i" << '\t' << "p_id" <<'\t' << "r_id" << '\t' << "gid" << '\t' << "num" << '\n';
+	i=-1;
+	for (auto a : hst_node)
+	{
+		i++;
+		std::cout << i << '\t' << a.parent_idx << '\t' << a.right_idx << '\t' << a.geom_index << '\t' << a.num_geoms << '\n';
+	}
+
+	std::cout << "\n\n\n\n";
+
+	for (int j = 0; j < hst_geom_idx.size(); j++)
+	{
+		std::cout << j << '\t' << hst_geom_idx.at(j) << '\n';
+	}
 }
 
 
 
-void KDTree::buildLeaf(Node & cur
+void KDTree::buildLeaf(int cur_idx
 	,const vector<KDNodeConstructWrapper>& construct_objs
 	, vector<int> & sequence, const AABB& box, int parent_idx, int depth)
 {
-
-	auto t = construct_objs.begin();
-	cur.aabb = box;//t->aabb;
+	
+	//auto t = construct_objs.begin();
+	hst_node.at(cur_idx).aabb = box;//t->aabb;
 
 	//cur.geom_index = t->geom_idx;
-	cur.geom_index = sequence.size();
+	hst_node.at(cur_idx).geom_index = sequence.size();
 
-	cur.parent_idx = parent_idx;
+	hst_node.at(cur_idx).parent_idx = parent_idx;
 	//cur.left_idx = -1;
-	cur.num_geoms = construct_objs.size();
+	hst_node.at(cur_idx).num_geoms = construct_objs.size();
 
-	cur.right_idx = -1;
+	hst_node.at(cur_idx).right_idx = -1;
 
-	for (auto c : construct_objs)
+	for (const KDNodeConstructWrapper & c : construct_objs)
 	{
 		sequence.push_back(c.geom_idx);
 	}
 
+	
 	//return cur_idx;
 }
 
@@ -233,8 +248,8 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	//	hst_node.push_back(Node());
 	//}
 	hst_node.push_back(Node());
-	Node & cur = hst_node.at(last_idx); // !!! this is not safe when hst_node assigns new value
-	int cur_idx = last_idx;
+	//Node & cur = hst_node.at(last_idx); // !!! this is not safe when hst_node assigns new value
+	int cur_idx = hst_node.size() - 1;
 	last_idx++;
 
 
@@ -242,7 +257,7 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	{
 		//leaf node
 		//no more split
-		buildLeaf(cur, construct_objs, sequence, box, parent_idx, depth);
+		buildLeaf(cur_idx, construct_objs, sequence, box, parent_idx, depth);
 
 		return cur_idx;
 	}
@@ -256,15 +271,15 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	{
 	case 0:
 		f = my_kd_construct_compare_x;
-		cur.split.axis = AXIS_X;
+		hst_node.at(cur_idx).split.axis = AXIS_X;
 		break;
 	case 1:
 		f = my_kd_construct_compare_y;
-		cur.split.axis = AXIS_Y;
+		hst_node.at(cur_idx).split.axis = AXIS_Y;
 		break;
 	case 2:
 		f = my_kd_construct_compare_z;
-		cur.split.axis = AXIS_Z;
+		hst_node.at(cur_idx).split.axis = AXIS_Z;
 		break;
 	}
 
@@ -275,17 +290,31 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 
 	vector<KDNodeConstructWrapper>::iterator t = construct_objs.begin() + (construct_objs.size() / 2);
 
-	cur.split.pos = t->mid[cur.split.axis];
-	cur.aabb = box;
-	cur.geom_index = -1;
-	cur.parent_idx = parent_idx;
-	pair<AABB, AABB> aabb_pair = cutAABB(box, cur.split);
+	hst_node.at(cur_idx).split.pos = t->mid[hst_node.at(cur_idx).split.axis];
+	hst_node.at(cur_idx).aabb = box;
+	hst_node.at(cur_idx).geom_index = -1;
+	hst_node.at(cur_idx).num_geoms = 0;
+	hst_node.at(cur_idx).right_idx = -1;
+	hst_node.at(cur_idx).parent_idx = parent_idx;
+	pair<AABB, AABB> aabb_pair = cutAABB(box, hst_node.at(cur_idx).split);
 
 	vector<KDNodeConstructWrapper> left_objs;
 	vector<KDNodeConstructWrapper> right_objs;
 
 	left_objs.assign(construct_objs.begin(), t);
 	right_objs.assign(t, construct_objs.end());
+	//for (auto it = construct_objs.begin(); it != construct_objs.end(); ++it)
+	//{
+	//	if (it < t)
+	//	{
+	//		left_objs.push_back(*it);
+	//	}
+	//	else
+	//	{
+	//		right_objs.push_back(*it);
+	//	}
+	//}
+
 
 	int tmp_left_size = left_objs.size();
 
@@ -298,7 +327,7 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	//add right to left
 	for (auto o : right_objs)
 	{
-		if (o.aabb.min_pos[cur.split.axis] < cur.split.pos)
+		if (o.aabb.min_pos[hst_node.at(cur_idx).split.axis] < hst_node.at(cur_idx).split.pos)
 		{
 			left_objs.push_back(o);
 			num_overlap++;
@@ -309,7 +338,7 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	for (int i = 0; i < tmp_left_size; i++)	//naive parse method....
 	{
 		KDNodeConstructWrapper & o = left_objs.at(i);
-		if (o.aabb.max_pos[cur.split.axis] > cur.split.pos)
+		if (o.aabb.max_pos[hst_node.at(cur_idx).split.axis] > hst_node.at(cur_idx).split.pos)
 		{
 			right_objs.push_back(o);
 			num_overlap++;
@@ -321,7 +350,7 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	{
 		//don't split
 		//build leaf
-		buildLeaf(cur, construct_objs, sequence, box, parent_idx, depth);
+		buildLeaf(cur_idx, construct_objs, sequence, box, parent_idx, depth);
 
 		return cur_idx;
 	}
@@ -330,9 +359,9 @@ int KDTree::build(vector<KDNodeConstructWrapper> & construct_objs
 	//cur.left_idx = build(left_objs, aabb_pair.first, cur_idx, depth + 1);
 	build(left_objs, sequence, aabb_pair.first, cur_idx, depth + 1);
 	
-	hst_node.at(cur_idx).right_idx = build(right_objs, sequence, aabb_pair.second, cur_idx, depth + 1);
+	int tmp_right_idx = build(right_objs, sequence, aabb_pair.second, cur_idx, depth + 1);
 	
-
+	hst_node.at(cur_idx).right_idx = tmp_right_idx;
 
 	return cur_idx;
 }

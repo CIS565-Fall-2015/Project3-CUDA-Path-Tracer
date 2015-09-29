@@ -101,14 +101,16 @@ static int * dev_geom_idx;
 
 
 void pathtraceInit(Scene *scene) {
+	
     hst_scene = scene;
+	
     const Camera &cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
-
+	
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
     // TODO: initialize the above static variables added above
-
+	
 	
 
 	cudaMalloc(&dev_path, pixelcount * sizeof(Path));
@@ -122,7 +124,7 @@ void pathtraceInit(Scene *scene) {
 	cudaMemcpy(dev_material,scene->materials.data() , scene->materials.size() * sizeof (Material), cudaMemcpyHostToDevice);
 
 
-
+	
 	//KD-tree
 	
 
@@ -132,7 +134,7 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_geom_idx, (scene->kdtree.hst_geom_idx.size()) * sizeof(int));
 	cudaMemcpy(dev_geom_idx, scene->kdtree.hst_geom_idx.data(), (scene->kdtree.hst_geom_idx.size()) * sizeof(int), cudaMemcpyHostToDevice);
 
-
+	
     checkCUDAError("pathtraceInit");
 }
 
@@ -292,7 +294,8 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 
 
 	//////////////////////////////////////////////////////////////////////
-	if(t > 0 && t < tmax )
+
+	if(hit_geom_index != -1)
 	{
 		// found hithit
 		intersect = leaf_intersect_point;
@@ -334,7 +337,7 @@ __device__ int kd_search_leaf(int & cur_idx, Node * nodes, Geom* geoms, int * ge
 				{
 					//error...
 					//should happen
-					printf("ERROR: kd tree backtrack to root!\n");
+					//printf("ERROR: kd tree backtrack to root!\n");
 					return -1;
 				}
 
@@ -398,7 +401,7 @@ __device__ int kd_search_split(int & cur_idx,Node & n,const Ray & ray,float& tmi
 //-1 end, no collision
 //-2 continue
 //>=0 hit_geom_id
-__device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms, int * geomsid
+__device__ int kd_search_node(int & cur_idx,Node * nodes,Geom* geoms, int * geomsid
 							  ,const Ray & ray,float& tmin,float& tmax, float global_tmax
 							  ,glm::vec3 & intersect, glm::vec3 & normal, bool & outside)
 {
@@ -411,6 +414,7 @@ __device__ int kd_serach_node(int & cur_idx,Node * nodes,Geom* geoms, int * geom
 	else
 	{
 		//leaf node
+		//return 8;
 		return kd_search_leaf(cur_idx, nodes, geoms, geomsid
 			, ray, tmin, tmax, global_tmax
 			, intersect, normal, outside);
@@ -453,7 +457,7 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		bool outside = true;
 
 
-#ifndef USE_KDTREE_FLAG
+#ifdef USE_KDTREE_FLAG
 		//naive parse through global geoms
 
 		for (int i = 0; i < geoms_size; i++)
@@ -500,13 +504,12 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 		while (state == -2)
 		{
 			AABBIntersect(nodes[cur_idx].aabb, path.ray, tmin, tmax);
-			state = kd_serach_node(cur_idx, nodes, geoms, geomsid
+			state = kd_search_node(cur_idx, nodes, geoms, geomsid
 				,path.ray, tmin, tmax, global_tmax
 				, intersect_point, normal, outside);
 
 		}
 		hit_geom_index = state;
-
 		////////////////////////////
 #endif
 
@@ -522,11 +525,11 @@ __global__ void pathTraceOneBounce(int iter, int depth,int num_paths,glm::vec3 *
 			Geom & geom = geoms[hit_geom_index];
 			Material & material = materials[geom.materialid];
 
-
-			//if (geom.type == TRIANGLE)
+			//test
+			//if (1)
 			//{
 			//	path.terminated = true;
-			//	image[path.image_index] += glm::vec3(1.0f);
+			//	image[path.image_index] += glm::vec3(1.0f,1.0f,0);
 			//	return;
 			//}
 

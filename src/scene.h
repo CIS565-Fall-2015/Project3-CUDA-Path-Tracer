@@ -27,7 +27,8 @@ private:
 
 	void loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_normal, int material_id);
 public:
-    Scene(string filename);
+    //Scene(string filename);
+	void loadScene(string filename);
     //~Scene();
 
     std::vector<Geom> geoms;

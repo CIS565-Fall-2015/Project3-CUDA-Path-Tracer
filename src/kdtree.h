@@ -59,6 +59,6 @@ private:
 	int build(vector<KDNodeConstructWrapper> & geoms
 		,vector<int> & sequence, const AABB& box, int parent_idx, int depth);
 
-	void buildLeaf(Node & cur,const vector<KDNodeConstructWrapper>& geoms
+	void buildLeaf(int cur_idx,const vector<KDNodeConstructWrapper>& geoms
 		, vector<int> & sequence, const AABB& box, int parent_idx, int depth);
 };
