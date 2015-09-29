@@ -7,10 +7,13 @@
 #include <thrust/random.h>
 #include <thrust/remove.h>
 
-#include "sceneStructs.h"
-#include "scene.h"
 #include "glm/glm.hpp"
 #include "glm/gtx/norm.hpp"
+
+#include <stream_compaction/shared.h>
+
+#include "sceneStructs.h"
+#include "scene.h"
 #include "utilities.h"
 #include "pathtrace.h"
 #include "intersections.h"
