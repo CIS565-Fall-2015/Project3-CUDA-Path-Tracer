@@ -12,9 +12,6 @@ An interactive GPU accelerated path tracer with support for diffuse, specular, m
 
 ## Features
 
-### Raycasting and Anitaliasing
-The camera in my project follows the "pinhole" model. All the rays are shot from the same position (the eye of the camera), and each is shot at a unique pixel on an image plane. Within each of these pixels, we "jitter" the point within the pixel the ray will shoot through calculating a random value within the pixel's dimensions. This gives us antialiasing, which removes sharp "jaggies" that you'd otherwise see on the edges of the objects in my scene.
-
 ### Diffuse Surfaces
 ![](img/cornell_diffuse.2015-09-27_02-29-25z.5000samp.png "Diffuse Sphere")
 
@@ -29,7 +26,7 @@ Perfectly specular surfaces give a mirrored effect and are created by combining 
 Performance of the path tracer is optimized by using the work efficient stream compaction method found in [GPU Gems 3 Chapter 39: Parallel Prefix Sum (Scan) with CUDA](http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html) on the array of rays. After each pass through all the rays, I check if a ray has been terminated (either because it hit a light or it traveled the maximum distance without intersecting with an object) and mark them as such. The stream compaction algorithm then takes this array and removes all of the terminated rays. This means at each pass through the rays, our collection of remaining ones to trace with becomes smaller, allowing us to free GPU threads for arrays that are still alive. More on this topic can be found in the [analysis](https://github.com/bcrusco/Project3-CUDA-Path-Tracer/blob/master/README.md#analysis) section bellow.
 
 ### Depth of Field
-![](img/cornell_dof.2015-09-27_01-18-07z.5000samp.png "Depth of Field")
+![](img/cornell_dof.2015-09-27_01-18-07z.5000_annotatedsamp.png "Depth of Field")
 
 * **Overview**: When depth of field is disabled, my path tracer acts line a "pinhole camera". All the arrays come from a single point and are shot into each pixel of an image plane. Depth of field integrates over a lense to achieve its effect, dropping the pinhole implementation. I added two new configuration options to the camera in my scene files, focal distance and aperture radius. Focal distance specifies how far away from the camera is the image in focus, and replaces the idea of the image plane. And the aperture radius determines the severity of the effect (the blur of everything not at the focal distance).
 * **Performance Impact**: Neglegable. There is a few more calculations for depth of field than the standard pinhole implementation, but they are not major and they only take place when the rays are being created for the first bounce. So the calculation will happen only once per iteration.
@@ -43,7 +40,7 @@ Performance of the path tracer is optimized by using the work efficient stream c
 * **GPU vs. CPU Implementation**: A CPU implementation would likely be recursive, where my GPU implementation is not. Because of this I use a probability calculation to determine how to bounce and only do the bounce once. Since the CPU implementation is recursive, it would likely trace both the specular and diffuse bounces instead of just picking one, and then use the ratio to determine the weights of the resulting color. So for the CPU implemenation I would expect dramatically more performance requirements for this feature than my GPU implemenation.
 
 ### Refractive Surfaces with Fresnel Effects
-![](img/cornell_glass_10k.png "Glass Sphere with Fresnel Effects")
+![](img/cornell_mirror.2015-09-27_00-58-26z.5000samp_annotated.png "Glass Sphere with Fresnel Effects")
 
 * **Overview**: This is calculated in much the same way as non-perfect specular surfaces. We figure out a probability that a ray hitting our refractive surface will either bounce off and reflect or pass into and refract through the object. If it reflects, we calculate the mirrored reflection direction, and if it refracts we calculate the ray direction using [Snell's law](https://en.wikipedia.org/wiki/Snell%27s_law). The main difference is in the calculation of this probability. We calculate the Fresnel reflection coefficient using [Schlick's approximation](https://en.wikipedia.org/wiki/Schlick%27s_approximation) (the inverse of which is the refraction coefficient). An index of refraction, specified in the scene files, determines the refractive properties of the respective material. Air has an index of refraction of 1, and glass about 2.2. It is important to keep track of whether a ray is going into an object or coming out of it, as the indexes are used in a ratio, and the ordering changes depending on what is being exited and what is being entered.
 * **Performance Impact**: Significant. Compared to non-perfect specular surfaces, we have many more calculations to do to figure out the respective reflection and refraction coefficients. In addition, if a ray hits a refractive object at a perpendicular angle, the ray is always reflected, regardless of our reflection and refraction coefficients. This is another additional calculation that adds to the performance demands.
