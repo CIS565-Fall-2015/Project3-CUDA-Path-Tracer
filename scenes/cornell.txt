@@ -140,7 +140,7 @@ SCALE       .01 10 10
 OBJECT 6
 sphere
 material 5
-TRANS       -2 4 0
+TRANS       -2 2 0
 ROTAT       0 45 0
 SCALE       3 3 3
 
