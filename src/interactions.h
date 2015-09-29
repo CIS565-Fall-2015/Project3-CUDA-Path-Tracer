@@ -70,6 +70,7 @@ void scatterRay(
         const glm::vec3 intersect,
         const glm::vec3 normal,
         const Material &m,
+		const Geom &g,
         thrust::default_random_engine &rng) {
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
@@ -81,6 +82,52 @@ void scatterRay(
 	if (m.emittance > 0.0f){
 		ray.color = ray.color * m.emittance;
 		ray.isAlive = false;
+		return;
+	}
+
+	// From Stanford notes
+	if (m.hasRefractive){
+		float n1 = 1.0f;
+		float n2 = m.indexOfRefraction;
+
+		float R0 = (n1 - n2) / (n1 + n2);
+		R0 *= R0;
+		float cosi = -glm::dot(normal, ray.direction);
+		float cosii = 1.0f - cosi;
+		float RT = R0 + (1.0f-R0)*cosii*cosii*cosii*cosii*cosii;
+
+		// Specular
+		if (randNum < RT){
+			ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
+			ray.color = ray.color * m.specular.color * (1.0f/RT);
+			ray.origin = intersect;
+		}
+		else{
+			float snell_ratio = n1 / n2;
+			float cosT = sqrt(1.0f - snell_ratio*snell_ratio*(1.0f - cosi*cosi));
+			ray.direction = snell_ratio*ray.direction + (snell_ratio * cosi - cosT)*normal;
+			//ray.direction = glm::refract(ray.direction, normal, snell_ratio);
+
+			//ray.color = ray.color * (1.0f - RT);
+			//ray.color = ray.color * m.specular.color * (1.0f/(1.0f - RT));
+			
+			ray.origin = intersect;//+0.0002f*ray.direction;
+			glm::vec3 new_intersect;
+			glm::vec3 new_normal;
+			bool outside;
+			// TODO: Intersect it again
+			if (g.type == SPHERE){
+				sphereIntersectionTest(g, ray, new_intersect, new_normal, outside);
+			}
+			else {
+				boxIntersectionTest(g, ray, new_intersect, new_normal, outside);
+			}
+			//ray.direction = glm::refract(ray.direction, new_normal, 1.0f/snell_ratio);
+			ray.origin = new_intersect;// +0.0002f*ray.direction;
+			//printf("%f %f %f\n", ray.origin.x, ray.origin.y, ray.origin.z);
+		}
+		
+		//ray.origin = intersect;
 		return;
 	}
 
