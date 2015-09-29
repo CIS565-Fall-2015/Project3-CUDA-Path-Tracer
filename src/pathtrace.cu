@@ -79,6 +79,8 @@ int ttlLights = 0;
 int * dev_lightIdxs;
 int *dev_temps;
 int *dev_incre;
+int *dev_bSum;
+
 
 void pathtraceInit(Scene *scene,bool strCmpt) {
     hst_scene = scene;
@@ -94,6 +96,7 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 	//for stream compact
 	cudaMalloc((void**)&dev_temps, sizeof(int)*pixelcount);
 	cudaMalloc((void**)&dev_incre, sizeof(int)*pixelcount);
+	cudaMalloc((void**)&dev_bSum, sizeof(int)*pixelcount);
 	//Copy geoms to dev_geoms
 	int geoSize = hst_scene->geoms.size()*sizeof(Geom);
 	Geom * hst_geoms = (Geom *)malloc(geoSize);
@@ -127,6 +130,8 @@ void pathtraceInit(Scene *scene,bool strCmpt) {
 }
 
 void pathtraceFree() {
+
+	cudaFree(dev_bSum);
 
 	cudaFree(dev_incre);
 	cudaFree(dev_temps);
@@ -397,10 +402,6 @@ __global__ void scan_sharedMem(int *dev_temp, int *Scan_odata)
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int thid = threadIdx.x;
 
-	Scan_odata[2 * index] = 2 * index;			//write scan results to device memory
-	Scan_odata[2 * index + 1] = index;
-
-
 	//Work-efficient scan with shared memory.
 	//http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html
 	extern __shared__ int scan[];					//allocated on invocation
@@ -439,7 +440,7 @@ __global__ void scan_sharedMem(int *dev_temp, int *Scan_odata)
 			scan[bi] += t;
 		}
 	}
-	__syncthreads();
+	//__syncthreads();
 
 	Scan_odata[2 * index] = scan[2 * thid];			//write scan results to device memory
 	Scan_odata[2 * index + 1] = scan[2 * thid + 1];
@@ -469,7 +470,7 @@ __global__ void sum_scan_incre(int * dev_scan,int*dev_incre,int t,int bSize)
 	int incrIdx = index / (bSize * 2);
 	dev_scan[index] += dev_incre[incrIdx];
 }
-void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps)
+void ExclusiveScanTraverse(int * dev_inc, int&ttRayNum, int bSize, int *dev_temps)
 {
 	int halfTtlRays = (int)((ttRayNum + 1) / 2);
 	int GridSize = (halfTtlRays + bSize - 1) / bSize;
@@ -477,7 +478,8 @@ void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps)
 	if (GridSize == 1) //then start step 5
 	{
 		//dev_temps is dev_bIncre
-		scan_sharedMem <<<GridSize, bSize, 2 * bSize*sizeof(int) >>>(dev_temps, dev_inc);
+		scan_sharedMem << <GridSize, bSize, 2 * bSize*sizeof(int) >> >(dev_temps, dev_inc);
+		//scan_sharedMem << <GridSize, bSize, 2 * bSize*sizeof(int) >> >(dev_temps, dev_scan);
 	}
 	else
 	{
@@ -485,26 +487,21 @@ void ExclusiveScanTraverse(int * dev_inc,int&ttRayNum,int bSize,int *dev_temps)
 		cudaMalloc((void**)&dev_scan, sizeof(int)*ttRayNum);
 		scan_sharedMem << <GridSize, bSize, 2 * bSize*sizeof(int) >> >(dev_temps, dev_scan);
 
-		int *dev_bSum;
-		cudaMalloc((void**)&dev_bSum, sizeof(int)*GridSize);
+		//int *dev_bSum;
+		//cudaMalloc((void**)&dev_bSum, sizeof(int)*GridSize);
 		blockWise_sum << <(int)((GridSize + bSize - 1) / bSize), bSize >> >(dev_temps, dev_scan, dev_bSum, bSize);
 
-		int *dev_incre;
-		cudaMalloc((void**)&dev_incre, sizeof(int)*GridSize);
-		ExclusiveScanTraverse(dev_incre, GridSize, bSize, dev_bSum);
-		
+		//int *dev_incre;
+		//cudaMalloc((void**)&dev_incre, sizeof(int)*GridSize);
+		ExclusiveScanTraverse(dev_inc, GridSize, bSize, dev_bSum);
+
 		GridSize = (ttRayNum + bSize - 1) / bSize;
-		sum_scan_incre<<<GridSize,bSize>>>(dev_scan, dev_incre,ttRayNum,bSize);
-		//cudaMemcpy(hst_a, dev_scan, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
-		//delete_PrintIntArray(hst_a, ttRayNum, "5. dev_scan");		//dev_incre
-		
+		sum_scan_incre << <GridSize, bSize >> >(dev_scan, dev_inc, ttRayNum, bSize);
+
 		cudaMemcpy(dev_inc, dev_scan, sizeof(int)*ttRayNum, cudaMemcpyDeviceToDevice);
-
-		cudaFree(dev_incre);
-		cudaFree(dev_bSum);
 		cudaFree(dev_scan);
+		//cudaFree(dev_incre);
 	}
-
 }
 
 __global__ void getUnterminatedTemp(Ray*ray,int*temp,int ttlRay)
@@ -542,16 +539,27 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	int totalRays = cam.resolution.x*cam.resolution.y;
 	int why = totalRays;// totalRays;
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, 1, traceDepth);
+	bool raySel = true;
 	for (int i = 0; i < traceDepth; i++)
 	{
 		int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 		dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
 		// a. Compute one ray along each path
-		kernComputeRay <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_mats, dev_geoms, geoNum, iter, i);
-		// b. Add all terminated rays results into pixels
-		kernUpdateImage <<<fullBlocksPerGrid, bSize >>>(totalRays, cam, dev_rays, dev_image);
-		// c. Stream compact away/thrust::remove_if all terminated paths.
-
+		if (raySel)
+		{
+			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays, dev_mats, dev_geoms, geoNum, iter, i);
+			// b. Add all terminated rays results into pixels
+			kernUpdateImage << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays, dev_image);
+			// c. Stream compact away/thrust::remove_if all terminated paths.
+		}
+		else
+		{
+			kernComputeRay << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays_temp, dev_mats, dev_geoms, geoNum, iter, i);
+			// b. Add all terminated rays results into pixels
+			kernUpdateImage << <fullBlocksPerGrid, bSize >> >(totalRays, cam, dev_rays_temp, dev_image);
+			// c. Stream compact away/thrust::remove_if all terminated paths.
+		}
+		
 		if (doStreamCompact)
 		{
 			int ttRayNum = why;
@@ -561,7 +569,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			
 			int GridSize = (ttRayNum + bSize - 1) / bSize;
 			
-			int *hst_temp = new int[ttRayNum];
+			//int *hst_temp = new int[ttRayNum];
 			/*for (int i = 0; i < ttRayNum; i++)
 			{
 				thrust::uniform_real_distribution<float> u01(0, 1);
@@ -575,8 +583,10 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			}
 			*/
 			//printf("\n\n/******* Test *******/\n");
-
-			getUnterminatedTemp<<<GridSize,bSize>>>(dev_rays, dev_temps, ttRayNum);
+			if (raySel)
+				getUnterminatedTemp << <GridSize, bSize >> >(dev_rays, dev_temps, ttRayNum);
+			else
+				getUnterminatedTemp << <GridSize, bSize >> >(dev_rays_temp, dev_temps, ttRayNum);
 			
 			//cudaMemcpy(dev_temps, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
 			//cudaMemcpy( hst_temp,dev_temps, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
@@ -588,25 +598,16 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//cudaMalloc((void**)&dev_temps_thrust, sizeof(int)*ttRayNum);
 			//getUnterminatedTemp << <GridSize, bSize >> >(dev_rays, dev_temps_thrust, ttRayNum);
 			//cudaMemcpy(dev_temps_thrust, hst_temp, sizeof(int)*ttRayNum, cudaMemcpyHostToDevice);
-			checkCUDAError("000");
 
-		
-			//cudaMemset(dev_incre, 0, sizeof(int)*ttRayNum);
-			checkCUDAError("111");
 			//printf("before scatter totalNum: %d\n", ttRayNum);
 			ExclusiveScanTraverse(dev_incre,ttRayNum, bSize, dev_temps);
-			checkCUDAError("aaa");
-			//cudaMemcpy(hst_temp, dev_incre, sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
-			//delete_PrintIntArray(hst_temp, ttRayNum, "..Final");		//dev_incre
-
+			checkCUDAError("ExclusiveScanTraverse");
 			/*
 			thrust::device_ptr<int> RayStart(dev_temps_thrust);
 			thrust::device_ptr<int> newRayEnd = RayStart + ttRayNum;
 			newRayEnd = thrust::remove_if(RayStart, newRayEnd, testdelete());
 			int thrustTT = (int)(newRayEnd - RayStart);
 			*/
-
-
 			checkCUDAError("bbb");
 			int lastInScan;
 			cudaMemcpy(&lastInScan, dev_incre + ttRayNum - 1, sizeof(int), cudaMemcpyDeviceToHost);
@@ -624,11 +625,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 			//totalRays = ttRayNum;
 			//Ray * dev_rays_tempt;
 			//cudaMalloc((void**)&dev_rays_tempt, sizeof(Ray)*why);
+			if (raySel)
+				streamCmp_scatter << <GridSize, bSize >> >(dev_rays, dev_rays_temp, dev_temps, dev_incre, why);
+			else
+				streamCmp_scatter << <GridSize, bSize >> >(dev_rays_temp, dev_rays, dev_temps, dev_incre, why);
 
-			streamCmp_scatter<<<GridSize,bSize>>>(dev_rays, dev_rays_temp, dev_temps, dev_incre,why);		
-			//checkCUDAError("bbb");
-			cudaMemcpy(dev_rays, dev_rays_temp, sizeof(Ray)*why, cudaMemcpyDeviceToDevice);
-			checkCUDAError("Copy Ray prob");
+			raySel = !raySel;
 			//printf("");	
 			//cudaMemcpy( hst_temp, dev_incre,sizeof(int)*ttRayNum, cudaMemcpyDeviceToHost);
 			//delete_PrintIntArray(hst_temp, ttRayNum, "final. scan");		//dev_temp
@@ -641,7 +643,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	//(3) Handle all not terminated
 	int bSize = 128;// blockSize.x*blockSize.y*blockSize.z;
 	dim3 fullBlocksPerGrid((totalRays + bSize - 1) / bSize);
-	kernFinalImage <<<fullBlocksPerGrid, bSize >>>(iter,totalRays,cam, dev_rays, dev_image,dev_geoms,dev_mats,dev_lightIdxs,geoNum,ttlLights);
+	if (raySel)
+	{
+		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays, cam, dev_rays, dev_image, dev_geoms, dev_mats, dev_lightIdxs, geoNum, ttlLights);
+	}
+	else
+	{
+		kernFinalImage << <fullBlocksPerGrid, bSize >> >(iter, totalRays, cam, dev_rays_temp, dev_image, dev_geoms, dev_mats, dev_lightIdxs, geoNum, ttlLights);
+	}
+	
 
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);

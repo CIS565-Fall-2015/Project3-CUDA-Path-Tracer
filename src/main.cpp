@@ -119,7 +119,7 @@ void runCuda() {
 		t2 = clock();
 		float diff((float)t2 - (float)t1);
 		diff = diff / CLOCKS_PER_SEC;
-		//printf("time/iter: %f\t iters/sec %f\n", diff,1/diff);
+		printf("time/iter: %f\t iters/sec %f\n", diff,1/diff);
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     } else {
