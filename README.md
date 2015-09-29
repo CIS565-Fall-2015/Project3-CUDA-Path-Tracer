@@ -78,40 +78,19 @@ The important part of this is sampling the lights. For this I borrowed the code 
 
 ##### Subsurface Scattering ->
 Getting physically accurate subsurface scattering effect is very expensive to compute (Algorithm explained in PBRT). I tried to hack around it and get a very small effect.
-In my method, I get a random reflection direction from the intersection point. Next, I shoot a 
-----------TODO------------
+In my method, I get a random reflection direction from the intersection point. Next, I assume that there is a hemisphere of some radius centered at the intersection point. I get the intersection point of this ray with this hemishpere. Then I create a new ray with this point as the origin and the negative direction of the original intersection normal as its direction. Now we intersect this ray with our original geometry to get the offset point from where the ray will bounce. Give this ray a random direction within the hemishpere.
 
-### Generating random numbers
+##### Work efficient Stream Compaction ->
+In the path tracer, the rays that do not hit any object or hit a light are considered to be dead. If we hit the light then we are done and we can add the color to the corresponding pixel. If it does not hit anything then also we are done. So we mark all these rays as dead. In the next step, we have to remove all these rays from our array and consider only the one's that are alive. The work efficient stream compaction helps speeding this process by doing it in parallel over the shared memory of a block.
 
-```
-thrust::default_random_engine rng(hash(index));
-thrust::uniform_real_distribution<float> u01(0, 1);
-float result = u01(rng);
-```
+##### Color Bleeding and Caustics ->
+These are real life effects that we get for free with the path tracer. In the images you can see that the red and green color of the surrounding bleeds into the white back wall giving it a little color. 
+Caustics is observed with refractive materials. When the light goes through a refractive surface, it gets concentrated on the other side. This can be observed in the image.
 
-There is a convenience function for generating a random engine using a
-combination of index, iteration, and depth as the seed:
-
-```
-thrust::default_random_engine rng = random_engine(iter, index, depth);
-```
-
-### Notes on GLM
-
-This project uses GLM for linear algebra.
-
-On NVIDIA cards pre-Fermi (pre-DX12), you may have issues with mat4-vec4
-multiplication. If you have one of these cards, be careful! If you have issues,
-you might need to grab `cudamat4` and `multiplyMV` from the
-[Fall 2014 project](https://github.com/CIS565-Fall-2014/Project3-Pathtracer).
-Let us know if you need to do this.
 
 ### Scene File Format
 
-This project uses a custom scene description format. Scene files are flat text
-files that describe all geometry, materials, lights, cameras, and render
-settings inside of the scene. Items in the format are delimited by new lines,
-and comments can be added using C-style `// comments`.
+The project needs to be fed a scene description. It includes camera parameters, material properties and geometry description. Any part of the file can be commented using C style '//' comments. This is done as a text file and follows the following format:
 
 Materials are defined in the following fashion:
 
@@ -119,81 +98,40 @@ Materials are defined in the following fashion:
 * RGB (float r) (float g) (float b) //diffuse color
 * SPECX (float specx) //specular exponent
 * SPECRGB (float r) (float g) (float b) //specular color
+* SSS (float trans) //translucence value, 0 for no, > 0 for yes
 * REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
 * REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
 * REFRIOR (float ior) //index of refraction for Fresnel effects
-* SCATTER (float scatter) //scatter flag, 0 for no, 1 for yes
-* ABSCOEFF (float r) (float b) (float g) //absorption coefficient for scattering
-* RSCTCOEFF (float rsctcoeff) //reduced scattering coefficient
-* EMITTANCE (float emittance) //the emittance of the material. Anything >0
-  makes the material a light source.
+* EMITTANCE (float emittance) //the emittance strength of the material. Material is a light source iff emittance > 0.
+
 
 Cameras are defined in the following fashion:
 
 * CAMERA //camera header
 * RES (float x) (float y) //resolution
 * FOVY (float fovy) //vertical field of view half-angle. the horizonal angle is calculated from this and the reslution
-* ITERATIONS (float interations) //how many iterations to refine the image,
-  only relevant for supersampled antialiasing, depth of field, area lights, and
-  other distributed raytracing applications
+* ITERATIONS (float interations) //how many iterations to refine the image, only relevant for supersampled antialiasing, depth of field, area lights, and other distributed raytracing applications
 * DEPTH (int depth) //maximum depth (number of times the path will bounce)
 * FILE (string filename) //file to output render to upon completion
-* frame (frame number) //start of a frame
+* FOCAL (float f) // focal lenth of the camera
+* APER (float a) // aperture of the camera
 * EYE (float x) (float y) (float z) //camera's position in worldspace
 * VIEW (float x) (float y) (float z) //camera's view direction
 * UP (float x) (float y) (float z) //camera's up vector
 
+
 Objects are defined in the following fashion:
 
 * OBJECT (object ID) //object header
-* (cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or
-  "mesh". Note that cubes and spheres are unit sized and centered at the
-  origin.
+* (cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or "mesh". Note that cubes and spheres are unit sized and centered at the origin.
 * material (material ID) //material to assign this object
-* frame (frame number) //start of a frame
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
+* OBJFILE (string filename) // obj file path if using a mesh (NEXT STEP)
 
-Two examples are provided in the `scenes/` directory: a single emissive sphere,
-and a simple cornell box made using cubes for walls and lights and a sphere in
-the middle.
+The scene files can be found in the `scene/` folder.
 
-## Third-Party Code Policy
-
-* Use of any third-party code must be approved by asking on our Google Group.
-* If it is approved, all students are welcome to use it. Generally, we approve
-  use of third-party code that is not a core part of the project. For example,
-  for the path tracer, we would approve using a third-party library for loading
-  models, but would not approve copying and pasting a CUDA function for doing
-  refraction.
-* Third-party code **MUST** be credited in README.md.
-* Using third-party code without its approval, including using another
-  student's code, is an academic integrity violation, and will, at minimum,
-  result in you receiving an F for the semester.
-
-## README
-
-Please see: [**TIPS FOR WRITING AN AWESOME README**](https://github.com/pjcozzi/Articles/blob/master/CIS565/GitHubRepo/README.md)
-
-* Sell your project.
-* Assume the reader has a little knowledge of path tracing - don't go into
-  detail explaining what it is. Focus on your project.
-* Don't talk about it like it's an assignment - don't say what is and isn't
-  "extra" or "extra credit." Talk about what you accomplished.
-* Use this to document what you've done.
-* *DO NOT* leave the README to the last minute! It is a crucial part of the
-  project, and we will not be able to grade you without a good README.
-
-In addition:
-
-* This is a renderer, so include images that you've made!
-* Be sure to back your claims for optimization with numbers and comparisons.
-* If you reference any other material, please provide a link to it.
-* You wil not be graded on how fast your path tracer runs, but getting close to
-  real-time is always nice!
-* If you have a fast GPU renderer, it is very good to show case this with a
-  video to show interactivity. If you do so, please include a link!
 
 ### Analysis
 

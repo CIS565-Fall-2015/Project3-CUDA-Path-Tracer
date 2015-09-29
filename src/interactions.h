@@ -185,24 +185,25 @@ void scatterRay(
 		r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
 
 		//Create the hemisphere to intersect
-		Geom hemisphere;
-		hemisphere.translation = intersect;
-		hemisphere.rotation = glm::vec3(0.0f);
-		hemisphere.scale = glm::vec3(m.hasTranslucence);
-
-		hemisphere.transform = utilityCore::buildTransformationMatrix(
-					hemisphere.translation, hemisphere.rotation, hemisphere.scale);
-		hemisphere.inverseTransform = glm::inverse(hemisphere.transform);
-		hemisphere.invTranspose = glm::inverseTranspose(hemisphere.transform);
-
-		glm::vec3 hemiIntersect, hemiNormal;
-		sphereIntersectionTest(hemisphere, r, hemiIntersect, hemiNormal);
+//		Geom hemisphere;
+//		hemisphere.translation = intersect;
+//		hemisphere.rotation = glm::vec3(0.0f);
+//		hemisphere.scale = glm::vec3(m.hasTranslucence);
+//
+//		hemisphere.transform = utilityCore::buildTransformationMatrix(
+//					hemisphere.translation, hemisphere.rotation, hemisphere.scale);
+//		hemisphere.inverseTransform = glm::inverse(hemisphere.transform);
+//		hemisphere.invTranspose = glm::inverseTranspose(hemisphere.transform);
+//
+//		glm::vec3 hemiIntersect, hemiNormal;
+//		sphereIntersectionTest(hemisphere, r, hemiIntersect, hemiNormal);
 
 		//Intersect the ray with the geometry again to get a point on the geom
 		Ray newR;
-		newR.origin = hemiIntersect;
+		newR.origin = getPointOnRay(r, m.hasTranslucence);
 		newR.direction = -normal;
 		int t;
+		glm::vec3 hemiIntersect, hemiNormal;
 
 		if(g[geomIndex].type == SPHERE)
 		{
