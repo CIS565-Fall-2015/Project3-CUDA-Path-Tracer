@@ -63,6 +63,7 @@ int Scene::loadGeom(string objectid) {
         }
 
         //load transformations
+		newGeom.moving = false;
         utilityCore::safeGetline(fp_in, line);
         while (!line.empty() && fp_in.good()) {
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -74,7 +75,10 @@ int Scene::loadGeom(string objectid) {
                 newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
                 newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            }
+			} else if (strcmp(tokens[0].c_str(), "MOVETO") == 0) {
+				newGeom.moving = true;
+				newGeom.moveto = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+			}
 
             utilityCore::safeGetline(fp_in, line);
         }

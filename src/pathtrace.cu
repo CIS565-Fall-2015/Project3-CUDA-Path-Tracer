@@ -4,6 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <glm/gtc/matrix_inverse.hpp>
 
 //#include <stream_compaction/efficient.h">
 
@@ -75,14 +76,9 @@ static Scene *hst_scene;
 static glm::vec3 *dev_image;
 static Ray* dev_rays;
 static Ray* dev_out_rays;
-//static glm::vec3* dev_final_colors;
 static Geom* dev_geoms;
 static Material* dev_materials;
-//static glm::vec3* dev_colors;
 
-//static BounceRay* dev_brays;
-// TODO: static variables for device memory, scene/camera info, etc
-// ...
 
 void pathtraceInit(Scene *scene) {
     hst_scene = scene;
@@ -239,27 +235,49 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
             (cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
             (cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
 
+	// Initialize aperture for DOF
 	int numBlocks = (pixelcount-1) / MAX_THREADS + 1;
 
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, iter, 0);
-	thrust::uniform_real_distribution<float> u01(-cam.aperture, cam.aperture);
+	thrust::uniform_real_distribution<float> uAp(-cam.aperture, cam.aperture);
 
-	float dx = u01(rng);
-	float dy = u01(rng);
+	float dx = uAp(rng);
+	float dy = uAp(rng);
+
+	// Initialize rays
 	initRays<<<numBlocks, MAX_THREADS>>>(pixelcount, iter, cam, dev_rays, dx, dy);
 	checkCUDAError("initRays");
 
+	// Handle movement (TODO: make this faster?)
+	Geom* geoms = &(hst_scene->geoms)[0];
+	glm::vec3 new_translation;
+	glm::vec3 new_direction;
+	float dist;
+	for (int i = 0; i < numObjects; i++){
+		if (geoms[i].moving){
+			new_direction = geoms[i].moveto - geoms[i].translation;
+			dist = glm::length(new_direction);
+			new_direction = glm::normalize(new_direction);
+			thrust::uniform_real_distribution<float> uMove(0, dist);
+			new_translation = geoms[i].translation + new_direction * uMove(rng);
+
+			geoms[i].transform = utilityCore::buildTransformationMatrix(
+				new_translation, geoms[i].rotation, geoms[i].scale);
+			geoms[i].inverseTransform = glm::inverse(geoms[i].transform);
+			geoms[i].invTranspose = glm::inverseTranspose(geoms[i].transform);
+		}
+	}
+	cudaMemcpy(dev_geoms, geoms, numObjects*sizeof(Geom), cudaMemcpyHostToDevice);
+
+	// Path tracing
 	int numAlive = pixelcount;
 	Ray* last_ray;
 
 	for (int d = 0; d < traceDepth; d++){
 		numBlocks = (numAlive - 1) / MAX_THREADS + 1;
-		//checkCUDAError("precheck");
 		intersect<<<numBlocks, MAX_THREADS>>>(iter, d, traceDepth, numAlive, cam, dev_rays, numObjects, dev_geoms, dev_materials);
-		//checkCUDAError("intersect");
 		updatePixels<<<numBlocks, MAX_THREADS>>>(numAlive, dev_rays, dev_image);
 
-		//numAlive = StreamCompaction::Efficient::shared_compact(numAlive, dev_out_rays, dev_rays, is_dead());
 		numAlive = shared_compact(numAlive, dev_out_rays, dev_rays);
 		cudaMemcpy(dev_rays, dev_out_rays, numAlive*sizeof(Ray), cudaMemcpyDeviceToDevice);
 

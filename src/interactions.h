@@ -41,6 +41,10 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__device__ void refract(glm::vec3 incident, glm::vec3 normal, float n1, float n2){
+
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -111,7 +115,8 @@ void scatterRay(
 			//ray.color = ray.color * (1.0f - RT);
 			//ray.color = ray.color * m.specular.color * (1.0f/(1.0f - RT));
 			
-			ray.origin = intersect;//+0.0002f*ray.direction;
+			//ray.origin = intersect;//+0.0002f*ray.direction;
+			ray.origin = intersect + 0.001f*ray.direction;
 			glm::vec3 new_intersect;
 			glm::vec3 new_normal;
 			bool outside;
@@ -122,8 +127,9 @@ void scatterRay(
 			else {
 				boxIntersectionTest(g, ray, new_intersect, new_normal, outside);
 			}
-			//ray.direction = glm::refract(ray.direction, new_normal, 1.0f/snell_ratio);
-			ray.origin = new_intersect;// +0.0002f*ray.direction;
+			ray.direction = glm::refract(ray.direction, new_normal, n2/n1);
+			ray.origin = new_intersect + 0.001f*ray.direction;
+			//ray.origin = new_intersect;// +0.0002f*ray.direction;
 			//printf("%f %f %f\n", ray.origin.x, ray.origin.y, ray.origin.z);
 		}
 		
