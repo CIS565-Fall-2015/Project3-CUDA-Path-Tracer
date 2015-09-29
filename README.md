@@ -6,11 +6,6 @@
 * Ratchpak (Dome) Pongmongkol
 * Tested on: OSX Yosemite 10.10.5, i7 @ 2.4GHz 16GB, GT 650M 1024MB (rMBP Early 2013)
 
-### (TODO: Your README)
-
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
-
 GPU Path Tracer
 ========================
 Path tracer is one way of rendering a CG scene. This time, we do it on GPU 
