@@ -302,7 +302,7 @@ __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms
 			if(t > 0)
 			{
 				//Intersection with light, write the color
-				image[r.pixelIndex] += (r.rayColor);//* materials[geoms[i].materialid].emittance);
+				image[r.pixelIndex] += (r.rayColor * materials[geoms[i].materialid].emittance);
 			}
 		}
 	}

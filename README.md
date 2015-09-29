@@ -3,142 +3,83 @@ CUDA Path Tracer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* SANCHIT GARG
+* Tested on: Mac OSX 10.10.4, i7 @ 2.4 GHz, GT 650M 1GB (Personal Computer)
 
-### (TODO: Your README)
+### What is a Path Tracer ?
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+A path tracer is a Global Illumination algorithm for rendering.
+The basic setup of the path tracer is that you have a camera, an image to write to and a scene to by rendered. Our aim is to find image pixel colors based on what the camera would be looking at that pixel. To do so, we shoot rays from the camera into the scene, get the intersection points from the scene and based on the material of the intersected object, set the pixel color. This is done over multiple iterations to get a physically correct global illumination. On every iteration, we bounce the ray multiple times based on the material to get a good approximation for a pixel. As every ray is independent of the other, this becomes an embarrassing parallel algorithm.
 
-Instructions (delete me)
-========================
-
-This is due Thursday, September 24 evening at midnight.
-
-**Summary:**
-In this project, you'll implement a CUDA-based path tracer capable of rendering
-globally-illuminated images very quickly.
-Since in this class we are concerned with working in GPU programming,
-performance, and the generation of actual beautiful images (and not with
-mundane programming tasks like I/O), this project includes base code for
-loading a scene description file, described below, and various other things
-that generally make up a framework for previewing and saving images.
-
-The core renderer is left for you to implement. Finally, note that, while this
-base code is meant to serve as a strong starting point for a CUDA path tracer,
-you are not required to use it if you don't want to. You may also change any
-part of the base code as you please. **This is YOUR project.**
 
 ### Contents
+
+Note: The code is build up on the framework provided by our TA, Kai for the CIS 565 class.
 
 * `src/` C++/CUDA source files.
 * `scenes/` Example scene description files.
 * `img/` Renders of example scene description files.
-  (These probably won't match precisely with yours.)
 * `external/` Includes and static libraries for 3rd party libraries.
 
 
-### Running the code
-
-The main function requires a scene description file. Call the program with
-one as an argument: `cis565_path_tracer scene/sphere.txt`.
-(In Visual Studio, `../scene/sphere.txt`.)
-
-If you are using Visual Studio, you can set this in the Debugging > Command
-Arguments section in the Project properties. Make sure you get the path right -
-read the console for errors.
-
 #### Controls
 
-* Esc to save an image and exit.
+* Esc to exit.
 * Space to save an image. Watch the console for the output filename.
 * W/A/S/D and R/F move the camera. Arrow keys rotate.
 
-## Requirements
 
-**Ask on the mailing list for clarifications.**
+## Features
 
-In this project, you are given code for:
+In this project, I aimed at implementing a CUDA base Path Tracer. The features implemented in the project are:
 
-* Loading and reading the scene description format
-* Sphere and box intersection functions
-* Support for saving images
-* Working CUDA-GL interop for previewing your render while it's running
-* A function which generates random screen noise (instead of an actual render).
+* Ray parallel path tracing over the GPU
+* Anti Aliasing
+* Basic diffused surface
+* Specular surfaces implemented by sampling a light source at random
+* Mirror surface
+* Refractive surfaces implemented with Fresnels reflectance
+* Depth of field
+* Direct Illumination by sampling a light source at random
+* Attempted Subsurface Scattering
+* Work Efficient stream compaction with shared memory to remove dead rays quickly
+* Effects like color bleeding and caustics can be observed
 
-You will need to implement the following features:
+### Implementation Details
 
-* Raycasting from the camera into the scene through an imaginary grid of pixels
-  (the screen)
-  * Implement antialiasing (by jittering rays within each pixel)
-* Diffuse surfaces
-* Perfectly specular-reflective (mirrored) surfaces
-* Stream compaction optimization. You may use any of:
-  * Your global-memory work-efficient stream compaction implementation.
-  * A shared-memory work-efficient stream compaction (see below).
-  * `thrust::remove_if` or any of the other Thrust stream compaction functions.
+Let us look at the method used to implement each of the features:
 
-You are also required to implement at least 2 of the following features.
-Please ask if you need good references (they will be added to this README
-later on). If you find good references, share them! **Extra credit**: implement
-more features on top of the 2 required ones, with point value up to +20/100 at
-the grader's discretion (based on difficulty and coolness).
+##### Ray parallel path tracing over the GPU ->
+As mentioned above, this is an emabarrisingly parallel algorithm as all rays are independent of each other. Hence we can send all the rays in parallel to a CUDA kernel for color calculations.
 
-* Work-efficient stream compaction using shared memory across multiple blocks
-  (See *GPU Gems 3* Chapter 39).
-* These 2 smaller features:
-  * Refraction (e.g. glass/water) with Frensel effects using Schlick's
-    approximation or more accurate methods
-  * Physically-based depth-of-field (by jittering rays within an aperture)
-* Texture mapping
-* Bump mapping
-* Direct lighting (by taking a final ray directly to a random point on an
-  emissive object acting as a light source)
-* Some method of defining object motion, and motion blur
-* Subsurface scattering
-* Arbitrary mesh loading and rendering (e.g. `obj` files). You can find these
-  online or export them from your favorite 3D modeling application.
-  With approval, you may use a third-party OBJ loading code to bring the data
-  into C++.
+##### Anti Aliasing ->
+A pixel is not a point but a small square area. It is possible that more than one color exists in a pixel and hence the color of the pixel should be the average of all these colors. If we always sample the center of the pixel, we will get the same color and the edges in our final render would be stairstepped. This is called aliasing. To overcome this problem, I jitter the pixel sampling point to select random points within a pixel area. This gives us a better approximation of the color at that pixel and hence a better render. This is called antialiasing.
 
-This 'extra features' list is not comprehensive. If you have a particular idea
-you would like to implement (e.g. acceleration structures, etc.), please
-contact us first.
+##### Diffused Surface ->
+For a good approximation of the color at a diffused surface, we need to bounce the ray in all possible directions and average the contributions of the color values of all these rays. To get the bounce direction, we take a direction in a hemishpere in the direction of the intersection normal (code provided). This acts as the ray direction for the next iteration.
 
-For each extra feature, you must provide the following analysis:
+##### Specular Surface ->
+To get a specular highlight, we calculate the color based on the half angle and the specular exponent. To get the half angle, we have to get the ray going to a light. Now as the light is an area light, we sample a random point on the light source to get the light vetor.
+Now to decide of the color of the this ray would be a specular or a diffused contribution, we generate a random number between 0 and 1 and take a 30-70 split between the rays. Hence 30% rays contribute specular and 70% contribute diffused. This gives us a desired result.
 
-* Overview write-up of the feature
-* Performance impact of the feature
-* If you did something to accelerate the feature, what did you do and why?
-* Compare your GPU version of the feature to a HYPOTHETICAL CPU version
-  (you don't have to implement it!) Does it benefit or suffer from being
-  implemented on the GPU?
-* How might this feature be optimized beyond your current implementation?
+##### Mirror Surface ->
+To get a mirror like effect, we reflect the incoming ray from the surface with respect to the normal.
 
-## Base Code Tour
+##### Refractive Surface and Fresnels Reflectance ->
+Materials like glass, water etc are refractive surfaces. To implement this, I take the incoming ray and refract it with inside the object. Next, I take this ray and refract it again to go come out. This gives us a transparency like effect. Make sure you feed the correct refractive indices to the refract function.
+To make the refraction more physically correct, I implemented Fresnels reflection. As per this law, any incoming light is both refracted and reflected by some amount. The probability of each happening is based on the refractive index of the object. For the calculations I refered to PBRT Page 435. This gave me the probability split between reflection and refraction. The next step is to implement both and add their contributions based on the probability.
 
-You'll be working in the following files. Look for important parts of the code:
-search for `CHECKITOUT`. You'll have to implement parts labeled with `TODO`.
-(But don't let these constrain you - you have free rein!)
+##### Depth of Field ->
+This is a very interesting effect that can be observed in many photographs where some part of the image is in sharp focus while the other is blurred out. To implement this effect, I used the focal length and aperture parameters of the camera. Assume that there is a sphere centered at the camera position and of the radius of the focal length. We get the intersection of all intitial rays with this sphere. Next, we keep this as the final point but jitter the ray's origin based on the aperture of the camera. The new ray direction will be from this jittered origin to the intersection point. What happens now is that all the points wihtin that focal length are in focus but all others are out of focus.
 
-* `src/pathtrace.cu`: path tracing kernels, device functions, and calling code
-  * `pathtraceInit` initializes the path tracer state - it should copy
-    scene data (e.g. geometry, materials) from `Scene`.
-  * `pathtraceFree` frees memory allocated by `pathtraceInit`
-  * `pathtrace` performs one iteration of the rendering - it handles kernel
-    launches, memory copies, transferring some data, etc.
-    * See comments for a low-level path tracing recap.
-* `src/intersections.h`: ray intersection functions
-  * `boxIntersectionTest` and `sphereIntersectionTest`, which take in a ray and
-    a geometry object and return various properties of the intersection.
-* `src/interactions.h`: ray scattering functions
-  * `calculateRandomDirectionInHemisphere`: a cosine-weighted random direction
-    in a hemisphere. Needed for implementing diffuse surfaces.
-  * `scatterRay`: this function should perform all ray scattering, and will
-    call `calculateRandomDirectionInHemisphere`. See comments for details.
-* `src/main.cpp`: you don't need to do anything here, but you can change the
-  program to save `.hdr` image files, if you want (for postprocessing).
+##### Direct Illumination ->
+The concept of direct illumination is that if any ray is alive after the ray depth, then we can take that ray directly to the light. If it can reach the light then we add its contribution to the final image. This helps in generating better looking renders. Also, we can reduce the trace depth and get a similar result with direct illumination.
+The important part of this is sampling the lights. For this I borrowed the code from CIS 560 to sample cubes and spheres. First I randomly select a light and then take a random point on that light. This gives me a good sampling of all the light sources.
+
+##### Subsurface Scattering ->
+Getting physically accurate subsurface scattering effect is very expensive to compute (Algorithm explained in PBRT). I tried to hack around it and get a very small effect.
+In my method, I get a random reflection direction from the intersection point. Next, I shoot a 
+----------TODO------------
 
 ### Generating random numbers
 

@@ -7,7 +7,7 @@
 __host__ __device__
 glm::vec3 getRandomPointOnCubeLight(Geom &box, thrust::default_random_engine &rng)
 {
-	glm::vec3 dim(0);// = box.scale;//, glm::vec4(1,1,1,1.0f));
+	glm::vec3 dim = box.scale;//, glm::vec4(1,1,1,1.0f));
 
 	float side1 = dim[0] * dim[1];		// x-y
 	float side2 = dim[1] * dim[2];		// y-z
