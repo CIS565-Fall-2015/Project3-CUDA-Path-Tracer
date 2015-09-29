@@ -157,7 +157,7 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
 }
 
 __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
-	int geomCount, Geom* dev_geoms, PathRay* dev_rayPool, glm::vec3 *image) {
+	int geomCount, Geom* dev_geoms, PathRay* dev_rayPool) {
 	// what information do we need for a single ray given index by block/grid thing?
 	// we need:
 	// - pointer to the sample that will have color updated OR color storage
@@ -215,12 +215,8 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 			dev_rayPool[index].color = glm::vec3(0, 0, 0);
 		}
 
-		//debug: intersection check.
-		isx_norm[0] = abs(isx_norm[0]);
-		isx_norm[1] = abs(isx_norm[1]);
-		isx_norm[2] = abs(isx_norm[2]);
-
-		image[index] += isx_norm;
+		// debug: intersection check.
+		// image[index] += isx_norm;
 
 		// debug: flat color
 		//if (nearestGeom) {
@@ -338,32 +334,28 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	dim3 iterBlocksPerGrid((unfinishedRays + iterBlockSize.x - 1) /
 		iterBlockSize.x);
 
-
 	rayCast <<<iterBlocksPerGrid, iterBlockSize >>>(cam, dev_rayPool, traceDepth);
 	
-	singleBounce << <iterBlocksPerGrid, iterBlockSize >> >(iter, pixelcount,
-		dev_mats, hst_geomCount, dev_geoms, dev_rayPool, dev_image);
+	while (unfinishedRays > 0) {
+		iterBlocksPerGrid.x = (unfinishedRays + iterBlockSize.x - 1) /
+			iterBlockSize.x;
 
-	//while (unfinishedRays > 0) {
-	//	iterBlocksPerGrid.x = (unfinishedRays + iterBlockSize.x - 1) /
-	//		iterBlockSize.x;
-	//
-	//	singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(iter, pixelcount,
-	//		dev_mats, hst_geomCount, dev_geoms, dev_rayPool);
-	//
-	//	poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
-	//	
-	//	//unfinishedRays = cullRaysThrust(unfinishedRays);
-	//	//unfinishedRays = cullRaysEfficient(unfinishedRays);
-	//	unfinishedRays = cullRaysEfficientSharedMemory(unfinishedRays);
-	//	if (iter == 1) printf("unfinished rays: %i\n", unfinishedRays);
-	//}
-	//
-	//// transfer results over to the image
-	//iterBlocksPerGrid.x = (cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) /
-	//	iterBlockSize.x;
-	//
-	//mergeSample << <iterBlocksPerGrid, iterBlockSize >> >(dev_sample, dev_image);
+		singleBounce <<<iterBlocksPerGrid, iterBlockSize >>>(iter, pixelcount,
+			dev_mats, hst_geomCount, dev_geoms, dev_rayPool);
+
+		poolToImage << <iterBlocksPerGrid, iterBlockSize >> >(dev_rayPool, dev_sample);
+		
+		//unfinishedRays = cullRaysThrust(unfinishedRays);
+		//unfinishedRays = cullRaysEfficient(unfinishedRays);
+		unfinishedRays = cullRaysEfficientSharedMemory(unfinishedRays);
+		if (iter == 1) printf("unfinished rays: %i\n", unfinishedRays);
+	}
+
+	// transfer results over to the image
+	iterBlocksPerGrid.x = (cam.resolution.x * cam.resolution.y + iterBlockSize.x - 1) /
+		iterBlockSize.x;
+
+	mergeSample << <iterBlocksPerGrid, iterBlockSize >> >(dev_sample, dev_image);
 
     ///////////////////////////////////////////////////////////////////////////
 

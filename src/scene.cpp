@@ -217,6 +217,8 @@ int Scene::loadObj(string filename, Geom &geom) {
 	cudaMalloc(&geom.dev_triangleVertices, geom.numTriangles * sizeof(glm::vec3));
 	cudaMemcpy(geom.dev_triangleVertices, newMesh.vertices.data(),
 		geom.numTriangles * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	printf("Done loading ");
 	printf(filename.c_str());
+	printf("\n");
 	return 1;
 }
