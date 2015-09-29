@@ -84,10 +84,8 @@ glm::vec3 getRandomPointOnLight(Geom *g, int *lightIndices, int *lightCount, thr
 	{
 		case CUBE:
 			return getRandomPointOnCubeLight(g[i], rng);
-			break;
 		case SPHERE:
 			return getRandomPointOnSphereLight(g[i], rng);
-			break;
 		default:
 			break;
 	}

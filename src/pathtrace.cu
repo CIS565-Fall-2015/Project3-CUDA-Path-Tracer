@@ -115,6 +115,7 @@ void pathtraceInit(Scene *scene) {
 
     //Allocate memory for rays
     cudaMalloc((void**)&dev_rays_begin, pixelcount * sizeof(RayState));
+    cudaMalloc((void**)&dev_rays_end, pixelcount * sizeof(RayState));
 
     //Copy Light Indices
     cudaMalloc((void**)&dev_light_indices, hst_scene->state.lightIndices.size() * sizeof(int));
@@ -138,6 +139,7 @@ void pathtraceFree() {
     cudaFree(dev_state);
     cudaFree(dev_geoms_count);
     cudaFree(dev_rays_begin);
+    cudaFree(dev_rays_end);
     cudaFree(dev_light_indices);
     cudaFree(dev_light_count);
 
@@ -213,10 +215,10 @@ __global__ void kernJitterDOF(Camera * camera, RayState* rays, int iter)
 
 		Ray &r = rays[index].ray;
 
-		bool outside;
+//		bool outside;
 		glm::vec3 intersectionPoint, normal;
 
-		sphereIntersectionTest(camera->camSphere, r, intersectionPoint, normal, outside);
+		sphereIntersectionTest(camera->camSphere, r, intersectionPoint, normal);//, outside);
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
@@ -387,6 +389,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     dev_rays_end = dev_rays_begin + pixelcount;
     int rayCount = pixelcount;
     int numBlocks, numThreads = 64;
+
     numBlocks = (rayCount + numThreads - 1) / numThreads;
 
     int countThrust, countMine;
@@ -396,23 +399,29 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     	//Take one step, should make dead rays as false
     	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, i, rayCount);
 
+//    	std::cout<<"RayCount Before: "<<rayCount<<std::endl;
     	//Stream compaction using work efficient
-    	countMine = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin, dev_rays_end);
+    	countMine = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);//, dev_rays_end);
 
     	//Compact rays, dev_rays_end points to the new end
-    	//dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
-    	//countThrust = dev_rays_end - dev_rays_begin;
+//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+//    	countThrust = dev_rays_end - dev_rays_begin;
 
     	rayCount = countMine;
-    	std::cout<<"RayCount : "<<rayCount<<std::endl;
+//    	rayCount = countThrust;
+//    	std::cout<<"RayCount After: "<<rayCount<<std::endl;
 
     	numBlocks = (rayCount + numThreads - 1) / numThreads;
+
+//    	int as;
+//    	std::cout<<"Input k : ";
+//    	std::cin>>as;
     }
 
     //Direct Illumination
     if(DI && rayCount > 0)
     {
-    	kernDirectLightPath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, traceDepth, rayCount);
+//    	kernDirectLightPath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, traceDepth, rayCount);
     }
 
     // Send results to OpenGL buffer for rendering

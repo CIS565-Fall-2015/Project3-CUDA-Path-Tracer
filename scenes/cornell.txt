@@ -77,7 +77,7 @@ EMITTANCE   0
 
 // Camera
 CAMERA
-RES         64 64
+RES         256 256
 FOVY        45
 ITERATIONS  5000
 DEPTH      	5

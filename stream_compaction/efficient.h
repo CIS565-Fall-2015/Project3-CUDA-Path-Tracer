@@ -6,7 +6,7 @@
 namespace StreamCompaction {
 namespace Efficient {
 
-    int compact(int n, RayState *odata, RayState *idata);
+    int compact(int n, RayState *idata);//, RayState *odata);
 }
 }
 

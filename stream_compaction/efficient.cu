@@ -3,10 +3,29 @@
 #include "efficient.h"
 #include <iostream>
 
+#define DEBUG 0
+
 namespace StreamCompaction {
 namespace Efficient {
 
-const int threadCount = 256;
+const int threadCount = 16;
+
+#define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+void checkCUDAErrorFn(const char *msg, const char *file, int line) {
+    cudaError_t err = cudaGetLastError();
+    if (cudaSuccess == err) {
+        return;
+    }
+
+    fprintf(stderr, "CUDA error");
+    if (file) {
+        fprintf(stderr, " (%s:%d)", file, line);
+    }
+    fprintf(stderr, ": %s: %s\n", msg, cudaGetErrorString(err));
+    exit(EXIT_FAILURE);
+}
+
 
 void printArray(int n, int * a)
 {
@@ -16,9 +35,9 @@ void printArray(int n, int * a)
 	printf("\n");
 }
 
-__global__ void setK(int * k, int * data, int index)
+__global__ void setK(int * k, int * data, int *bool_data, int index)
 {
-	(*k) = data[index];
+	(*k) = data[index] + bool_data[index];
 }
 
 __global__ void blockWiseScan(int n, int *odata, int *idata)
@@ -76,19 +95,29 @@ __global__ void blockWiseScan(int n, int *odata, int *idata)
 __global__ void createTemp(int * odata, int *idata, int * temp, int numThreads)
 {
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
 	temp[index] = odata[(index+1) * numThreads - 1] + idata[(index+1) * numThreads - 1];
 }
 
-__global__ void updateidata(int n, int *odata, int *temp_data)
+__global__ void updateidata(int n, int *odata, int *temp_data, int numThreads)
 {
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 
-	odata[index] += temp_data[blockIdx.x];
+	odata[index] += temp_data[(index / numThreads)];
 }
 
 void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 {
 	blockWiseScan<<<numBlocks, numThreads>>>(n, odata, idata);
+	checkCUDAError("BlockWiseScan1");
+
+	int *printData = new int[n];
+	if(DEBUG)
+	{
+		std::cout<<"\nblockWiseScan";
+		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+		printArray(n, printData);
+	}
 
 	//Then we have to recurse and solve the odata array, So create a new array and solve.
 	int *dev_temp,
@@ -97,13 +126,22 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	int	fullN = pow(2, p);
 
 	cudaMalloc((void**)&dev_temp, fullN * sizeof(int));
-	cudaMalloc((void**)&dev_odata, fullN * sizeof(int));
-
 	cudaMemset(dev_temp, 0, fullN * sizeof(int));
-	createTemp<<<1, numBlocks>>>(odata, idata, dev_temp, numThreads);
 
 	int newN = numBlocks;
-	int newNumBlocks = (numBlocks + numThreads -1) / numThreads;
+	int newNumBlocks = (numBlocks + numThreads - 1) / numThreads;
+
+	createTemp<<<newNumBlocks, numThreads>>>(odata, idata, dev_temp, numThreads);
+	checkCUDAError("createTemp");
+
+	if(DEBUG)
+	{
+		std::cout<<"\ncreateTemp";
+		cudaMemcpy(printData, dev_temp, newN * sizeof(int), cudaMemcpyDeviceToHost);
+		printArray(newN, printData);
+	}
+
+	cudaMalloc((void**)&dev_odata, fullN * sizeof(int));
 
 	if(numBlocks > numThreads)
 	{
@@ -113,60 +151,94 @@ void exclusiveScan(int n, int *odata, int *idata, int numBlocks, int numThreads)
 	else
 	{
 		blockWiseScan<<<newNumBlocks, numThreads>>>(newN, dev_odata, dev_temp);
+		checkCUDAError("BlockWiseScan2");
 	}
 
+	updateidata<<<numBlocks, numThreads>>>(n, odata, dev_odata, numThreads);
+	checkCUDAError("updateidata");
 
-	updateidata<<<numBlocks, numThreads>>>(n, odata, dev_odata);
+	if(DEBUG)
+	{
+		std::cout<<"\nupdate idata";
+		cudaMemcpy(printData, odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+		printArray(n, printData);
+	}
+
 	cudaFree(dev_temp);
 	cudaFree(dev_odata);
+	delete(printData);
 }
 
-int compact(int n, RayState *odata, RayState *idata) {
+int compact(int n, RayState *idata)
+{
 
-	std::cout<<n<<std::endl;
+	RayState * hst_idata = new RayState[n];
+
+	cudaMemcpy(hst_idata, idata, n * sizeof(RayState), cudaMemcpyDeviceToHost);
+
+	int i, count = 0;
+	for(i=0; i<n; ++i)
+	{
+		if(hst_idata[i].isAlive)
+			count++;
+	}
+
+	std::cout<<"Count Alive: "<<count<<std::endl;
+
 	int oriN = n;
 
 	int p = ilog2ceil(n);
 	n = pow(2, p);
-	std::cout<<n<<std::endl;
 
 	int numThreads = threadCount,
 		numBlocks = (n + numThreads - 1) / numThreads;
 
-	int	*dev_k,
-		*dev_scanData,
-		*dev_temp;
+	RayState *dev_odata;
+
+	int	*dev_k = NULL,
+		*dev_bool = NULL,
+		*dev_temp = NULL;
 	int *printData = new int[n];
 
 	cudaMalloc((void**)&dev_k, sizeof(int));
-	cudaMalloc((void**)&dev_scanData, n * sizeof(int));
+	cudaMalloc((void**)&dev_bool, n * sizeof(int));
 	cudaMalloc((void**)&dev_temp, n * sizeof(int));
 
+	StreamCompaction::Common::kernMapToBoolean<<<numBlocks, numThreads>>>(oriN, dev_bool, idata);
+	checkCUDAError("kernMapToBool");
 
-	StreamCompaction::Common::kernMapToBoolean<<<numBlocks, numThreads>>>(n, dev_scanData, idata);
+	if(DEBUG)
+	{
+		std::cout<<"\nBools : ";
+		cudaMemcpy(printData, dev_bool, n * sizeof(int), cudaMemcpyDeviceToHost);
+		printArray(n, printData);
+	}
 
-	cudaMemcpy(printData, dev_scanData, n * sizeof(int), cudaMemcpyDeviceToHost);
-	printArray(n, printData);
+	exclusiveScan(n, dev_temp, dev_bool, numBlocks, numThreads);
+	checkCUDAError("Exclusive Scan");
 
-	exclusiveScan(n, dev_temp, dev_scanData, numBlocks, numThreads);
+//	cudaMemcpy(printData, dev_temp, n * sizeof(int), cudaMemcpyDeviceToHost);
+//	printArray(n, printData);
 
-	cudaMemcpy(printData, dev_temp, n * sizeof(int), cudaMemcpyDeviceToHost);
-	printArray(n, printData);
-
-	setK<<<1,1>>>(dev_k, dev_temp, n-1);
+	setK<<<1,1>>>(dev_k, dev_temp, dev_bool, n-1);
 	int *k = new int;
 	cudaMemcpy(k, dev_k, sizeof(int), cudaMemcpyDeviceToHost);
 
-	StreamCompaction::Common::kernScatter<<<numBlocks, numThreads>>>(n, odata, idata, dev_scanData, dev_temp);
+	cudaMalloc((void**)&dev_odata, (*k) * sizeof(RayState));
+	StreamCompaction::Common::kernScatter<<<numBlocks, numThreads>>>(n, dev_odata, idata, dev_bool, dev_temp);
+	checkCUDAError("kernScatter");
 
-	cudaMemcpy(idata, odata, oriN * sizeof(RayState), cudaMemcpyDeviceToDevice);
+	cudaMemcpy(idata, dev_odata, (*k) * sizeof(RayState), cudaMemcpyDeviceToDevice);
 
-	std::cout<<*k<<std::endl;
+	std::cout<<"K :"<<*k<<std::endl;
 
-	cudaFree(dev_scanData);
+	cudaFree(dev_bool);
 	cudaFree(dev_k);
 	cudaFree(dev_temp);
+	cudaFree(dev_odata);
+	delete(printData);
 	return (*k);
+//	return 0;
 }
 
 
@@ -183,11 +255,11 @@ __global__ void kernMapToBoolean(int n, int *bools, const RayState *idata) {
 
 	if(index < n)
 	{
-//		if(idata[index].isAlive)
-//		{
-//			printf("Here\n");
-//		}
-	bools[index] = (idata[index].isAlive) ? 1 : 0;
+		bools[index] = (idata[index].isAlive) ? 1 : 0;
+	}
+	else
+	{
+		bools[index] = 0;
 	}
 }
 
@@ -197,7 +269,6 @@ __global__ void kernMapToBoolean(int n, int *bools, const RayState *idata) {
  */
 __global__ void kernScatter(int n, RayState *odata,
         const RayState *idata, const int *bools, const int *indices) {
-    // TODO
 
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 
