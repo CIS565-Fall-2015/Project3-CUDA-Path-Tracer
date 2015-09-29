@@ -190,6 +190,10 @@ __global__ void singleBounce(int iter, int pixelCount, Material* dev_mats,
 				candidate_t = sphereIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
 					candidate_isx_point, candidate_isx_norm);
 			}
+			else if (dev_geoms[i].type == MESH) {
+				candidate_t = meshIntersectionTest(dev_geoms[i], dev_rayPool[index].ray,
+					candidate_isx_point, candidate_isx_norm);
+			}
 			if (candidate_t > 0.0f && candidate_t < t) {
 				t = candidate_t;
 				isx_point = candidate_isx_point;

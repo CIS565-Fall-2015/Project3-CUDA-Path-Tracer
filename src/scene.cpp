@@ -32,6 +32,16 @@ Scene::Scene(string filename) {
     }
 }
 
+Scene::~Scene() {
+	// free GPU resources
+	int numGeoms = geoms.size();
+	for (int i = 0; i < numGeoms; i++) {
+		if (geoms.at(i).type == MESH) {
+			cudaFree(geoms.at(i).dev_triangleVertices);
+		}
+	}
+}
+
 int Scene::loadGeom(string objectid) {
     int id = atoi(objectid.c_str());
     if (id != geoms.size()) {
@@ -51,7 +61,10 @@ int Scene::loadGeom(string objectid) {
             } else if (strcmp(line.c_str(), "cube") == 0) {
                 cout << "Creating new cube..." << endl;
                 newGeom.type = CUBE;
-            }
+			} else if (strcmp(line.c_str(), "mesh") == 0) {
+				cout << "Creating new mesh..." << endl;
+				newGeom.type = MESH;
+			}
         }
 
         //link material
@@ -74,7 +87,9 @@ int Scene::loadGeom(string objectid) {
                 newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
                 newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-            }
+			} else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
+				filenames.push_back(tokens[1]);
+			}
 
             utilityCore::safeGetline(fp_in, line);
         }
@@ -179,4 +194,29 @@ int Scene::loadMaterial(string materialid) {
         materials.push_back(newMaterial);
         return 1;
     }
+}
+
+int Scene::loadAllObjs() {
+	int filenameVectorIndex = 0;
+	int numGeoms = geoms.size();
+	for (int i = 0; i < numGeoms; i++) {
+		if (geoms.at(i).type == MESH) {
+			loadObj(filenames.at(filenameVectorIndex), geoms.at(i));
+			filenameVectorIndex++;
+		}
+	}
+	return 1;
+}
+
+int Scene::loadObj(string filename, Geom &geom) {
+	// load the obj
+	Mesh newMesh(filename);
+
+	// load the triangles into GPU memory
+	geom.numTriangles = newMesh.vertices.size();
+	cudaMalloc(&geom.dev_triangleVertices, geom.numTriangles * sizeof(glm::vec3));
+	cudaMemcpy(geom.dev_triangleVertices, newMesh.vertices.data(),
+		geom.numTriangles * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	printf(filename.c_str());
+	return 1;
 }

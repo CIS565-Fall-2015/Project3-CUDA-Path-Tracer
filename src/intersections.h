@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtx/intersect.hpp>
 
 #include "sceneStructs.h"
 #include "utilities.h"
@@ -142,3 +143,32 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+__host__ __device__ float meshIntersectionTest(Geom mesh, Ray r,
+	glm::vec3& intersectionPoint, glm::vec3& normal) {
+	float nearestDistance = -1.0f;
+	int triangleIndex = -1;
+	for (int i = 0; i < mesh.numTriangles; i += 3) {
+		glm::vec3 barycentric;
+		glm::intersectRayTriangle(r.origin, r.direction, mesh.dev_triangleVertices[i],
+			mesh.dev_triangleVertices[i + 1], mesh.dev_triangleVertices[i + 2], barycentric);
+		// compute the real position of the intersect in the triangle and its distance
+		// from the ray origin.
+		glm::vec3 isxPosition = barycentric.z * r.direction + r.origin;
+		float distance = glm::distance(isxPosition, r.origin);
+		if (distance > 0.0f && (distance < nearestDistance || nearestDistance < 0.0f)) {
+			nearestDistance = distance;
+			intersectionPoint = isxPosition;
+			triangleIndex = i;
+		}
+	}
+	if (triangleIndex > -1) {
+		// compute normal using triangle's indices. assume cclockwise face.
+		glm::vec3 sideA = mesh.dev_triangleVertices[triangleIndex + 1] - 
+			mesh.dev_triangleVertices[triangleIndex];
+		glm::vec3 sideB = mesh.dev_triangleVertices[triangleIndex + 2] -
+			mesh.dev_triangleVertices[triangleIndex];
+		normal = glm::cross(sideA, sideB);
+	}
+	return nearestDistance;
+};

@@ -37,8 +37,11 @@ int main(int argc, char** argv) {
     width = renderState->camera.resolution.x;
     height = renderState->camera.resolution.y;
 
-    // Initialize CUDA and GL components
-    init();
+	// Initialize CUDA and GL components
+	init();
+
+	// load objs
+	scene->loadAllObjs();
 
     // GLFW main loop
     mainLoop();
