@@ -111,11 +111,13 @@ glm::vec3 specDir,float specExp, thrust::default_random_engine &rng) {
  * You may need to change the parameter list for your purposes!
  */
 
-__host__ __device__ glm::vec3 ColorInTex(int texId,glm::vec3**texs,glm::vec2*info,int x,int y)
+__host__ __device__ glm::vec3 ColorInTex(int texId,glm::vec3**texs,glm::vec2*info,glm::vec2 uv)
 {
 	int xSize = info[texId].x;
 	int ySize = info[texId].y;
-	if (x < 0 || y < 0 || x >= xSize || y >= ySize) return glm::vec3(0, 0, 0);
+	if (uv.x < 0 || uv.y < 0 || uv.x >1 || uv.y >1) return glm::vec3(0, 0, 0);
+	int x = (float)(uv.x*(float)xSize);
+	int y = (float)(uv.y*(float)ySize);
 	return texs[texId][(y * xSize) + x];
 }
 
@@ -129,6 +131,7 @@ glm::vec3 normal,
 const Material &m,
 glm::vec3**t,
 glm::vec2*info,
+glm::vec2 uv,
 thrust::default_random_engine &rrr) {
 	// TODO: implement this.
 	// A basic implementation of pure-diffuse shading will just call the
@@ -150,9 +153,12 @@ thrust::default_random_engine &rrr) {
 		return ray.carry;
 
 	glm::vec3 matColor = m.color;
+	glm::vec3 matSpecClr = m.specular.color;
 	if (m.TexIdx!=-1)
 	{
-		matColor = ColorInTex(m.TexIdx,t,info, 700,100);
+		matColor = ColorInTex(m.TexIdx,t,info, uv);
+		//matSpecClr = matColor;
+		//printf("UV:%3f,%3f\n color:%3f,%3f,%3f\n",uv.x,uv.y, matColor.x, matColor.y, matColor);
 		//matColor = glm::vec3(0, 1, 0);
 	}
 
@@ -221,7 +227,7 @@ thrust::default_random_engine &rrr) {
 
 		if (m.specular.exponent > 0)
 		{	
-			specProb = glm::length(m.specular.color);
+			specProb = glm::length(matSpecClr);
 			//specProb = specProb / (specProb + glm::length(m.color));
 			specProb = specProb / (specProb + glm::length(matColor));
 			if (u01(rrr) < specProb) //spec ray
@@ -247,7 +253,7 @@ thrust::default_random_engine &rrr) {
 	{
 		ray.origin = getPointOnRay(ray, intrT);
 		ray.direction = glm::normalize(glm::reflect(ray.direction, normal));
-		ray.carry *= m.specular.color;
+		ray.carry *= matSpecClr;
 	}
 		break;
 	case RefrRay:
@@ -261,7 +267,7 @@ thrust::default_random_engine &rrr) {
 		{
 			ray.origin = getPointOnRay(ray, intrT);
 			ray.direction = glm::normalize(glm::reflect(ray.direction, normal));
-			ray.carry *= m.specular.color;
+			ray.carry *= matSpecClr;
 		} 
 		else
 		{
@@ -276,7 +282,7 @@ thrust::default_random_engine &rrr) {
 		ray.origin = getPointOnRay(ray, intrT);
 		glm::vec3 specDir = glm::reflect(ray.direction, normal);
 		ray.direction = glm::normalize(calculateRandomSpecularDirection(specDir, m.specular.exponent, rrr));
-		ray.carry *= m.specular.color;// *(1.f / specProb);
+		ray.carry *= matSpecClr;// *(1.f / specProb);
 	}
 		break;
 	case SSSRay_o:

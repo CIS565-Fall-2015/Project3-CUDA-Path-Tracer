@@ -44,12 +44,17 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
  * @param outside            Output param for whether the ray came from outside.
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
-__host__ __device__ float boxIntersectionTest(Geom box, Ray r,
-        glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
+__host__ __device__ float boxIntersectionTest(
+	Geom box, Ray r,
+	glm::vec3 &intersectionPoint, 
+	glm::vec3 &normal,
+	bool &outside,
+	glm::vec2 &UV)
+{
     Ray q;
     q.origin    =                multiplyMV(box.inverseTransform, glm::vec4(r.origin   , 1.0f));
     q.direction = glm::normalize(multiplyMV(box.inverseTransform, glm::vec4(r.direction, 0.0f)));
-
+	//q: local ray
     float tmin = -1e38f;
     float tmax = 1e38f;
     glm::vec3 tmin_n;
@@ -82,6 +87,35 @@ __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
             outside = false;
         }
         intersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(q, tmin), 1.0f));
+
+		glm::vec3 localP = getPointOnRay(q, tmin);
+		
+		UV = glm::vec2(-1, -1);
+
+		if (abs(abs( localP.z) - 0.5) <0.01) //top or bottom
+		{
+			UV.x = (localP.y + 1.5f)/4.f;
+			UV.y = (localP.x + 0.5f) / 4.f;
+			if (localP.z < 0)
+				UV.y += 2.f / 4.f;
+
+		}
+		else if (abs(abs(localP.x) - 0.5) <0.01)////front or back
+		{
+			UV.x = (localP.y + 1.5f) / 4.f;
+			UV.y = (1.5f - localP.z) / 4.f;
+			if (localP.x <0)
+				UV.y += 2.f / 4.f;
+
+		}
+		else if (abs(abs(localP.y) - 0.5) <0.01) //left or right
+		{
+			UV.y = (1.5f - localP.z) / 4.f;
+			UV.x = (localP.x + 0.5f) / 4.f;
+			if (localP.y < 0)
+				UV.x += 2.f / 4.f;
+		}
+
         normal = glm::normalize(multiplyMV(box.transform, glm::vec4(tmin_n, 0.0f)));
         return glm::length(r.origin - intersectionPoint);
     }
@@ -98,8 +132,14 @@ __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
  * @param outside            Output param for whether the ray came from outside.
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
-__host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
-        glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
+__host__ __device__ float sphereIntersectionTest(
+	Geom sphere, 
+	Ray r,
+	glm::vec3 &intersectionPoint,
+	glm::vec3 &normal, 
+	bool &outside,
+	glm::vec2 &UV) 
+{
     float radius = .5;
 
     glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
@@ -138,6 +178,14 @@ __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
     if (!outside) {
         normal = -normal;
     }
+
+	UV = glm::vec2(-1, -1);
+	float dx = objspaceIntersection.x;
+	float dy = objspaceIntersection.y;
+	float dz = objspaceIntersection.z;
+	UV.x = 0.5 + atan2(dz, dx) / (2 * PI);
+	UV.y = 0.5 - asin(dy) / (PI);
+
 
     return glm::length(r.origin - intersectionPoint);
 }

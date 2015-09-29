@@ -8,6 +8,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   5
 BSSRDF	    0
+TEX	    NULL
 
 // Diffuse white
 MATERIAL 1
@@ -19,6 +20,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // Diffuse pink
 MATERIAL 2
@@ -30,6 +32,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // Mirror blue
 MATERIAL 3
@@ -41,6 +44,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // Diffuse Gray
 MATERIAL 4
@@ -52,6 +56,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // transparent white
 MATERIAL 5
@@ -63,6 +68,7 @@ REFR        1
 REFRIOR     1.6
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // transparent coffe
 MATERIAL 6
@@ -74,6 +80,7 @@ REFR        1
 REFRIOR     1.2
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // transparent mint
 MATERIAL 7
@@ -85,6 +92,7 @@ REFR        1
 REFRIOR     1.6
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // mirror lemon
 MATERIAL 8
@@ -96,6 +104,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // diffuse mint
 MATERIAL 9
@@ -107,6 +116,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    NULL
 
 // spec orange
 MATERIAL 10
@@ -118,6 +128,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    05.jpg
 
 // spec violet
 MATERIAL 11
@@ -129,6 +140,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
+TEX	    ppp.jpg
 
 // Camera
 CAMERA
@@ -137,8 +149,8 @@ FOVY        30
 ITERATIONS  5000
 DEPTH       8
 FILE        cornell
-EYE         0.0 8 12.5
-VIEW        0 -0.25 -1
+EYE         -0.7 2 3.5
+VIEW        0.4 -0.1 -1
 UP          0 1 0
 
 

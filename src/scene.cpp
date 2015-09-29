@@ -30,10 +30,6 @@ Scene::Scene(string filename) {
             }
         }
     }
-	//printf("ts:%d\n", textures.size());
-	//glm::vec3 aa = textures[0].getPixel(10, 10);
-	//printf("%3f,%3f,%3f\n",aa.x,aa.y,aa.z);
-	cin.get();
 }
 
 int Scene::loadGeom(string objectid) {

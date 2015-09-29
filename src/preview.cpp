@@ -171,7 +171,6 @@ void mainLoop() {
         glfwPollEvents();
         runCuda();
 
-		//cin.get();
         string title = "CIS565 Path Tracer | " + utilityCore::convertIntToString(iteration) + " Iterations";
         glfwSetWindowTitle(window, title.c_str());
 

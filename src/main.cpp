@@ -113,7 +113,8 @@ void runCuda() {
         // execute the kernel
         int frame = 0;
 
-		//
+		//cin.get();
+
 		clock_t t1, t2;
 		t1 = clock();
         pathtrace(pbo_dptr, frame, iteration);
