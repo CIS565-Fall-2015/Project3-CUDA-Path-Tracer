@@ -152,7 +152,7 @@ The scene files can be found in the `scene/` folder.
 
 Here I have done an analysis for stream compaction and how it helps make the path tracer faster. I compared my excution time for one iteration for a 1600x1600 image for a depth of 30. The time were compared for the case of no stream compaction, for stream compaction with thrust and for the work efficient stream compaction implemented using shared memory. The results are as follows :
 
-![](analysis/table.png) ![](analysis/graph.png)
+![](analysis/graph.png)
 
 The graph clearly shows that both the stream compaction implementations are better than the case with no stream compaction. This is because we only send the live rays in the next depth when we do stream compaction. In the case of no stream compaction, all the rays are send to the kernel. This wastes CPU kernels and hence the implementation is slower.
   
