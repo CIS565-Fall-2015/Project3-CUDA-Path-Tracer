@@ -518,8 +518,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	
 	for(int i=0;i<depth;++i){
 		int bs=256;
-		cout<<remain<<endl;
-		getchar();
+		//cout<<remain<<endl;
+		//getchar();
 		dim3 gs((remain+bs-1)/bs);
 		pathTraceKernel<<<gs, bs>>>(dev_origin, dev_direction, dev_pixes,dev_inside,dev_terminated,dev_geom, geomNum, dev_material,iter,i,remain);
 		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,dev_terminated,bs);
