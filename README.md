@@ -20,6 +20,9 @@ Using Snell's law we can get the refraction ray. However, in the actual situatio
 PART V: Mesh Intersection
 We first read obj file into our program and copy them to GPU. Here we intersect the ray with each triangle of the object. The copy to GPU may become a problem. In general, first copy all vertex,normal,index of the mesh, then copy the mesh itself. That can guarantee you get the whole structure of the mesh and they are all linked to each other on GPU. ![](img/bunny1.png)
 
-PART VI: 
+PART VI:  Kdtree Acceleration
+The above mesh intersection is the naive method, which is OK for small objects, but impossible for larget objects. So we use a kdtree to accelerate the computation. We first create the kdtree on CPU recursively, then copy the structure onto GPU. This process is much more complex than copy a mesh. The copy here is recursively, using a postorder traverse of the tree to help. First copy the left and right child of the tree, pass its data to GPU, link the pointer to the CPU pointer, then copy the whole tree to GPU. The recursive funciton should return the GPU pointer. When all this is done, the acutal simplifaction of intersection is done on GPU. Because we do not know beforehand how much triangle will a ray intersect, I can only hard code the number used for the actual triangle intersection. If we do that on CPU, we can use vector to store the information which means we do not need to deal with the space issue, but on GPU it is different. Kdtree On GPU has many SIGGRAPH paper to reference, to improve this part, a lot of work is needed.
+![](img/dragon1.png)![](img/dragon3.png)
 
+PART VII:
 
