@@ -17,23 +17,23 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 
 ### Diffuse surface
 
-![](images/diffuse.png)
+![](img/diffuse.png)
 
 ### Perfectly specular-reflective surface
 
-![](images/specular.png)
+![](img/specular.png)
 
 ### Antialiasing
 
-![](images/antialias.png)
+![](img/antialias.png)
 
 ### Motion blur
 
-![](images/blur.png)
+![](img/blur.png)
 
 ### Work-efficient stream compaction
 
-![](images/blur.png)
+![](img/blur.png)
 
 ## Scene File Format
 
