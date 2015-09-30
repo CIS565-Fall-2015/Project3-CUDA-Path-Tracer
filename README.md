@@ -13,7 +13,7 @@ Description
 
 This GPU based path tracer with global illumination and anti-alising can render diffuse, perfect/non-perfect specular, transparent and subsurface scattering materials with textures. Shown as the picture below.
 
-![](img/01Overview.png)
+![](img/01Overview.jpg)
 --------------------------
 ## Features
 
