@@ -13,6 +13,8 @@ This is a path tracer implemented in CUDA that supports basic ray casting, diffu
 
 ## Specular vs. Diffuse Surfaces
 
+![](img/cornell_specular.png)
+
 ## Motion Blurring
 
 ![](img/cornell_bounce.png)
