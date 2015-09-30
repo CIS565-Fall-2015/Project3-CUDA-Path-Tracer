@@ -15,7 +15,7 @@ This is a path tracer implemented in CUDA that supports basic ray casting, diffu
 
 ## Motion Blurring
 
-![](img/cornell_bounce.png =300x)
+![](img/cornell_bounce.png)
 
 ## Refraction (Glass)
 
