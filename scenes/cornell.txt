@@ -56,7 +56,7 @@ ITERATIONS  5000
 DEPTH       8
 FILE        cornell
 FOCAL       11.5
-APERTURE    1
+APERTURE    0.1
 EYE         0.0 5 10.5
 VIEW        0 0 -1
 UP          0 1 0
@@ -113,7 +113,7 @@ SCALE       .1 10 10
 // Sphere
 OBJECT 6
 sphere
-material 1
+material 4
 TRANS       -1 2 -3
 ROTAT       0 0 0
 SCALE       3 3 3
@@ -121,7 +121,7 @@ SCALE       3 3 3
 // Sphere
 OBJECT 7
 sphere
-material 3
+material 1
 TRANS       0 5 1
 ROTAT       0 0 0
 SCALE       2 2 2

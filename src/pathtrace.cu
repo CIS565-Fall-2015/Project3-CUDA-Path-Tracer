@@ -419,16 +419,16 @@ void blockwise_scan(int n, int* dev_odata, int* dev_idata){
 	cudaMalloc((void**)&dev_block_increments_scan, nfb*sizeof(int));
 
 	kernSharedScan <<<nfb, MAX_THREADS/2, shared_mem_size>>>(MAX_THREADS, dev_odata_fb, dev_idata_fb);
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
 	kernGetLastInBlocks<<<numBlocks, MAX_THREADS>>>(nfb, MAX_THREADS, dev_block_increments, dev_odata_fb, dev_idata_fb);
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
 	blockwise_scan(nfb, dev_block_increments_scan, dev_block_increments);
 
 	kernInPlaceIncrementBlocks<<<nfb, MAX_THREADS>>>(n2, dev_odata_fb, dev_block_increments_scan);
+	//cudaDeviceSynchronize();
 
-	cudaDeviceSynchronize();
 	cudaMemcpy(dev_odata, dev_odata_fb, n_size, cudaMemcpyDeviceToDevice);
 
 	cudaFree(dev_idata_fb);
