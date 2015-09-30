@@ -6,7 +6,7 @@ CUDA Path Tracer
 * Ziye Zhou
 * Tested on: Windows 8.1, i7-4910 @ 2.90GHz 32GB, GTX 880M 8192MB (Alienware)
 
-Teaser Image
+Representive Image
 ========================
 ![alt tag](https://github.com/ziyezhou-Jerry/Project3-CUDA-Path-Tracer/blob/master/img/teaser.png?raw=true)
 
