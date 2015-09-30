@@ -27,7 +27,11 @@ struct Geom {
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
 };
-
+struct Textures{
+	glm::vec3 color;
+	int width;
+	int height;
+};
 struct Material {
     glm::vec3 color;
     struct {

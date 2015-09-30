@@ -13,7 +13,7 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
-
+#include <glm/gtc/matrix_inverse.hpp>
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -37,7 +37,6 @@ void checkCUDAErrorFn(const char *msg, const char *file, int line) {
 	exit(EXIT_FAILURE);
 # endif
 }
-
 
 
 __host__ __device__
@@ -70,27 +69,69 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 }
 
 
-
-
 static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
 static Ray *dev_ray = NULL;
-
+static int *dev_bool = NULL;
 static Ray *dev_compacted = NULL;
 static Material *dev_m;
 static Geom *dev_geo = NULL;
 static Geom *dev_geoms;
 static glm::vec3 *dev_test = NULL;
 static glm::vec3 *dev_colormap = NULL;
-static int * dev_comBool = NULL;
-static int * dev_comResult = NULL;
+static int * dev_combool = NULL;
+static int * dev_resultint = NULL;
+static Ray * dev_resultray = NULL;
 static Ray *camera_ray = NULL;
 static Ray *dev_compatedRay = NULL;
-static bool * dev_terminate = NULL;
+static bool* dev_terminate = NULL;
+static int * dev_newcombinedSumdata = NULL;
+static Ray *dev_compactResult=NULL;
 
+__device__ void depth_of_field(Camera cmr,int iter, int index,Ray &ray,int x,int y){
+	glm::vec3 horizontal, middle, vertical;
 
+	glm::vec3 F = glm::normalize(cmr.view);
+	glm::vec3 R = glm::normalize(glm::cross(F, cmr.up));
+	glm::vec3 U = glm::normalize(glm::cross(R, F));
+	float len = glm::length(cmr.view);
+	int width = cmr.resolution.x;
+	int height = cmr.resolution.y;
+	float alpha = cmr.fov.y*PI / 180.f;
+	glm::vec3 V = U*len *tan(alpha);
+	float temp = width*1.0 / (height*1.0);
+	glm::vec3 H = temp*glm::length(F)*R;
+	//camera componet(EYE:0,4,7)
+	float lens_radius = 2.0f;
+	float focal_distance = 5.f;//aperon focus
+	// step1.Sample a random point on the lense 
+	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
+	thrust::uniform_real_distribution<float> u01(-1, 1);
+	//a concentric sample disk
+	float theta = PI * u01(rng);
+	float dx = lens_radius*cosf(theta);
+	float dy = lens_radius * sinf(theta);
+	glm::vec2 point = glm::vec2(dx, dy);
+	glm::vec3 position = cmr.position + glm::vec3(dx, dy, 0);
+	float ft = focal_distance / cmr.view.z;//cmr.position.z;
+	thrust::uniform_real_distribution<float> uee(-EPSILON, EPSILON);
+
+	float offset = uee(rng);
+	float xx, yy;
+	xx = 2.0* x / width - 1.0 + offset;
+	yy = 1.0 - 2.0* y / height + offset;
+
+	glm::vec3 point_pos = cmr.view + position + xx*H + yy*V;
+	//glm::vec3 point_focus = cmr.view*ft + position;
+	//ray.origin = cmr.position + (dx * R + dy * U);;
+	ray.origin = position;
+	ray.direction = glm::normalize(point_pos - ray.origin);
+
+	
+
+}
 __global__ void SetDevRay(Camera cmr, Ray  *dev_ray, int iter){
 
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -110,20 +151,25 @@ __global__ void SetDevRay(Camera cmr, Ray  *dev_ray, int iter){
 		glm::vec3 H = temp*glm::length(F)*R;
 		float xx;
 		float yy;
+		//jittering rays within an aperture
+	
 
-		//jittering rays
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
 		thrust::uniform_real_distribution<float> uee(-EPSILON, EPSILON);
+	
 		float offset = uee(rng);
-
+		
 		xx = 2.0* x / width - 1.0 + offset;
 		yy = 1.0 - 2.0* y / height + offset;
+	
 		glm::vec3 point_pos = cmr.view + cmr.position + xx*H + yy*V;//glm::vec3 M_ = cmr.position + C_;
 		//screen point to world point
-		dev_ray[index].direction = glm::normalize(point_pos - cmr.position);
+		dev_ray[index].direction = glm::normalize(point_pos - cmr.position );
 		dev_ray[index].origin = cmr.position;
 		dev_ray[index].terminate = false;
 		dev_ray[index].hitcolor = WHITE;
+		///////Camera cmr,int iter, int index,Ray &ray,int x,int y
+		depth_of_field(cmr, iter, index, dev_ray[index],x,y);
 	}
 }
 
@@ -136,6 +182,8 @@ void pathtraceInit(Scene *scene) {
 	cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 	// TODO: initialize the above static variables added above
 	///////////////////
+	cudaMalloc(&dev_compactResult, pixelcount * sizeof(Ray));
+	cudaMemset(dev_compactResult, 0, pixelcount * sizeof(Ray));
 
 	int geoSize = hst_scene->geoms.size()*sizeof(Geom);
 	Geom * hst_geoms = (Geom *)malloc(geoSize);
@@ -259,11 +307,13 @@ __device__ void directlightcheking(Ray &r, Geom *dev_geom, int nG, const int lig
 		r.hitcolor *= m_light.emittance*m_light.color;
 	}
 }
-__global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
+__global__ void raytracing(int frame, Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
 {
+	//glm::vec3 s_translate = glm::vec3(1, 0, 0);
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (id < CurrentRayNumber){
 		if (!r[id].terminate){
+			int go_sphere = 2;
 			glm::vec3 normal;
 			glm::vec3 intersectionPoint;
 			bool outside = false;
@@ -286,9 +336,14 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 			}
 
 			for (int i = 0; i < nG; i++){
-
+				int ll = 0;
 				if (dev_geom[i].type == SPHERE){
-					t = sphereIntersectionTest(dev_geom[i], r[id], intersectionPoint, normal, outside);
+					ll++;
+					if (ll == go_sphere){
+						t = sphereIntersectionTest(dev_geom[i], r[id], intersectionPoint, normal, outside, 0, frame);
+					}
+					else
+						t = sphereIntersectionTest(dev_geom[i], r[id], intersectionPoint, normal, outside, 0, frame);
 				}
 				if (dev_geom[i].type == CUBE){
 					t = boxIntersectionTest(dev_geom[i], r[id], intersectionPoint, normal, outside);
@@ -331,7 +386,7 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 						directlightcheking(r[id], dev_geom, nG, light, m_light, iter, id);
 					}
 					thrust::default_random_engine rng = makeSeededRandomEngine(iter, id, currentd);
-					scatterRay(r[id], color, F_intersectionPoint, F_normal, emmited_c, m, rng);
+					scatterRay(r[id], color, F_intersectionPoint, F_normal, outside, emmited_c, m, rng);
 					//r[id].hitcolor *= color;
 				}
 			}
@@ -339,54 +394,28 @@ __global__ void raytracing(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG,
 	}
 }
 
-__global__ void mapBool(Ray * dev_ray, int *dev_bool, int currentmount){
+__global__ void MapBool(int *dev_bool,  Ray *dev_ray, int n) {
+	
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-	if (id < currentmount){
+	if (id < n){
 		if (dev_ray[id].terminate)dev_bool[id] = 0;
 		else dev_bool[id] = 1;
 	}
 }
 
-__global__ void kernScatter(int n, Ray *odata, const Ray *idata, const int *bools, const int *indices)
+
+__global__ void kernScatter(int n, Ray *odata, Ray *idata, const int *bools, const int *indices)
 {
 	int k = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-	if (bools[k] == 1){
-		int t = indices[k];
-		odata[t] = idata[k];
+	if (k < n){
+		if (bools[k] ){
+			int t = indices[k];
+			odata[t] = idata[k];
+		}
 	}
-}/*
-void StreamCompation(int currentmount){
-const dim3 Grid_128 = (currentmount + 128 - 1) / 128;
-int p1, p2;
-int last;
-extern __shared__ int *dev_bool[];
-extern __shared__ int *dev_bool_temp[];
-mapBool << <Grid_128, 128 >> >(dev_ray, dev_bool, currentmount);
-mapBool << <Grid_128, 128 >> >(dev_ray, dev_bool_temp, currentmount)
-for (int d = 0; d <= utilityCore::ilog2ceil(currentmount) - 1; d++){
-p1 = pow(2, d);
-p2 = pow(2, d + 1);
-Uscan << <Grid_128, 128 >> >(p1, p2, dev_bool_temp);//change end to n
 }
-put0 << <1, 1 >> >(dev_bool_temp, currentmount);
-for (int d = utilityCore::ilog2ceil(currentmount) - 1; d >= 0; d--){
-p1 = pow(2, d);
-p2 = pow(2, d + 1);
-Dscan <<<Grid_128, 128 >>>(p1, p2, dev_bool_temp);
-}
-cudaMemcpy(&last, &(dev_bool[currentmount - 1]), sizeof(int), cudaMemcpyDeviceToHost);
-//cudaMalloc((void**)&dev_odata, last*sizeof(int));
-
-kernScatter << <Grid_128, 128 >> >(last, dev_odata, dev_idata, dev_bool_temp, dev_bool);
-//cudaMemcpy(dev_bool_temp
-/*if (dev_bool[k] == 1){
-int t = dev_boolb[k];//
-odata[t] = idata[k];*/
-
-//}*/
-__global__ void EfficientScan(int * indata, int *outdata, int n){//current size
+__global__ void EfficientScan(int n, int *outdata, const int *indata){
+//current size
 	//Example 39-2 in Gems
 	extern __shared__ int temp[];//stores the updated bool
 
@@ -431,20 +460,88 @@ __global__ void EfficientScan(int * indata, int *outdata, int n){//current size
 	outdata[2 * thid + blocks + 1] = indata[2 * thid + 1];
 }
 
-__global__ void BlockSums(int n, int * newdata, const int *dev_outdata, const int *dev_indata) {
-	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//last number of the 
-	if (id < n){
-		newdata[id] = dev_outdata[(id + 1) * n - 1] + dev_indata[(id + 1) * n - 1];
-	}
+__global__ void BlockSums(int n, int *odata, const int *idata) {
+	 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+		odata[index] = idata[(index + 1) * 128 - 1];
 }
+
+
+
 __global__ void BlcockIncrement(int n, int *dev_data, const int *increments) {
 	int id = (blockIdx.x * blockDim.x) + threadIdx.x;
-
+	//add back to each block
 	if (id < n){
-		dev_data[id] = dev_data[id] + increments[blockIdx.x];
+	 // new[0],new[1]...new[127] =new[0],new[1]...new[127]+increment[0];
+	//  new[128],new[129]...new[255] =new[128],new[129]..new[255]+increment[1];
+		dev_data[id] +=   increments[blockIdx.x];
 	}
 }
+
+
+
+
+int StreamCompact(Ray *dev_ray, Ray *result ,int raynumber){
+
+	//step1.compute temp bool ray
+	cudaMalloc((void**)&dev_bool, raynumber * sizeof(int));
+	cudaMemset(dev_bool, 0, raynumber * sizeof(int));
+	cudaMalloc((void**)&dev_combool, raynumber * sizeof(int));
+	cudaMemset(dev_combool, 0, raynumber * sizeof(int));
+	dim3 GridSize = (raynumber + 128 - 1) / 128;
+	dim3 BlockSize = 128;
+	int *s=new int[raynumber];
+	s[0] = -1;
+
+	//const dim3 blockSize2d(8, 8);
+//	const dim3 blocksPerGrid2d(64)
+	
+//	<<blocksPerGrid2d, blockSize2d>>
+//	mapBool(int *dev_bool,  Ray *dev_ray, int n)
+	MapBool <<< GridSize, BlockSize >> >(dev_bool, dev_ray, raynumber);
+	cudaMemcpy(s, dev_bool, raynumber*sizeof(int), cudaMemcpyDeviceToHost);
+	//checkCUDAError("mapbool");
+
+	//************************************/
+	//step2.scan Scan(raynumber, dev_compactbool, dev_bool);
+	dim3 dim3_p0 = GridSize;
+	int int_p0 = raynumber + 128 - 1 / 128;
+	cudaMalloc(&dev_newcombinedSumdata, sizeof(int)* 128);
+	while (int_p0 >= 1){
+	int n = (int_p0 + 128 - 1) / 128;
+		dim3 scanGridSize = (int_p0 + 128 - 1) / 128;
+		dim3 scanBlockSize = 128;// (?)
+		
+		//cudaMalloc(&dev_result, sizeof(int)* 128);
+		//EfficientScan(int * indata, int *outdata, int n)
+		EfficientScan << <scanGridSize, scanBlockSize >> >(int_p0,dev_combool, dev_bool);
+		checkCUDAError("scan");
+		//step4.write total sum of each block to  a new array.
+		//return the sum of each block
+		BlockSums << <scanGridSize, scanBlockSize >> >(n, dev_newcombinedSumdata,dev_combool);
+		checkCUDAError("sum");
+		//dim3 gBlockSum = p0;
+		int int_p0 = int_p0 / 128;
+
+		checkCUDAError("blockIncrement");
+	}
+
+	BlcockIncrement << < GridSize, 128 >> >(raynumber, dev_combool, dev_combool);
+	//step3.scatter:kernScatter(int n, Ray *odata, const Ray *idata, const int *bools, const int *indices)
+	kernScatter << <GridSize, BlockSize >> >(raynumber, result, dev_ray, dev_bool, dev_combool);
+	checkCUDAError("kernScatter");
+
+	int current_ray_number;
+	cudaMemcpy(&current_ray_number,&(dev_combool[raynumber-1]), sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpy(dev_ray, dev_resultray, sizeof(Ray)*current_ray_number, cudaMemcpyDeviceToDevice);
+
+	cudaFree(dev_bool);
+	cudaFree(dev_combool);
+	checkCUDAError("whatever");
+	return current_ray_number;
+
+
+}
+
 
 
 
@@ -458,9 +555,6 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	const dim3 blocksPerGrid2d(
 		(cam.resolution.x + blockSize2d.x - 1) / blockSize2d.x,
 		(cam.resolution.y + blockSize2d.y - 1) / blockSize2d.y);
-
-	//	const int &nG = hst_scene->geoms.size();ite
-	//const int &nM = hst_scene->materials.size();
 
 	const int &nG = hst_scene->geoms.size();
 	const int &nM = hst_scene->materials.size();
@@ -502,47 +596,25 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	const dim3 Grid_128 = (pixelcount + 128 - 1) / 128;
 	const dim3 B_128 = 128;
 	int current_ray = pixelcount;
+	int test;
+	cudaMalloc(&dev_ray, current_ray*sizeof(Ray));
 	for (int i = 0; i < traceDepth; i++)
 	{//remove the ray number from pixel count,so the Grid size needs to be changed
 		dim3 CurGrid_128 = (current_ray + 128 - 1) / 128;
 		if (!i)
 		{
-			cudaMalloc(&dev_ray, current_ray*sizeof(Ray));
+			current_ray = pixelcount;
+			//cudaMalloc(&dev_ray, current_ray*sizeof(Ray));
 			SetDevRay << <blocksPerGrid2d, blockSize2d >> >(cam, dev_ray, iter);//shoot ray first time&one time
 		}
 		//(Ray *r, int CurrentRayNumber, Geom *dev_geom, int nG, int nM, Material *dev_m, int iter, int traced, int currentd)
-		raytracing << <CurGrid_128, B_128 >> >(dev_ray, current_ray, dev_geo, nG, nM, dev_m, iter, traceDepth, i);
-		checkCUDAError("raytrace");
-		//**********streamCompaction***************//
-		//*****************************************//
-		//step1.compute temp bool ray
-		/*			cudaMalloc(&dev_comBool, current_ray * sizeof(int));
-					mapBool << <CurGrid_128, B_128 >> >(dev_ray, dev_comBool, current_ray);
-					int p0 = (current_ray + 128 - 1) / 128 / 128;
-					while (p0 > 1){
-					//step2.divide the array into blocks: CurGrid_128 * 128;128threads each block
-					//step3.scan over each block
-					EfficientScan << <CurGrid_128, B_128 >> >(dev_comBool, dev_comResult, current_ray);
-					//step4.write total sum of each block to  a new array.
-					//return the sum of each block
-
-					dim3 gBlockSum = p0;
-					BlockSums << <gBlockSum, B_128 >> >(p0, dev_blockSums, dev_comResult, dev_comBool);//39*128
-					int p0 = p0 / 128;
-					}
-					BlcockIncrement << << CurGrid_128, B_128 >> > (current_ray, dev_comResult, dev_scannResult);
-
-					//
-					//step3.scatter
-
-					kernScatter << <CurGrid_128, B_128 >> >(current_ray, dev_compatedRay, dev_ray, dev_comBool, dev_comResult);
-					cudaMemcpy(dev_ray, dev_compacted, sizeof(Ray)*current_ray, cudaMemcpyDeviceToDevice);
-					//free pointer so I can malloc again?
-					cudaFree(dev_comBool);
-					checkCUDAError("compact");
-					//************************************/
-
+		raytracing << <CurGrid_128, B_128 >> >(frame, dev_ray, current_ray, dev_geo, nG, nM, dev_m, iter, traceDepth, i);
+		//checkCUDAError("raytrace");
+		//current_ray = StreamCompact(dev_ray, dev_compactResult, current_ray);
+		//test=StreamCompact(dev_ray, dev_compactResult, current_ray);
+		//cudaMemcpy(dev_ray, dev_compactResult, sizeof(Ray)*current_ray , cudaMemcpyDeviceToDevice);	
 	}
+//	printf("%d", test);
 	generateIamge << <Grid_128, B_128 >> >(cam, iter, dev_image, dev_ray);
 	cudaFree(dev_ray);
 	///////////////////////////////////////////////////////////////////////////
@@ -561,6 +633,7 @@ void pathtraceFree() {
 	// TODO: clean up the above static variables
 	cudaFree(dev_ray);
 	cudaFree(dev_compacted);
+	cudaFree(dev_compactResult);
 	cudaFree(dev_m);
 	cudaFree(dev_geo);
 	cudaFree(dev_colormap);

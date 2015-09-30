@@ -28,6 +28,7 @@ Scene::Scene(string filename) {
                 loadCamera();
                 cout << " " << endl;
             }
+		
         }
     }
 }
@@ -118,7 +119,11 @@ int Scene::loadCamera() {
             state.traceDepth = atoi(tokens[1].c_str());
         } else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
             state.imageName = tokens[1];
+
         }
+			//loadTexture();
+	
+		
     }
 
     string line;
@@ -157,6 +162,28 @@ int Scene::loadCamera() {
     cout << "Loaded camera!" << endl;
     return 1;
 }
+int Scene::loadTexture(){
+	
+		std::ifstream image;
+		image.open("D:\\156.jpg", std::ios_base::binary);
+
+		image.seekg(0, ios::end);
+		int n = image.tellg();
+		image.seekg(0, ios::beg);
+		cout << "n:" << n;
+		char* res = new char[n];
+		glm::vec2 s(1,1);
+		for (int i = 0; i < n; i++)
+			res[i] = '5';
+
+
+		bool bit = image.eof();
+		
+		image.read(res, n);
+		for (int i = 0; i < 100; i++)
+			printf("%c   ", res[i]);
+		return 1;
+	}
 
 int Scene::loadMaterial(string materialid) {
     int id = atoi(materialid.c_str());

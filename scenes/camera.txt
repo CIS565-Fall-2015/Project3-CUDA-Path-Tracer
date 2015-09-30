@@ -39,7 +39,7 @@ EMITTANCE   0
 
 // Diffuse green
 MATERIAL 3
-RGB         .35 .85 .35
+RGB         .65 .85 .35
 SPECEX      0
 SPECRGB     1 1 1
 REFL        0
@@ -52,9 +52,9 @@ EMITTANCE   0
 
 //refraction,transparent
 MATERIAL 4
-RGB         .35 .25 .25
+RGB         .35 .25 .75
 SPECEX      2.0
-SPECRGB     0.2 0.1 0.1
+SPECRGB     0.2 0.1 0.7
 REFL        1
 REFR        1
 REFRIOR     1.3
@@ -84,7 +84,7 @@ ITERATIONS  5000
 DEPTH       8
 FILE        cornell
 frame 0
-EYE         0.0 5 10.5
+EYE         0 4 7
 VIEW        0 0 -1
 UP          0 1 0
 
@@ -144,30 +144,73 @@ TRANS       5 5 0
 ROTAT       0 0 0
 SCALE       .01 10 10
 
-// Sphere
+// Sphere///////////////////////////////////////////////
 OBJECT 6
 sphere
-material 1
+material 3
 frame 0
-TRANS       -3 7 -1
+TRANS       3 3 3
 ROTAT       0 0 0
-SCALE       2 2 2
+SCALE        2 2 2
 
 // Sphere
 OBJECT 7
 sphere
-material 4
+material 3
 frame 0
-TRANS       3 2.5 -1
+TRANS       3 3 1
 ROTAT       0 0 0
-SCALE       4 4 4
+SCALE        2 2 2
 
 // Sphere
 OBJECT 8
 sphere
-material 5
+material 3
 frame 0
-TRANS       -3 2 -1
+TRANS       3 3 -1
 ROTAT       0 0 0
-SCALE       3 3 3
+SCALE        2 2 2
 
+// Sphere
+OBJECT 9
+sphere
+material 3
+frame 0
+TRANS       3 3 -3
+ROTAT       0 0 0
+SCALE       2 2 2
+
+OBJECT 10
+sphere
+material 3
+frame 0
+TRANS       -3 3 3
+ROTAT       0 0 0
+SCALE        2 2 2
+
+// Sphere
+OBJECT 11
+sphere
+material 3
+frame 0
+TRANS       -3 3 1
+ROTAT       0 0 0
+SCALE        2 2 2
+
+// Sphere
+OBJECT 12
+sphere
+material 3
+frame 0
+TRANS       -3 3 -1
+ROTAT       0 0 0
+SCALE        2 2 2
+
+// Sphere
+OBJECT 13
+sphere
+material 3
+frame 0
+TRANS       -3 3 -3
+ROTAT       0 0 0
+SCALE       2 2 2

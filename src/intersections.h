@@ -1,7 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
-
+#include <glm/gtc/matrix_inverse.hpp>
 #include "sceneStructs.h"
 #include "utilities.h"
 
@@ -47,7 +47,14 @@ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
 * @param outside            Output param for whether the ray came from outside.
 * @return                   Ray parameter `t` value. -1 if no intersection.
 */
-__host__
+/*
+__host__ __device__ void motionBlur(Geom geo, glm::vec3 translate, int frame){
+	geo.translation += translate*float(frame)*0.01f;
+	geo.transform = utilityCore::buildTransformationMatrix(geo.translation, geo.rotation, geo.scale);
+	geo.inverseTransform = glm::inverse(geo.transform);
+	geo.invTranspose = glm::inverseTranspose(geo.transform);//hpp
+}*/
+
 __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
  glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
  Ray q;
@@ -110,8 +117,9 @@ __host__ __device__ float boxIntersectionTest(Geom box, Ray r,
 * @return                   Ray parameter `t` value. -1 if no intersection.
 */
 __host__ __device__ float sphereIntersectionTest(Geom sphere, Ray r,
-	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside) {
-
+	glm::vec3 &intersectionPoint, glm::vec3 &normal, bool &outside,bool go=0,int frame =1,glm::vec3& mostiontranslate=glm::vec3(0,0,0)) {
+//	if (go)
+	//	motionBlur(sphere, mostiontranslate, frame);
 	float radius = .5;
 	glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
 	glm::vec3 rd = glm::normalize(multiplyMV(sphere.inverseTransform, glm::vec4(r.direction, 0.0f)));
