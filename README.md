@@ -15,10 +15,12 @@ Progress
 ### Casting Ray From Camera
 
 In order to make sure that the ray casting from camera to the scene is right, I visualize the direction of the casting ray to debug this part.
+
 ![alt tag](https://github.com/ziyezhou-Jerry/Project3-CUDA-Path-Tracer/blob/master/img/cornell.2015-09-24_03-02-57z.60samp.png?raw=true)
 
 ### Getting the Basic to Work
 When finish implementing the interative path tracing algorithm and light scattering of diffuse material, I got something as below.
+
 ![alt tag](https://github.com/ziyezhou-Jerry/Project3-CUDA-Path-Tracer/blob/master/img/cornell.2015-09-24_04-14-01z.138samp.png?raw=true)
 
 This is really wierd since everything seems to work fine except the back wall. Then I figure out that it may be caused by numerical error since we are given realy thin wall. Therefore, I tried to change the thickness of wall to a larrger number and the problem is fixed!
