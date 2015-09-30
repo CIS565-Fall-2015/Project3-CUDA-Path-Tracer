@@ -1,6 +1,9 @@
 #include "main.h"
 #include "preview.h"
 #include <cstring>
+#include <time.h>
+
+
 
 static std::string startTimeString;
 static bool camchanged = false;
@@ -13,6 +16,8 @@ int iteration;
 
 int width;
 int height;
+
+bool ifStreamCompact = false;
 
 //-------------------------------
 //-------------MAIN--------------
@@ -27,10 +32,18 @@ int main(int argc, char** argv) {
     }
 
     const char *sceneFile = argv[1];
+	if (argv[2]!=NULL)
+	{
+		string strCompactArg = argv[2];
+		if (strCompactArg == "s" || strCompactArg == "S")
+		{
+			printf("Using stream compaction.\n", strCompactArg);
+			ifStreamCompact = true;
+		}
+	}
 
     // Load scene file
     scene = new Scene(sceneFile);
-
     // Set up camera stuff from loaded path tracer settings
     iteration = 0;
     renderState = &scene->state;
@@ -58,7 +71,6 @@ void saveImage() {
             img.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
         }
     }
-
     std::string filename = renderState->imageName;
     std::ostringstream ss;
     ss << filename << "." << startTimeString << "." << samples << "samp";
@@ -66,7 +78,7 @@ void saveImage() {
 
     // CHECKITOUT
     img.savePNG(filename);
-    //img.saveHDR(filename);  // Save a Radiance HDR file
+    img.saveHDR(filename);  // Save a Radiance HDR file
 }
 
 void runCuda() {
@@ -90,7 +102,7 @@ void runCuda() {
 
     if (iteration == 0) {
         pathtraceFree();
-        pathtraceInit(scene);
+		pathtraceInit(scene, ifStreamCompact);
     }
 
     if (iteration < renderState->iterations) {
@@ -100,8 +112,17 @@ void runCuda() {
 
         // execute the kernel
         int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration);
 
+		//cin.get();
+
+		clock_t t1, t2;
+		t1 = clock();
+        pathtrace(pbo_dptr, frame, iteration);
+		t2 = clock();
+		float diff((float)t2 - (float)t1);
+		diff = diff / CLOCKS_PER_SEC;
+		printf("time/iter: %f\t iters/sec %f\n", diff,1/diff);
+		//cin.get();
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     } else {
@@ -135,3 +156,6 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         }
     }
 }
+
+
+

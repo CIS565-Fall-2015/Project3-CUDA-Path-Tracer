@@ -8,7 +8,7 @@ REFR        0
 REFRIOR     0
 EMITTANCE   5
 BSSRDF	    0
-TEX	    NULL
+TEX         NULL
 
 // Diffuse white
 MATERIAL 1
@@ -20,11 +20,11 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    NULL
+TEX         NULL
 
 // Diffuse red
 MATERIAL 2
-RGB         .85 .35 .35
+RGB         .55 .35 .35
 SPECEX      0
 SPECRGB     0 0 0
 REFL        0
@@ -32,11 +32,11 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    NULL
+TEX         NULL
 
 // Diffuse green
 MATERIAL 3
-RGB         .35 .85 .35
+RGB         .35 .55 .35
 SPECEX      0
 SPECRGB     0 0 0
 REFL        0
@@ -44,9 +44,9 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    NULL
+TEX         NULL
 
-// Specular white
+// Diffuse white cube
 MATERIAL 4
 RGB         .98 .98 .98
 SPECEX      0
@@ -56,12 +56,13 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 BSSRDF	    0
-TEX	    NULL
+TEX         2031.jpg
+//https://www.filterforge.com/filters/2031.jpg
 
 // Camera
 CAMERA
 RES         800 800
-FOVY        45
+FOVY        30
 ITERATIONS  5000
 DEPTH       8
 FILE        cornell
@@ -121,6 +122,6 @@ SCALE       .01 10 10
 OBJECT 6
 sphere
 material 4
-TRANS       -1 4 -1
-ROTAT       0 0 0
-SCALE       3 3 3
+TRANS       0 4 -1
+ROTAT       30 0 20
+SCALE       4 4 4

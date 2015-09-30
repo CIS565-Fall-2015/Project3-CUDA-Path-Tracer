@@ -153,8 +153,9 @@ int Scene::loadMaterial(string materialid) {
         cout << "Loading Material " << id << "..." << endl;
         Material newMaterial;
 
+		string textureFile = "NULL";
         //load static properties
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 9; i++) {
             string line;
             utilityCore::safeGetline(fp_in, line);
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -174,8 +175,26 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.indexOfRefraction = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "EMITTANCE") == 0) {
                 newMaterial.emittance = atof(tokens[1].c_str());
-            }
+			}else if (strcmp(tokens[0].c_str(), "BSSRDF") == 0) {
+				newMaterial.bssrdf = atof(tokens[1].c_str());
+			}
+			else if (strcmp(tokens[0].c_str(), "TEX") == 0) {
+				//newMaterial.bssrdf = atof(tokens[1].c_str());
+				textureFile = tokens[1].c_str();
+				if (textureFile != "NULL")
+				{
+					newMaterial.TexIdx = textures.size();
+					image newTexture(textureFile);
+					textures.push_back(newTexture);
+				}
+				else newMaterial.TexIdx = -1;
+			}
         }
+		if (newMaterial.emittance>0)
+		{
+			lightIdx = materials.size();
+			lightIdxs.push_back(lightIdx);
+		}
         materials.push_back(newMaterial);
         return 1;
     }
