@@ -100,7 +100,7 @@ int Scene::loadCamera() {
     float fovy;
 
     //load static properties
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         string line;
         utilityCore::safeGetline(fp_in, line);
         vector<string> tokens = utilityCore::tokenizeString(line);
@@ -118,7 +118,7 @@ int Scene::loadCamera() {
 		} else if (strcmp(tokens[0].c_str(), "FOCAL") == 0){
 			camera.focal = atof(tokens[1].c_str());
 		} else if (strcmp(tokens[0].c_str(), "APERTURE") == 0){
-			camera.focal = atof(tokens[1].c_str());
+			camera.aperture = atof(tokens[1].c_str());
 		}
     }
 
