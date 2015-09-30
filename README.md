@@ -11,7 +11,7 @@ CUDA Path Tracer
 
 ## Image Example
 * Simple scene shows diffuse, reflection, refraction, caustic, global illumination, antialiasing, and soft shadow
-![refraction](img/refraction.png)
+![refraction](img/refraction_note.png)
 
 * Lens effect
 ![lens](img/lens.png)
