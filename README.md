@@ -11,7 +11,7 @@ Description
 --------------------------
 ## Overview
 
-This GPU based path tracer with global illumination and anti-alising can render diffuse, perfect/non-perfect specular, transparent and subsurface scattering materials. Shown as the picture below.
+This GPU based path tracer with global illumination and anti-alising can render diffuse, perfect/non-perfect specular, transparent and subsurface scattering materials with textures. Shown as the picture below.
 
 ![](img/01Overview.png)
 --------------------------
@@ -50,6 +50,9 @@ Cube Texture Mapping Test |Sphere Texture Mapping test
 
 ### Global Illumination
 
+For rays that reached the camera depth, check the intersection point if it is directly shined by any lights.
+Global Illumination helps rendering more realistic pictures.
+
 With Direct Lighting	|  Without Direct Lighting
 :----------------------:|:-------------------------:
 ![](img/02Gobal_on.png)|![](img/02Gobal_off.png)
@@ -63,13 +66,25 @@ With Anti-Aliasing		|Without Anti-Aliasing
 ![](img/03AntiA_on.PNG) |![](img/03AntiA_off.png)
 
 ### Work-efficient Stream Compaction with Shared Memory
+
+For below's screenshot, it is an open scene with camera's depth 8, resolution 800*800.
+The number of rays reduces from 640000 to 97004 after 8 depth's bouncing.
+
 ![](img/Analysis/SharedMem.PNG)
 
 --------------------------
 ## Analysis
 **Open vs Closed scenes**
 
+In an open scene, many rays interact with nothing after several bounces. 
+Thus using stream compaction can optimize the render process when depth is larger than a certain value.
+ 
 ![](img/Analysis/OpenScene.png)
+
+However, when the scene is closed, only very small amount of rays get terminated even if there are a great amount of bounces.
+For this condition, the advantages of reducing ray numbers by sream compaction cannot trade off the calculation and memory accessing time.
+Therefore, as expected, stream compaction performs poor for closed scenes.
+
 ![](img/Analysis/CloseScene.png)
 
 --------------------------
@@ -77,10 +92,12 @@ With Anti-Aliasing		|Without Anti-Aliasing
 #### Command line
 
 		<%s>		|	 <"s">
-  Scene file path	|(with/without) turn on/off stream compaction
+	scene file path	|(with/without) turn on/off stream compaction
 
-* example: ../cornell.txt s			//with stream compaction
-* example: ../cornell_closed.txt	//without stream compaction
+* example:
+
+	../cornell.txt s			//with stream compaction
+	../cornell_closed.txt	//without stream compaction
 
 #### Controls
 
