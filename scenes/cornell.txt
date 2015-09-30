@@ -115,7 +115,7 @@ CAMERA
 RES         800 800
 FOVY        60
 ITERATIONS  5000
-DEPTH       40
+DEPTH       8
 FILE        cornell
 frame 0
 EYE         0 5 20
@@ -179,7 +179,7 @@ SCALE       .01 10 10
 
 // Sphere
 OBJECT 6
-sphere
+cube
 material 8
 frame 0
 TRANS       0 2 -0.5
