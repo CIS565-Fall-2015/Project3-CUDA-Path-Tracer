@@ -29,8 +29,6 @@ If you are using Visual Studio, you can set this in the Debugging > Command
 Arguments section in the Project properties. Make sure you get the path right -
 read the console for errors.
 
-![](img/cornell_1900.png)
-
 #### Controls
 
 * Esc to save an image and exit.
@@ -38,3 +36,5 @@ read the console for errors.
 * W/A/S/D and R/F move the camera. Arrow keys rotate.
 
 
+### Sample Image with 1900 iterations
+![](img/cornell_1900.png)
