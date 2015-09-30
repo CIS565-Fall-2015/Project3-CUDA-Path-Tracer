@@ -41,4 +41,5 @@ PART IX: Performance Analysis
   2 Frensel's law vs no Frensel's law
     I believe this does not affect a lot in the performance. If using the Frensel's law, in each iteration I only have on more random number generation on device. Becuase the ray is either reflected or refracted, either way we compute just on block in the function but not both.
   3 Kdtree vs no Kdtree
-    Using the naive
+    Using the naive method, one iteration with a sphere object with 2000+ faces need almost 10s. However, if using the kdtree structure, one iteration use less than one third second. Theoretically, the time complexity of the kdtree is also logrithmic, and the naive method is also linear. However, in runtime the kdtree may not be that fast due to the space need to store all the triangle indexs. The space needed maybe large(say rendering of the stanford dragon with 100k faces), which may reduce the performance of a block.
+    
