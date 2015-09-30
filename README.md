@@ -5,13 +5,14 @@ CUDA Path Tracer
 
 * Levi Cai
 * Tested on: Windows 8, i7 @ 2.22GHz 22GB, GTX 222 222MB
-* 
 
 This is a path tracer implemented in CUDA that supports basic ray casting, diffuse and specular surfaces, sphere and cube intersections, work efficient-stream compaction with shared memory, motion blurring, refraction, and depth-of-field.
 
 ### Examples of Features Implemented
 
 ## Specular vs. Diffuse Surfaces
+
+![](img/cornell_specular.png)
 
 ## Motion Blurring
 
@@ -26,6 +27,8 @@ This is a path tracer implemented in CUDA that supports basic ray casting, diffu
 ![](img/cornell_dof.png)
 
 ### Analysis
+
+![](img/cornell_alive_vs_specular.png)
 
 * Stream compaction helps most after a few bounces. Print and plot the
   effects of stream compaction within a single iteration (i.e. the number of
