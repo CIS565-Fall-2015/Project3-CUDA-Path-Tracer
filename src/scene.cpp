@@ -413,17 +413,17 @@ void Scene::loadObjSimple(const string & objname, glm::mat4 & t, glm::mat4 & t_n
 						//normal not explicitly assigned.
 						//use vertex id as normal id
 						
-						an = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[1] - 1), 1));
-						bn = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[i-1] - 1), 1));
-						cn = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[i] - 1), 1));
+						an = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[1] - 1), 0));
+						bn = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[i-1] - 1), 0));
+						cn = glm::vec3 (t_normal * glm::vec4(vec_Nor.at(v[i] - 1), 0));
 
 					}
 					else
 					{
 
-						an = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[1] - 1), 1));
-						bn = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[i - 1] - 1), 1));
-						cn = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[i] - 1), 1));
+						an = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[1] - 1), 0));
+						bn = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[i - 1] - 1), 0));
+						cn = glm::vec3(t_normal * glm::vec4(vec_Nor.at(vn[i] - 1), 0));
 
 					}
 
