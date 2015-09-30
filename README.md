@@ -4,7 +4,7 @@ CUDA Path Tracer
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
 * Levi Cai
-* Tested on: Windows 8, i7 @ 2.22GHz 22GB, GTX 222 222MB
+* Tested on: Windows 8, i7-5500U @ 2.4GHz 12GB RAM, NVIDIA GeForce GTX 940M 2GB
 
 This is a path tracer implemented in CUDA that supports basic ray casting, diffuse and specular surfaces, sphere and cube intersections, work efficient-stream compaction with shared memory, motion blurring, refraction, and depth-of-field.
 
@@ -26,34 +26,17 @@ This is a path tracer implemented in CUDA that supports basic ray casting, diffu
 
 ![](img/cornell_dof.png)
 
-### Analysis
+### Analysis of Work-Efficient Shared Memory Stream Compaction
+
+I implemented the work-efficient stream compaction with shared memory scan function as described by http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html
+
+This allows for significant performance gains in OPEN environments where rays are quickly terminated (or in environments with an extreme number of lights). We can see some of the effects in the graphs below:
 
 ![](img/cornell_alive_vs_depth.png)
 
+(Above) I compared the depth in the original cornell image with the number of still-living rays. There is a logarithmic drop-off in the scene of number of still living rays that must be tracked, but for the first several depths the gains are quite dramatic as rays leave the open side of the box quickly.
+
 ![](img/cornell_initial_vs_time.png)
 
-* Stream compaction helps most after a few bounces. Print and plot the
-  effects of stream compaction within a single iteration (i.e. the number of
-  unterminated rays after each bounce) and evaluate the benefits you get from
-  stream compaction.
-* Compare scenes which are open (like the given cornell box) and closed
-  (i.e. no light can escape the scene). Again, compare the performance effects
-  of stream compaction! Remember, stream compaction only affects rays which
-  terminate, so what might you expect?
+(Above) Here we wish to see the effect of very open environments vs. the runtime. To see this, I simply moved the camera's starting position back in the original Cornell image setup (so many rays immediately terminate) and we can see that the performance increases linearly with the number of rays that immediately terminate. We can thus imagine a completely enclosed scene to gain nothing from stream compaction (if anything, it hurts a small amount to do the extra computation due to the cudaMallocs and such, though many of those could possibly be avoided).
 
-
-## Submit
-
-If you have modified any of the `CMakeLists.txt` files at all (aside from the
-list of `SOURCE_FILES`), you must test that your project can build in Moore
-100B/C. Beware of any build issues discussed on the Google Group.
-
-1. Open a GitHub pull request so that we can see that you have finished.
-   The title should be "Submission: YOUR NAME".
-2. Send an email to the TA (gmail: kainino1+cis565@) with:
-   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
-   * Direct link to your pull request on GitHub.
-   * Estimate the amount of time you spent on the project.
-   * If there were any outstanding problems, or if you did any extra
-     work, *briefly* explain.
-   * Feedback on the project itself, if any.
