@@ -3,311 +3,96 @@ CUDA Path Tracer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
-
-### (TODO: Your README)
-
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
-
-Instructions (delete me)
-========================
-
-This is **NOW** due ~~Thursday, September 24~~ **Tuesday, September 29** evening at midnight.
-
-**Summary:**
-In this project, you'll implement a CUDA-based path tracer capable of rendering
-globally-illuminated images very quickly.
-Since in this class we are concerned with working in GPU programming,
-performance, and the generation of actual beautiful images (and not with
-mundane programming tasks like I/O), this project includes base code for
-loading a scene description file, described below, and various other things
-that generally make up a framework for previewing and saving images.
-
-The core renderer is left for you to implement. Finally, note that, while this
-base code is meant to serve as a strong starting point for a CUDA path tracer,
-you are not required to use it if you don't want to. You may also change any
-part of the base code as you please. **This is YOUR project.**
-
-**Recommendation:** Every image you save should automatically get a different
-filename. Don't delete all of them! For the benefit of your README, keep a
-bunch of them around so you can pick a few to document your progress at the
-end.
-
-### Contents
-
-* `src/` C++/CUDA source files.
-* `scenes/` Example scene description files.
-* `img/` Renders of example scene description files.
-  (These probably won't match precisely with yours.)
-* `external/` Includes and static libraries for 3rd party libraries.
-
-
-### Running the code
-
-The main function requires a scene description file. Call the program with
-one as an argument: `cis565_path_tracer scenes/sphere.txt`.
-(In Visual Studio, `../scenes/sphere.txt`.)
-
-If you are using Visual Studio, you can set this in the Debugging > Command
-Arguments section in the Project properties. Make sure you get the path right -
-read the console for errors.
-
-#### Controls
-
-* Esc to save an image and exit.
-* Space to save an image. Watch the console for the output filename.
-* W/A/S/D and R/F move the camera. Arrow keys rotate.
-
-## Requirements
-
-**Ask on the mailing list for clarifications.**
-
-In this project, you are given code for:
-
-* Loading and reading the scene description format
-* Sphere and box intersection functions
-* Support for saving images
-* Working CUDA-GL interop for previewing your render while it's running
-* A function which generates random screen noise (instead of an actual render).
-
-You will need to implement the following features:
-
-* Raycasting from the camera into the scene through an imaginary grid of pixels
-  (the screen).
-  * Implement simple antialiasing (by jittering rays within each pixel).
-* Diffuse surfaces (using provided cosine-weighted scatter function) [PBRT 8.3].
-* Perfectly specular-reflective (mirrored) surfaces.
-  * See notes on diffuse/specular in `scatterRay` and on imperfect specular below.
-* Stream compaction optimization, using:
-* **NEWLY ADDED:** Work-efficient stream compaction using shared memory across
-  multiple blocks. (See
-  [*GPU Gems 3*, Chapter 39](http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html).)
-
-You are also required to implement at least 2 of the following features.
-If you find other good references for these features, share them!
-**Extra credit**: implement more features on top of the 2 required ones,
-with point value up to +20/100 at the grader's discretion
-(based on difficulty and coolness).
-
-* **NOW REQUIRED - NOT AN EXTRA:** ~~Work-efficient stream compaction (see above).~~
-* These 2 smaller features:
-  * Refraction (e.g. glass/water) [PBRT 8.2] with Frensel effects using
-    [Schlick's approximation](https://en.wikipedia.org/wiki/Schlick's_approximation)
-    or more accurate methods [PBRT 8.5].
-  * Physically-based depth-of-field (by jittering rays within an aperture)
-    [PBRT 6.2.3].
-  * Recommended but not required: non-perfect specular surfaces. (See below.)
-* Texture mapping [PBRT 10.4].
-* Bump mapping [PBRT 9.3].
-* Direct lighting (by taking a final ray directly to a random point on an
-  emissive object acting as a light source). Or more advanced [PBRT 15.1.1].
-* Some method of defining object motion, and motion blur by averaging samples
-  at different times in the animation.
-* Subsurface scattering [PBRT 5.6.2, 11.6].
-* Arbitrary mesh loading and rendering (e.g. `obj` files). You can find these
-  online or export them from your favorite 3D modeling application.
-  With approval, you may use a third-party OBJ loading code to bring the data
-  into C++.
-  * You can use the triangle intersection function `glm::intersectRayTriangle`.
-
-This 'extra features' list is not comprehensive. If you have a particular idea
-you would like to implement (e.g. acceleration structures, etc.), please
-contact us first.
-
-For each extra feature, you must provide the following analysis:
-
-* Overview write-up of the feature
-* Performance impact of the feature
-* If you did something to accelerate the feature, what did you do and why?
-* Compare your GPU version of the feature to a HYPOTHETICAL CPU version
-  (you don't have to implement it!) Does it benefit or suffer from being
-  implemented on the GPU?
-* How might this feature be optimized beyond your current implementation?
-
-## Base Code Tour
-
-You'll be working in the following files. Look for important parts of the code:
-search for `CHECKITOUT`. You'll have to implement parts labeled with `TODO`.
-(But don't let these constrain you - you have free rein!)
-
-* `src/pathtrace.cu`: path tracing kernels, device functions, and calling code
-  * `pathtraceInit` initializes the path tracer state - it should copy
-    scene data (e.g. geometry, materials) from `Scene`.
-  * `pathtraceFree` frees memory allocated by `pathtraceInit`
-  * `pathtrace` performs one iteration of the rendering - it handles kernel
-    launches, memory copies, transferring some data, etc.
-    * See comments for a low-level path tracing recap.
-* `src/intersections.h`: ray intersection functions
-  * `boxIntersectionTest` and `sphereIntersectionTest`, which take in a ray and
-    a geometry object and return various properties of the intersection.
-* `src/interactions.h`: ray scattering functions
-  * `calculateRandomDirectionInHemisphere`: a cosine-weighted random direction
-    in a hemisphere. Needed for implementing diffuse surfaces.
-  * `scatterRay`: this function should perform all ray scattering, and will
-    call `calculateRandomDirectionInHemisphere`. See comments for details.
-* `src/main.cpp`: you don't need to do anything here, but you can change the
-  program to save `.hdr` image files, if you want (for postprocessing).
-
-### Generating random numbers
-
-```
-thrust::default_random_engine rng(hash(index));
-thrust::uniform_real_distribution<float> u01(0, 1);
-float result = u01(rng);
-```
-
-There is a convenience function for generating a random engine using a
-combination of index, iteration, and depth as the seed:
-
-```
-thrust::default_random_engine rng = random_engine(iter, index, depth);
-```
-
-### Imperfect specular lighting
-
-In path tracing, like diffuse materials, specular materials are
-simulated using a probability distribution instead computing the
-strength of a ray bounce based on angles.
-
-Equations 7, 8, and 9 of
-[*GPU Gems 3*, Chapter 20](http://http.developer.nvidia.com/GPUGems3/gpugems3_ch20.html)
-give the formulas for generating a random specular ray. (Note that
-there is a typographical error: χ in the text = ξ in the formulas.)
-
-Also see the notes in `scatterRay` for probability splits between
-diffuse/specular/other material types.
-
-See also: PBRT 8.2.2.
-
-### Handling Long-Running CUDA Threads
-
-By default, your GPU driver will probably kill a CUDA kernel if it runs for more than 5 seconds. There's a way to disable this timeout. Just beware of infinite loops - they may lock up your computer.
-
-> The easiest way to disable TDR for Cuda programming, assuming you have the NVIDIA Nsight tools installed, is to open the Nsight Monitor, click on "Nsight Monitor options", and under "General" set "WDDM TDR enabled" to false. This will change the registry setting for you. Close and reboot. Any change to the TDR registry setting won't take effect until you reboot. [Stack Overflow](http://stackoverflow.com/questions/497685/cuda-apps-time-out-fail-after-several-seconds-how-to-work-around-this)
-
-### Notes on GLM
-
-This project uses GLM for linear algebra.
-
-On NVIDIA cards pre-Fermi (pre-DX12), you may have issues with mat4-vec4
-multiplication. If you have one of these cards, be careful! If you have issues,
-you might need to grab `cudamat4` and `multiplyMV` from the
-[Fall 2014 project](https://github.com/CIS565-Fall-2014/Project3-Pathtracer).
-Let us know if you need to do this.
-
-### Scene File Format
-
-This project uses a custom scene description format. Scene files are flat text
-files that describe all geometry, materials, lights, cameras, and render
-settings inside of the scene. Items in the format are delimited by new lines,
-and comments can be added using C-style `// comments`.
-
-Materials are defined in the following fashion:
-
-* MATERIAL (material ID) //material header
-* RGB (float r) (float g) (float b) //diffuse color
-* SPECX (float specx) //specular exponent
-* SPECRGB (float r) (float g) (float b) //specular color
-* REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
-* REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
-* REFRIOR (float ior) //index of refraction for Fresnel effects
-* EMITTANCE (float emittance) //the emittance strength of the material. Material is a light source iff emittance > 0.
-
-Cameras are defined in the following fashion:
-
-* CAMERA //camera header
-* RES (float x) (float y) //resolution
-* FOVY (float fovy) //vertical field of view half-angle. the horizonal angle is calculated from this and the reslution
-* ITERATIONS (float interations) //how many iterations to refine the image,
-  only relevant for supersampled antialiasing, depth of field, area lights, and
-  other distributed raytracing applications
-* DEPTH (int depth) //maximum depth (number of times the path will bounce)
-* FILE (string filename) //file to output render to upon completion
-* EYE (float x) (float y) (float z) //camera's position in worldspace
-* VIEW (float x) (float y) (float z) //camera's view direction
-* UP (float x) (float y) (float z) //camera's up vector
-
-Objects are defined in the following fashion:
-
-* OBJECT (object ID) //object header
-* (cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or
-  "mesh". Note that cubes and spheres are unit sized and centered at the
-  origin.
-* material (material ID) //material to assign this object
-* TRANS (float transx) (float transy) (float transz) //translation
-* ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
-* SCALE (float scalex) (float scaley) (float scalez) //scale
-
-Two examples are provided in the `scenes/` directory: a single emissive sphere,
-and a simple cornell box made using cubes for walls and lights and a sphere in
-the middle.
-
-## Third-Party Code Policy
-
-* Use of any third-party code must be approved by asking on our Google Group.
-* If it is approved, all students are welcome to use it. Generally, we approve
-  use of third-party code that is not a core part of the project. For example,
-  for the path tracer, we would approve using a third-party library for loading
-  models, but would not approve copying and pasting a CUDA function for doing
-  refraction.
-* Third-party code **MUST** be credited in README.md.
-* Using third-party code without its approval, including using another
-  student's code, is an academic integrity violation, and will, at minimum,
-  result in you receiving an F for the semester.
-
-## README
-
-Please see: [**TIPS FOR WRITING AN AWESOME README**](https://github.com/pjcozzi/Articles/blob/master/CIS565/GitHubRepo/README.md)
-
-* Sell your project.
-* Assume the reader has a little knowledge of path tracing - don't go into
-  detail explaining what it is. Focus on your project.
-* Don't talk about it like it's an assignment - don't say what is and isn't
-  "extra" or "extra credit." Talk about what you accomplished.
-* Use this to document what you've done.
-* *DO NOT* leave the README to the last minute! It is a crucial part of the
-  project, and we will not be able to grade you without a good README.
-
-In addition:
-
-* This is a renderer, so include images that you've made!
-* Be sure to back your claims for optimization with numbers and comparisons.
-* If you reference any other material, please provide a link to it.
-* You wil not be graded on how fast your path tracer runs, but getting close to
-  real-time is always nice!
-* If you have a fast GPU renderer, it is very good to show case this with a
-  video to show interactivity. If you do so, please include a link!
-
-### Analysis
-
-* Stream compaction helps most after a few bounces. Print and plot the
-  effects of stream compaction within a single iteration (i.e. the number of
-  unterminated rays after each bounce) and evaluate the benefits you get from
-  stream compaction.
-* Compare scenes which are open (like the given cornell box) and closed
-  (i.e. no light can escape the scene). Again, compare the performance effects
-  of stream compaction! Remember, stream compaction only affects rays which
-  terminate, so what might you expect?
-
-
-## Submit
-
-If you have modified any of the `CMakeLists.txt` files at all (aside from the
-list of `SOURCE_FILES`), you must test that your project can build in Moore
-100B/C. Beware of any build issues discussed on the Google Group.
-
-1. Open a GitHub pull request so that we can see that you have finished.
-   The title should be "Submission: YOUR NAME".
-2. Send an email to the TA (gmail: kainino1+cis565@) with:
-   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
-   * Direct link to your pull request on GitHub.
-   * Estimate the amount of time you spent on the project.
-   * If there were any outstanding problems, or if you did any extra
-     work, *briefly* explain.
-   * Feedback on the project itself, if any.
-
-## References
-
-* [PBRT] Physically Based Rendering, Second Edition: From Theory To Implementation. Pharr, Matt and Humphreys, Greg. 2010.
+* Shuai Shao (Shrek)
+* Tested on: Windows 10, i7-4710HQ @ 2.50GHz 16GB, GeForce GTX 970M (Personal Computer)
+
+-----------------------------------------
+
+
+## Image Example
+* Simple scene shows diffuse, reflection, refraction, caustic, global illumination, antialiasing, and soft shadow
+![refraction](img/refraction.png)
+
+* Lens effect
+![lens](img/lens.png)
+
+* Obj File
+![obj](img/obj.png)
+
+-----------------------------------
+
+## Features
+
+### General Intro
+
+GPU accelerated Monte Carlo path tracer launches parallel threads to calculate ray intersections and shading. Instead of using recursive ray tracing functions, the GPU approach maintains a ray array, and do stream compaction to exclude terminated rays for each bounce in an iterative way. Paths ray bounces through the scene and terminates by either hitting the light source or hitting nothing. The final image averages the pixel value results of tons of iterations to get a well rendered image. Since the algorithm is embarrassingly  parallel, the GPU approach can be must faster than the CPU counterpart. 
+
+### Anti aliasing
+
+It is easy to implement Anti-aliasing in GPU Path Tracer. Simply jittering the ray within a pixel can lead to an averaged pixel value. 
+
+### Lens effect
+
+Reference: PBRT 6.2.3
+
+Traditional path/ray tracer basically is modeled as a pinhole camera. For real camera, because of the focal length of the lens, only the objects in a range of distance to the image plane can be projected on the reasonable same pixel and form a clear image. Objects out of that the range will project on an area instead of a point on the image plane which means a blurred image.  Larger aperture leads to a shorter range of well focused length, i.e. a bluer image.
+
+To model this feature, we need two more varaibles for the camera. Lens radius and focalLength. Objects on the focalPlane will be projected on the same point on the image plane. Given a ray whose origin is at the middle of the lens(the origin of the camera), by finding the focus point on the focalPlane, we can compute the ray that goes through the focus point and a random point on the lens. So that we get a new ray whose origin is randomly distributed on the lens but goes through the focus point on the focal plane as its original pin hole ray does. The direction of the new ray is slightly different from the original one, thus objects that are far from the focal plane will be blurred. 
+
+### Work-efficient stream compaction with shared memory and multi blocks
+
+Reference: GPU Gems 3 ch 39
+
+Shared memory has a much faster access speed compared to global memory. Since work-efficient stream compaction has a tree structure, it needs lots of memory accessing, using shared memory can greatly increase the performance. Because shared memory is shared within a block and the size is limited, we need to cooperate through multi blocks. What we do is a multi level scan. We do exclusive scan on each block. then we collect the sum of each block and do a exclusive scan, add them back to their block. 
+
+The stream compaction can considerably decrease the number of active path rays, reduce the number of blocks. The influence is more obvious in a open scene
+
+
+![numPathRays](img/numPathRays.png)
+
+
+
+Sloving Bank conflict: use a macro to solve the same bank accessing (currently not using)
+
+
+### Refraction with Frensel effect
+
+Reference: PBRT 
+
+Update the Scatter Ray Function to scatter refraction ray at specific time. 
+
+### Obj file loading and rendering
+
+Read vertex, vertex normal, face, etc info from obj file.
+Code is partly adapted from my previous Ray Tracer Project in UC Berkley CS 184.
+
+### Stackless kd-tree for GPU (still buggy)
+
+reference: KD-Tree Acceleration Structures for a GPU Raytracer, Tim Foley and Jeremy Sugerman, Stanford University, Graphics Hardware (2005)
+
+The biggest difference of kd-tree on GPU from that of CPU is that we can't use recursive function or use full stack on GPU.
+
+I implement kd-backtrack algorithm. Which use backtrack to play the role of popping node from stack. Unfortuntely, this part is still buggy. Now the code can work correct in terms of low level backtrack. I use a depth hit test program to debug. It can be seen in this simple scene, the first depth hit is correct due to low level kd-tree. Yet there are rays losing intersection after the first hit test. So the result is darker. When it comes to complex tree like a obj file, current code will lose a lot of intersections. Although I spend the most time implementing and debugging this part, I fail to debug it completely before due time. Really a pity........ TODO in future.
+
+(left: naive parse, right: current kd tree)
+
+* hit depth = 0
+![master_depth0](img/master_depth0.png)   ![kdtree_depth0](img/kdtree_depth0.png)
+
+* hit depth = 1
+![master_depth1](img/master_depth0.png)   ![kdtree_depth1](img/kdtree_depth1.png)
+
+* kd tree wrong
+ ![kdtree_wrong](img/kdtree_wrong.png)
+
+----------------------
+
+## TIPS 
+
+* When doing CUDA debugging, if some threads trap to infinite loops, the debug can fail. To get rid of this, it is better to set a limitation for number of loops for every loop in the kernel. Together with printing the error info. This way can make the debugging much easier and less confusing about the CUDA error like grid launch error. 
+
+* I met racing conditions with large blockSize work-efficient stream compaction. I haven't got time to handle this. Currently just use blockSize of 32 to get rid of this. Larger blockSize can result in tiny patterns in the image.
+
+* \__constant__ memory can be used for geoms, kd nodes, and material to increase accessing speed since they are constant once constructed by CPU code. This can be done in future. 
+
+
