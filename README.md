@@ -8,10 +8,10 @@ CUDA Path Tracer
 
 ## Project Description:
 
-In this project, a CUDA-based path tracer capable of rendering globally-illuminated images is implemented. The features includes,
-* Diffuse surfaces
-* Perfectly specular-reflective (mirrored) surfaces
-* Non-perfect specular surfaces
+In this project, a CUDA-based path tracer capable of rendering globally-illuminated images is implemented. The features include,
+* Diffuse surfaces rendering
+* Perfectly specular-reflective (mirrored) surfaces rendering
+* Non-perfect specular surfaces rendering
 * Antialiasing
 * Motion blur
 * Work-efficient stream compaction using shared memory
@@ -24,7 +24,7 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 
 ![](img/specular.png)
 
-### Non-perfect specular surfaces
+### Non-perfect specular surface
 
 ![](img/nonperfect.png)
 
