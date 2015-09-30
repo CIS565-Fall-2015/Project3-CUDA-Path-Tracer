@@ -34,6 +34,7 @@ Scene::Scene(string filename) {
 
 int Scene::loadGeom(string objectid) {
     int id = atoi(objectid.c_str());
+    //bool &blur = this->blur;
     if (id != geoms.size()) {
         cout << "ERROR: OBJECT ID does not match expected number of geoms" << endl;
         return -1;
@@ -74,6 +75,14 @@ int Scene::loadGeom(string objectid) {
                 newGeom.rotation = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             } else if (strcmp(tokens[0].c_str(), "SCALE") == 0) {
                 newGeom.scale = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+            } else if( strcmp(tokens[0].c_str(), "MOVING") == 0 ) {
+            	newGeom.moving = true;
+            	this->blur = true;
+            } else if( strcmp(tokens[0].c_str(), "FRAMES") == 0 ) {
+            	newGeom.frames = atof(tokens[1].c_str());
+            	this->frames = atof(tokens[1].c_str());
+            } else if(strcmp(tokens[0].c_str(), "TRANSGOAL") == 0) {
+                newGeom.translationGoal = glm::vec3(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
             }
 
             utilityCore::safeGetline(fp_in, line);

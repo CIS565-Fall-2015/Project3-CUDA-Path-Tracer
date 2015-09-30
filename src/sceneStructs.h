@@ -13,6 +13,13 @@ enum GeomType {
 struct Ray {
     glm::vec3 origin;
     glm::vec3 direction;
+	glm::vec3 color;
+	int imageIndex;
+	bool run;
+	bool hit;
+	glm::vec3 intersectionPoint;
+	glm::vec3 intersectionNormal;
+	int intersectionGeomIndex;
 };
 
 struct Geom {
@@ -24,6 +31,9 @@ struct Geom {
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+    bool moving;
+    glm::vec3 translationGoal;
+    int frames;
 };
 
 struct Material {

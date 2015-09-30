@@ -26,7 +26,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const char *sceneFile = argv[1];
+    //const char *sceneFile = argv[1];
+    const char *sceneFile = "scenes/cornell.txt";
+    //const char *sceneFile = "scenes/cornell_blur.txt";
+    //printf(argv[0]);
+    //printf(argv[1]);
 
     // Load scene file
     scene = new Scene(sceneFile);
@@ -99,8 +103,14 @@ void runCuda() {
         cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
 
         // execute the kernel
-        int frame = 0;
-        pathtrace(pbo_dptr, frame, iteration);
+        if( scene->blur ) {
+        	for( int frame = 0; frame<(scene->frames); frame++ ){
+        		pathtrace(pbo_dptr, frame, scene->frames, iteration);
+        		//printf("frame is : %d", frame);
+        	}
+        } else {
+        	pathtrace(pbo_dptr, 0, 0, iteration);
+        }
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
