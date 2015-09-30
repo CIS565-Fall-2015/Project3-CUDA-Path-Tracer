@@ -105,7 +105,7 @@ __device__ void depth_of_field(Camera cmr,int iter, int index,Ray &ray,int x,int
 	glm::vec3 H = temp*glm::length(F)*R;
 	//camera componet(EYE:0,4,7)
 	float lens_radius = 2.0f;
-	float focal_distance = 5.f;//aperon focus
+	float focal_distance = 2.f;//aperon focus
 	// step1.Sample a random point on the lense 
 	thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 1);
 	thrust::uniform_real_distribution<float> u01(-1, 1);
