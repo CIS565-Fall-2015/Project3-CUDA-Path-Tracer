@@ -34,3 +34,4 @@ There are a comparison of images:
 ![](img/withGitter.png)
 The first is without the gitter, the sphere boundary is "hard" and the ceilling has a very clear line boundary with the left and right wall, but the second does not.
 
+
