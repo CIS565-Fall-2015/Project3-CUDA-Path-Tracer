@@ -28,6 +28,8 @@ This is a path tracer implemented in CUDA that supports basic ray casting, diffu
 
 ### Analysis
 
+![](img/cornell_alive_vs_specular.png)
+
 * Stream compaction helps most after a few bounces. Print and plot the
   effects of stream compaction within a single iteration (i.e. the number of
   unterminated rays after each bounce) and evaluate the benefits you get from
