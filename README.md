@@ -5,7 +5,6 @@ CUDA Path Tracer
 
 * Levi Cai
 * Tested on: Windows 8, i7 @ 2.22GHz 22GB, GTX 222 222MB
-* 
 
 This is a path tracer implemented in CUDA that supports basic ray casting, diffuse and specular surfaces, sphere and cube intersections, work efficient-stream compaction with shared memory, motion blurring, refraction, and depth-of-field.
 
