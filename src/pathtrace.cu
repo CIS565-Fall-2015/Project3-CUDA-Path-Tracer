@@ -518,6 +518,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	
 	for(int i=0;i<depth;++i){
 		int bs=256;
+		cout<<remain<<endl;
+		getchar();
 		dim3 gs((remain+bs-1)/bs);
 		pathTraceKernel<<<gs, bs>>>(dev_origin, dev_direction, dev_pixes,dev_inside,dev_terminated,dev_geom, geomNum, dev_material,iter,i,remain);
 		remain=compact(remain,dev_origin,dev_direction,dev_pos,dev_pixes,dev_copyImage,dev_inside,dev_terminated,bs);
@@ -626,18 +628,28 @@ void scan(int n, int newN,int *odata,int blockSize) {
 	dim3 blockPerGrid=((newN+blockSize-1)/blockSize);
 	cudaMalloc(&dev_sum, blockPerGrid.x*sizeof(int));
 	cudaMemset(dev_sum,0,blockPerGrid.x*sizeof(int));
+	/*if(n==27218){
+		int *test1=new int[27218];
+		cudaMemcpy(test1,odata,27218*sizeof(int),cudaMemcpyDeviceToHost);
+		for(int i=0;i<1000;++i) cout<<test1[i]<<endl;
+	}*/
 	SwapOnGPU<<<blockPerGrid,blockSize,blockSize*sizeof(int)>>>(odata,n,newN,dev_sum);
-	
-	int *dev_tmp;
+
+	int *dev_tmp,*test=new int[1];
 	int newN1=pow(2,ilog2ceil(blockPerGrid.x));
 	dim3 blockPerGrid1=((blockPerGrid.x+blockSize-1)/blockSize);
 	cudaMalloc(&dev_tmp, blockPerGrid1.x*sizeof(int));
 	SwapOnGPU<<<blockPerGrid1,blockSize,blockSize*sizeof(int)>>>(dev_sum,blockPerGrid.x,newN1,dev_tmp);
 	
+	if(blockPerGrid1.x==1){
+		cudaMemcpy(test,dev_tmp,sizeof(int),cudaMemcpyDeviceToHost);
+		cout<<test[0]<<endl;
+	}
+
 	if(blockPerGrid.x>blockSize){//do another Swap if the current dev_sum cannot hold blockSize element
 		int *dev_tmp1;
 		cudaMalloc(&dev_tmp1, sizeof(int));
-		
+		//cout<<"@"<<endl;
 		SwapOnGPU<<<1,blockSize,blockSize*sizeof(int)>>>(dev_tmp,blockPerGrid1.x,256,dev_tmp1);
 
 		addOffset<<<blockPerGrid1,blockSize>>>(dev_sum,blockPerGrid.x,dev_tmp);
@@ -738,8 +750,10 @@ int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *
 			glm::vec3 *image,bool *inside,int *dev_idata,int blockSize) {
     int *scanned=new int[n],*idata=new int[n];
 	int newN=pow(2,ilog2ceil(n));
-	
+
+	//cudaFree(dev_scanned);
 	//cudaMalloc(&dev_scanned,newN*sizeof(int));
+	//cudaMemset(dev_scanned,0,pow(2,ilog2ceil(640000))*sizeof(int));
 	cudaMemcpy(dev_scanned,dev_idata,n*sizeof(int),cudaMemcpyDeviceToDevice);
 	scan(n,newN,dev_scanned,blockSize);
 
@@ -755,6 +769,7 @@ int compact(int n, glm::vec3 *origin, glm::vec3 *direction, int *pos,glm::vec3 *
 	cudaMemcpy(scanned,dev_scanned,n*sizeof(int),cudaMemcpyDeviceToHost);
 
 	int count=scanned[n-1]+idata[n-1];
+	//cout<<scanned[n-1]<<","<<idata[n-1]<<endl;
 	
 	delete(scanned);
 	delete(idata);
