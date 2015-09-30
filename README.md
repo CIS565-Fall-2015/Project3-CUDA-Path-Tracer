@@ -10,7 +10,7 @@ CUDA Path Tracer
 
 This repository contains a CUDA path tracer with the following features:
 - basic diffuse and perfectly reflective materials
-- work-efficient shared memory stream compaction
+- work-efficient shared memory scan for stream compaction
 - obj file loading and naive rendering
 - motion blur
 
@@ -23,8 +23,31 @@ The content of this assignment was weighted more towards learning CUDA than path
 
 ![](images/cornell.2015-09-29_06-25-17z.1403samp.png)
 
-We can still get some interesting images, however:
+We can still get some interesting images, however, such as this one with an interesting lensing effect:
 
 ![](images/cornell.2015-09-29_12-26-54z.5000samp.png)
 
-Note that all lights are just geometry objects with an emissive material.
+Another observation: a scene with brighter RGB lights on a diffuse surface produces CMYK shadows!
+
+![](images/cornell.2015-09-29_12-50-41z.5000samp.png)
+
+All lights are just geometry objects with an emissive material. I will elaborate on the scene file format further down.
+
+**Stream Compaction**
+Within one sampling iteration the GPU will produce a pool of rays by raycasting. Then it will repeatedly test the rays for intersection in the scene and remove bottomed out rays until the pool is empty.
+
+Removing bottomed out rays from the pool uses stream compaction. This program includes a work-efficient shared memory implementation of Scan but can also be configured to use work-efficient global memory scan or the thrust library's version of stream compaction.
+
+The work-efficient scan implementations are available in [stream_compaction/efficient.cu](stream_compaction/efficient.cu). The function scan_components_test() also contains some unit tests for the components of work-efficient global memory scan. The shared memory size can be changed by tweaking DEVICE_SHARED_MEMORY in [stream_compaction/efficient.h](stream_compaction/efficient.h).
+
+Stream compaction meanwhile is implemented in [src/pathtrace.cu](src/pathtrace.cu). To switch between different stream compaction implementations, see like 362.
+
+It's worth noting that both of my implementations of stream compaction seem to cause artifacts in the render. The thrust implementation, however, does not feature such problems. The reasons for this are somewhat nonobvious, as my unit tests on shared memory stream compaction seem to make sense and cover both power-of-two and non-power-of-two.
+
+Here is a render using thrust:
+![](images/cornell.2015-09-28_02-38-37z.5000samp.png)
+
+And here is the same scene rendered using the work-efficient shared memory implementation:
+![](images/cornell.2015-09-28_22-38-33z.5000samp.png)
+
+Unit tests for work-efficient shared memory implementation can be run on the first path tracing iteration by uncommenting code at like 296 in [src/pathtrace.cu](src/pathtrace.cu).
