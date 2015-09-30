@@ -24,5 +24,13 @@ PART VI:  Kdtree Acceleration
 The above mesh intersection is the naive method, which is OK for small objects, but impossible for larget objects. So we use a kdtree to accelerate the computation. We first create the kdtree on CPU recursively, then copy the structure onto GPU. This process is much more complex than copy a mesh. The copy here is recursively, using a postorder traverse of the tree to help. First copy the left and right child of the tree, pass its data to GPU, link the pointer to the CPU pointer, then copy the whole tree to GPU. The recursive funciton should return the GPU pointer. When all this is done, the acutal simplifaction of intersection is done on GPU. Because we do not know beforehand how much triangle will a ray intersect, I can only hard code the number used for the actual triangle intersection. If we do that on CPU, we can use vector to store the information which means we do not need to deal with the space issue, but on GPU it is different. Kdtree On GPU has many SIGGRAPH paper to reference, to improve this part, a lot of work is needed.
 ![](img/dragon1.png)![](img/dragon3.png)
 
-PART VII:
+PART VII: Stream Compaction
+In the interseciton some ray may terminated after some iteration. But we are still running them on GPU. So if we can reduce the number of block used for this, we can greatly improve the performance here. Here I used the shared memory with the efficient scan(upswap and downswap) to deal with the scan in one block. And among block I add the last number of each block, scan them again and add them back to the original global data. After the stream compaction is accomplished, if the depth is very large, the time used will reduce dramatically when compared method without stream compaction.
+
+PART VIII: Gitter Within Ray:
+To solve the problem of aliasing, we used a gittered ray for each pixes in each iteration.
+There are a comparison of images:
+![](img/withoutGitter.png)
+![](img/withGitter.png)
+The first is without the gitter, the sphere boundary is "hard" and the ceilling has a very clear line boundary with the left and right wall, but the second does not.
 
