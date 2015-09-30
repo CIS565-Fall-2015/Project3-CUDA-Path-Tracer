@@ -16,6 +16,6 @@ window 10 can be really buggy in this project..crushed my computer again and aga
 2.without depth of field
 ![](img/camera1.png)
 3.with depth of field
-![](img/camera1.png)
+![](img/camera2.png)
 4.without direct light
 ![](img/cornell.10e-4offset.png)
