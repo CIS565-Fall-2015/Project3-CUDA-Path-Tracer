@@ -31,6 +31,7 @@ __global__ void kern_up_sweep(int n, int *odata, const int *idata, int layer) {
 
 __global__ void kern_down_sweep(int n, int *odata, const int *idata, int layer) {
 	int thrId = threadIdx.x + (blockIdx.x * blockDim.x);
+	//__shared__ 
 	if ((thrId < n) && (thrId%layer == 0)) {
 		int temp = idata[thrId + (layer / 2) - 1];
 		odata[thrId + (layer / 2) - 1] = idata[thrId + layer - 1];

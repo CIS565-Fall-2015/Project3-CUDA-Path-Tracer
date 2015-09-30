@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <cmath>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
@@ -19,15 +20,17 @@
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
 
-struct is_terminated
-{
- __host__ __device__
- bool operator() (const Ray r)
- {
-	return r.terminated;
- }
-};
+inline int ilog2(int x) {
+    int lg = 0;
+    while (x >>= 1) {
+        ++lg;
+    }
+    return lg;
+}
 
+inline int ilog2ceil(int x) {
+    return ilog2(x - 1) + 1;
+}
 
 void checkCUDAErrorFn(const char *msg, const char *file, int line) {
     cudaError_t err = cudaGetLastError();
@@ -76,7 +79,10 @@ static Scene *hst_scene = NULL;
 static glm::vec3 *dev_image = NULL;
 static Geom *dev_geoms = NULL;
 static Material *dev_mats = NULL;
-static Ray *dev_rayArray = NULL;
+static Ray *dev_rayArray = NULL; 
+int* g_idata;
+int* dev_bools;
+int* dev_indices;
 
 // TODO: static variables for device memory, scene/camera info, etc
 // ...
@@ -376,6 +382,147 @@ __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, con
 	}	
 }
 
+__global__ void generate_zeros(int *data) {
+	int i = threadIdx.x + (blockIdx.x * blockDim.x);
+	data[i] = 0;
+}
+
+__global__ void set_zero(int size, int n, int *data) {
+	int i = threadIdx.x + (blockIdx.x * blockDim.x);
+	if (i >= n - 1) {
+		data[i] = 0;
+	}
+}
+__global__ void kern_up_sweep(int n, int *odata, const int *idata, int layer) {
+	int thrId = threadIdx.x + (blockIdx.x * blockDim.x);
+	if ((thrId < n) && (thrId%layer == 0)) {
+		odata[thrId + layer - 1] += idata[thrId + (layer / 2) - 1];
+	}
+}
+
+__global__ void kern_down_sweep(int n, int *odata, const int *idata, int layer) {
+	int thrId = threadIdx.x + (blockIdx.x * blockDim.x);
+	//__shared__ 
+	if ((thrId < n) && (thrId%layer == 0)) {
+		int temp = idata[thrId + (layer / 2) - 1];
+		odata[thrId + (layer / 2) - 1] = idata[thrId + layer - 1];
+		odata[thrId + layer - 1] += temp;
+	}	
+}
+
+__global__ void kernCombine(int *maxArray, int *g_idata, int n) {
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	
+	if (index < n) {
+		printf("in function: %i \n", index);
+		printf("g_before: %i \n", g_idata[index]);
+		g_idata[index] += maxArray[blockIdx.x];
+		printf("g_after: %i, maxArray: %i \n", g_idata[index], maxArray[blockIdx.x]);
+	}
+}
+
+__global__ void kernScan(int *maxArray, int *g_idata, int n) {
+	extern __shared__ int temp[];
+	printf("blockId: %i", blockDim.x);
+	int thid = threadIdx.x + (blockIdx.x * blockDim.x);
+	int t = threadIdx.x;
+	int offset = 1;
+	temp[2*t] = g_idata[2*thid];
+	temp[2*t+1] = g_idata[2*thid+1];
+	for (int d = (2*blockDim.x)>>1; d > 0; d >>=1) {
+		__syncthreads();
+		if (t < d) {
+			int ai = offset*(2*t+1)-1;
+			int bi = offset*(2*t+2)-1;
+			temp[bi] += temp[ai];
+		}
+		offset *= 2;
+	}
+	if (t == 0) {
+		temp[2*blockDim.x-1] = 0;
+	}
+
+	for (int d = 1; d < (2*blockDim.x); d*=2) {
+		offset >>= 1;
+		__syncthreads();
+		if (t < d) {
+			int ai = offset *(2*t+1)-1;
+			int bi = offset *(2*t+2)-1;
+			float t2 = temp[ai];
+			temp[ai] = temp[bi];
+			temp[bi] += t2;
+		}
+	}
+	__syncthreads();
+	if (t == (blockDim.x - 1)) {
+		maxArray[blockIdx.x] = temp[2*t+1] + g_idata[2*thid+1];
+	}
+	g_idata[2*thid] = temp[2*t];
+	//printf("(%i, %i) \n", thid, temp[2*t]);
+	g_idata[2*thid+1] = temp[2*t+1];
+	
+}
+
+void scan(int n, const int *idata, int *odata) {
+	int blockSize = 32;
+	int numBlocks = ceil((float)n / (float)blockSize);
+	int powTwo = 1<<ilog2ceil(n);
+	dim3 fullBlocksPerGrid(((powTwo/2) + blockSize - 1) / blockSize);
+	int* maxArray;
+	
+	cudaMalloc((void**)&g_idata, powTwo  * sizeof(int));
+	
+	cudaMemset(g_idata, 0, powTwo * sizeof(int));
+	
+	int* scanArray = new int[n];
+	//scanArray[0] = 0;
+	for (int i = 0; i < n; i++) {
+		scanArray[i] = idata[i];
+	}
+	checkCUDAError("pathtrace1");
+	cudaMalloc((void**)&maxArray, (((powTwo/2) + blockSize - 1) / blockSize)  * sizeof(int));
+	cudaMemcpy(g_idata, scanArray, n*sizeof(int), cudaMemcpyHostToDevice);
+	
+	kernScan<<<fullBlocksPerGrid, blockSize, 2*blockSize*sizeof(int)>>>(maxArray, g_idata, n);
+	cudaMemcpy(odata, g_idata, n*sizeof(int), cudaMemcpyDeviceToHost);
+
+	int maxSize = ((powTwo/2) + blockSize - 1) / blockSize;
+	if (maxSize != 1) {
+		int* hst_maxArray = new int[maxSize];
+		int* scanMax = new int[maxSize];
+		int* dev_scanMax;
+		
+		cudaMalloc((void**)&dev_scanMax, maxSize*sizeof(int));
+		
+		cudaMemcpy(hst_maxArray, maxArray, maxSize*sizeof(int), cudaMemcpyDeviceToHost);
+		printf("%i ", hst_maxArray[maxSize - 1]);
+		
+		scan(maxSize, hst_maxArray, scanMax);
+		//cudaMemcpy(odata, g_idata, n*sizeof(int), cudaMemcpyDeviceToHost);
+		
+		cudaMemcpy(dev_scanMax, scanMax, maxSize*sizeof(int), cudaMemcpyHostToDevice);
+		//kernCombine<<<fullBlocksPerGrid, blockSize>>>(dev_scanMax, g_idata, n);
+		cudaMemcpy(odata, g_idata, n*sizeof(int), cudaMemcpyDeviceToHost);
+		/*for (int i = 0; i < maxSize; i++) {
+			for (int j = blockSize*2*i; j < blockSize*2*(i+1) - 1; j++) {
+				if (j < n) {
+					printf("odata before : %i \n", odata[j]);
+					odata[j] += scanMax[i];
+					printf("odata after : %i \n", odata[j]);
+				}
+			}
+		}*/
+		kernCombine<<<fullBlocksPerGrid, blockSize>>>(dev_scanMax, g_idata, n);
+		//checkCUDAError("pathtrace");
+	}
+	
+	cudaMemcpy(odata, g_idata, n*sizeof(int), cudaMemcpyDeviceToHost);
+	
+	printf(" don with function ");
+	cudaFree(maxArray);
+	cudaFree(g_idata);
+	//checkCUDAError("pathtrace");
+}
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -424,9 +571,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     
     // TODO: perform one iteration of path tracing
-	bool dof = true;
+	bool dof = false;
 	bool m_blur = false;
-	
+	int size = pixelcount;
+	//int* hst_bool = new int[size];
+	int* hst_bool = new int[150];
+	int* hst_indices = new int[size];
 	if (m_blur && iter < max_iter) {
 		for (int i = 0; i < numGeoms; i++) {
 
@@ -446,9 +596,26 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	}
 	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dof);
 	for (int i = 0; i < traceDepth + 1; i++) {
-		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth, m_blur);
+		//kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth, m_blur);
+		
+		cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
 
-		//thrust::remove_if(thrust::host, dev_rayArray, dev_rayArray + pixelcount, is_terminated());
+		/*for (int m = 0; m < size; m++) {
+			if (rayArray[m].terminated) {
+				hst_bool[m] = 0;
+			} else {
+				hst_bool[m] = 1;
+			}
+		}*/
+		for (int m = 0; m < 150; m++) {
+			hst_bool[m] = 1;
+		}
+
+		//scan(size, hst_bool, hst_indices);
+		scan(70, hst_bool, hst_indices);
+		for (int i = 0; i < 70; i++) {
+			printf("%i \n", hst_indices[i]);
+		}
 	}
 	
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
