@@ -121,10 +121,10 @@ SCALE       .01 10 10
 // Sphere
 OBJECT 6
 sphere
-material 4
-MOVING
+material 5
 TRANS       -1 4 -1
 ROTAT       0 0 0
 SCALE       3 3 3
+MOVING
 TRANSGOAL   -1 2 -1
-FRAMES       15
+FRAMES       10

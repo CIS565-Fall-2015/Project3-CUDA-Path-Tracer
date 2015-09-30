@@ -13,7 +13,7 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 * Perfectly specular-reflective (mirrored) surfaces
 * Antialiasing
 * Motion blur
-* Work-efficient stream compaction using shared memory.
+* Work-efficient stream compaction using shared memory
 
 ### Diffuse surface
 
@@ -33,9 +33,7 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 
 ### Work-efficient stream compaction
 
-
-
-
+![](images/blur.png)
 
 ## Scene File Format
 
@@ -79,6 +77,9 @@ Objects are defined in the following fashion:
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
+* MOVING //if the object is moving or not
+* TRANSGOAL (float transx) (float transy) (float transz) //translation of the movement goal
+* FRAMES (int) //the frame span of the moving animation
 
 Examples are provided in the `scenes/` directory: a single emissive sphere,
 and a simple cornell box made using cubes for walls and lights and a sphere in
