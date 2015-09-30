@@ -44,4 +44,5 @@ PART IX: Performance Analysis
     Using the naive method, one iteration with a sphere object with 2000+ faces need almost 10s. However, if using the kdtree structure, one iteration use less than one third second. Theoretically, the time complexity of the kdtree is also logrithmic, and the naive method is also linear. However, in runtime the kdtree may not be that fast due to the space need to store all the triangle indexs. The space needed maybe large(say rendering of the stanford dragon with 100k faces), which may reduce the performance of a block.
   4 open scene vs closed scene
     I actually not tested on the closed scene, but I am sure it will be slower than the open scene. Because in the open scene a lot of ray terminated by hitting nothing, but in the closed scene that never happens. This effect will be enlarged when the depth is very large.
-  5 
+  5 global variable vs loacl variable
+    In the beginning I used a lot of local variables. I initiate them, allocate them and free them in every iteration, even in every depth. Then I changed the local variables to global variables and I only need to allocate and free once. And the fps for a simple scene raised from 5 to 6.6. That means the cuda malloc and memcpy may use a lot of time.
