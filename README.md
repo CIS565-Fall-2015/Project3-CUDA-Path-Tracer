@@ -7,14 +7,17 @@ CUDA Path Tracer
 * Tested on: Windows 7, i7-4770 @ 3.40GHz 16GB (Moore 100 Lab C)
 
 ![](img/DOF1.png "Depth of Field")
+* Depth of field was implemented by jittering the location of the aperatus, as the rays were being shot through it.  Given a specific distance, we can choose which objects are in focus and which are not.  This was helpful to do on the GPU, because each ray could easily be jittered on the GPU.
 
 ![](img/specular2.png "Specular sphere")
 
 ![](img/refraction_correct3(glass).png "Refraction with an IOR of glass")
 
 ![](img/motion_blur_1000.png "Motion blur after 1000 iterations")
+* Motion blur was implemented by iterating an object through space while the rays were being shot.  This allowed for different rays to hit the object when it was in different locations.  
 
 ![](img/final1000.png "Final image after 1000 iterations")
+* This final image shows the refracting surfaces, specular surfaces, difuse, and mirros.  
 
 ### Analysis
 
