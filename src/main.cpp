@@ -26,8 +26,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    //const char *sceneFile = argv[1];
-    const char *sceneFile = "scenes/cornell.txt";
+    const char *sceneFile = argv[1];
+    //const char *sceneFile = "scenes/cornell.txt";
     //const char *sceneFile = "scenes/cornell_nonperfect.txt";
     //const char *sceneFile = "scenes/cornell_blur.txt";
     //const char *sceneFile = "scenes/cornell_closed.txt";
