@@ -90,8 +90,11 @@ void scatterRay(
 	int scatter_type_array[3];
 
 	//diffuse
-	scatter_type_array[num_ray_type] = 0;
-	num_ray_type++;
+	if (!m.hasReflective && !m.hasRefractive)
+	{
+		scatter_type_array[num_ray_type] = 0;
+		num_ray_type++;
+	}
 
 	if(m.hasReflective)
 	{
@@ -108,7 +111,7 @@ void scatterRay(
 	//TODO: other ray type (sub scatter...)
 
 
-	int scatter_ray_type = 0;
+	int scatter_ray_type = scatter_type_array[0];
 	//random choose;
 	if(num_ray_type > 1)
 	{
@@ -146,21 +149,21 @@ void scatterRay(
 		}
 
 		float sint = ni * sini / nt;
-
+		float R0 = (ni - nt) / (ni + nt);
+		R0 *= R0;
+		schlickR = R0 + (1 - R0) * powf(1 - cosi, 5);
 		if (sint > 1)
 		{
 			//total reflect
 			num_ray_type--;
 			scatter_ray_type = 1;
 
-			float R0 = (ni - nt) / (ni + nt);
-			R0 *= R0;
-			schlickR = R0 + (1 - R0) * powf(1 - cosi, 5);
+			
 		}
 		else
 		{
 			float cost = sqrtf(1 - sint*sint);
-			color *= m.specular.color*(float)num_ray_type;
+			color *= m.color*(float)num_ray_type * (1 - schlickR);
 			glm::vec3 horizontal = (ray.direction + normal * normal_sign * cosi) / sini;
 			ray.direction = horizontal * sint - normal * normal_sign * cost;
 			//ray.direction = ray.direction * ni / nt + normal * normal_sign * (ni / nt*cosi - cost);

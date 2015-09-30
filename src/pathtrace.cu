@@ -120,7 +120,7 @@ void pathtraceInit(Scene *scene) {
 	cudaMalloc(&dev_geom, scene->geoms.size() * sizeof (Geom));
 	cudaMemcpy(dev_geom, scene->geoms.data() , scene->geoms.size() * sizeof (Geom), cudaMemcpyHostToDevice);
 
-	cudaMalloc(&dev_material,scene->geoms.size() * sizeof(Material));
+	cudaMalloc(&dev_material,scene->materials.size() * sizeof(Material));
 	cudaMemcpy(dev_material,scene->materials.data() , scene->materials.size() * sizeof (Material), cudaMemcpyHostToDevice);
 
 
@@ -704,6 +704,8 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	while (/*dev_path_end != dev_path*/num_path > 0 && depth < traceDepth)
 	{
 		
+
+		
 		dim3 blocksNeeded = (num_path + blockSizeTotal - 1) / blockSizeTotal ;
 		pathTraceOneBounce<<<blocksNeeded,blockSize>>>(iter,depth, num_path  ,dev_image, dev_path
 			, dev_geom, hst_scene->geoms.size()
@@ -713,7 +715,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		cudaDeviceSynchronize();
 		depth ++;
 
-		//stream compaction
+		////stream compaction
 		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
 		num_path = dev_path_end - dev_path;
 
@@ -736,7 +738,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     checkCUDAError("pathtrace");
 
 
-
+	
 	
 	
 }

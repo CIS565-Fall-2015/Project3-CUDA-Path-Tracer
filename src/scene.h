@@ -15,7 +15,7 @@
 
 using namespace std;
 
-#define USE_KDTREE_FLAG
+//#define USE_KDTREE_FLAG
 
 
 class Scene {
