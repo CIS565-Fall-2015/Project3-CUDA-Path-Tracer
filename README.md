@@ -34,4 +34,6 @@ There are a comparison of images:
 ![](img/withGitter.png)
 The first is without the gitter, the sphere boundary is "hard" and the ceilling has a very clear line boundary with the left and right wall, but the second does not.
 
-
+PART IX: Performance Analysis
+  1 stream compaction vs no stream compaction:
+    The first time I did this I put the depth in the thread, and it is not very slow. When implementing the stream compaction and the depth is low, the speed may be slower than not do that. However, the time used with respect to the depth is linear in this case. But after implementation the stream compaction, this relationship becomes Logarithmic. The following graph show's the number of thread after stream compaction with respect to the depth. ![](img/iter-thread.png). When the depth is very large, the advantage of the stream compaction is very obvious
