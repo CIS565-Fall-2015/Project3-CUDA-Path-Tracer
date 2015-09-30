@@ -76,13 +76,13 @@ To make the refraction more physically correct, I implemented Fresnels reflectio
 <a href="url"><img src="FinalRenders/noFresnel.png"  height="350" width="350"></a> <a href="url"><img src="FinalRenders/reference.png"  height="350" width="350"></a>
 
 ##### Depth of Field ->
-This is a very interesting effect that can be observed in many photographs where some part of the image is in sharp focus while the other is blurred out. To implement this effect, I used the focal length and aperture parameters of the camera. Assume that there is a sphere centered at the camera position and of the radius of the focal length. We get the intersection of all intitial rays with this sphere. Next, we keep this as the final point but jitter the ray's origin based on the aperture of the camera. The new ray direction will be from this jittered origin to the intersection point. What happens now is that all the points wihtin that focal length are in focus but all others are out of focus.
+This is a very interesting effect that can be observed in many photographs where some part of the image is in sharp focus while the other is blurred out. To implement this effect, I used the focal length and aperture parameters of the camera. Assume that there is a sphere centered at the camera position and of the radius of the focal length. We get the intersection of all intitial rays with this sphere. Next, we keep this as the final point but jitter the ray's origin based on the aperture of the camera. The new ray direction will be from this jittered origin to the intersection point. What happens now is that all the points wihtin that focal length are in focus but all others are out of focus. To enable Depth of Field, make the DOF flag to 1 in `pathtrace.cu`.
 
 <a href="url"><img src="FinalRenders/DOF.png"  height="350" width="350"></a> <a href="url"><img src="FinalRenders/reference.png"  height="350" width="350"></a>
 
 ##### Direct Illumination ->
 The concept of direct illumination is that if any ray is alive after the ray depth, then we can take that ray directly to the light. If it can reach the light then we add its contribution to the final image. This helps in generating better looking renders. Also, we can reduce the trace depth and get a similar result with direct illumination.
-The important part of this is sampling the lights. For this I borrowed the code from CIS 560 to sample cubes and spheres. First I randomly select a light and then take a random point on that light. This gives me a good sampling of all the light sources.
+The important part of this is sampling the lights. For this I borrowed the code from CIS 560 to sample cubes and spheres. First I randomly select a light and then take a random point on that light. This gives me a good sampling of all the light sources. To enable Direct illumination, make the DI flag to 1 in `pathtrace.cu`.
 
 <a href="url"><img src="FinalRenders/noDI.png"  height="350" width="350"></a> <a href="url"><img src="FinalRenders/DI.png"  height="350" width="350"></a>
 
