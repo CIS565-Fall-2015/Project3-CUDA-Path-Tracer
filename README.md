@@ -6,9 +6,13 @@ CUDA Path Tracer
 * Megan Moore
 * Tested on: Windows 7, i7-4770 @ 3.40GHz 16GB (Moore 100 Lab C)
 
-![](img/motion_blur_1000.png "Motion blur after 1000 iterations")
+![](img/DOF1.png "Depth of Field")
+
+![](img/specular2.png "Specular sphere")
 
 ![](img/refraction_correct3(glass).png "Refraction with an IOR of glass")
+
+![](img/motion_blur_1000.png "Motion blur after 1000 iterations")
 
 ![](img/final1000.png "Final image after 1000 iterations")
 
