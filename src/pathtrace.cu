@@ -195,6 +195,7 @@ __global__ void intersect(int iter, int depth, int traceDepth, int n, Camera cam
 
 		if (obj_index >= 0){
 			scatterRay(rays[index], minIntersectionPoint, minNormal, materials[geoms[obj_index].materialid], geoms[obj_index], rng);
+
 		}
 		else{
 			rays[index].color = glm::vec3(0.0);

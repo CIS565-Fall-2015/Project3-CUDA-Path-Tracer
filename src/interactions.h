@@ -41,8 +41,35 @@ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
-__device__ void refract(glm::vec3 incident, glm::vec3 normal, float n1, float n2){
+__device__ float schlick(glm::vec3 inc, glm::vec3 normal, float n1, float n2){
+	// Schlick's reflectance approximation
+	float R0 = (n1 - n2) * (n1 - n2) / ((n1 + n2) * (n1 + n2));
+	float cosi = -glm::dot(normal, inc);
+	//float cosi = glm::dot(inc, normal);
 
+	if (n1 > n2){
+		float n = n1 / n2;
+		float sint2 = n * n * (1.0f - cosi * cosi);
+		if (sint2 > 1.0f) return 1.0f; // TIR
+		cosi = sqrt(1.0f - sint2);
+	}
+
+	float cosii = 1.0f - cosi;
+	float RT = R0 + (1.0f - R0)*cosii*cosii*cosii*cosii*cosii;
+	return RT;
+}
+
+__device__ void refract(Ray& ray, glm::vec3 normal, float n1, float n2){
+	float n = n1 / n2;
+	float cosi = -glm::dot(normal, ray.direction);
+	float sint2 = n * n * (1.0f - cosi*cosi);
+	if (sint2 > 1.0f){
+		ray.color = glm::vec3(0.0f);
+		ray.isAlive = false;
+	}
+	float cost = sqrt(1.0f - sint2);
+	ray.direction = n * ray.direction + (n * cosi - cost) * normal;
+	ray.direction = glm::vec3(0.0,1.0,0.0);
 }
 
 /**
@@ -89,62 +116,60 @@ void scatterRay(
 		return;
 	}
 
-	// From Stanford notes
-	if (m.hasRefractive){
-		float n1 = 1.0f;
-		float n2 = m.indexOfRefraction;
-
-		float R0 = (n1 - n2) / (n1 + n2);
-		R0 *= R0;
-		float cosi = -glm::dot(normal, ray.direction);
-		float cosii = 1.0f - cosi;
-		float RT = R0 + (1.0f-R0)*cosii*cosii*cosii*cosii*cosii;
-
-		// Specular
-		if (randNum < RT){
-			ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
-			ray.color = ray.color * m.specular.color * (1.0f/RT);
-			ray.origin = intersect;
-		}
-		else{
-			float snell_ratio = n1 / n2;
-			float cosT = sqrt(1.0f - snell_ratio*snell_ratio*(1.0f - cosi*cosi));
-			ray.direction = snell_ratio*ray.direction + (snell_ratio * cosi - cosT)*normal;
-			//ray.direction = glm::refract(ray.direction, normal, snell_ratio);
-
-			//ray.color = ray.color * (1.0f - RT);
-			//ray.color = ray.color * m.specular.color * (1.0f/(1.0f - RT));
-			
-			//ray.origin = intersect;//+0.0002f*ray.direction;
-			ray.origin = intersect + 0.001f*ray.direction;
-			glm::vec3 new_intersect;
-			glm::vec3 new_normal;
-			bool outside;
-			// TODO: Intersect it again
-			if (g.type == SPHERE){
-				sphereIntersectionTest(g, ray, new_intersect, new_normal, outside);
-			}
-			else {
-				boxIntersectionTest(g, ray, new_intersect, new_normal, outside);
-			}
-			ray.direction = glm::refract(ray.direction, new_normal, n2/n1);
-			ray.origin = new_intersect + 0.001f*ray.direction;
-			//ray.origin = new_intersect;// +0.0002f*ray.direction;
-			//printf("%f %f %f\n", ray.origin.x, ray.origin.y, ray.origin.z);
-		}
-		
-		//ray.origin = intersect;
-		return;
-	}
-
 	float specProb = m.specular.color.r + m.specular.color.g + m.specular.color.b;
 	float diffuseProb = m.color.r + m.color.g + m.color.b;
 	float total = specProb + diffuseProb;
 	specProb = specProb / total;
 
-	//if (specProb < 0.00001f){
-	//	specProb = 0.00001f;
-	//}
+	// From Stanford notes
+	if (m.hasRefractive){
+		float n1 = 1.0f;
+		float n2 = m.indexOfRefraction;
+
+		float RT = schlick(ray.direction, normal, n1, n2);
+		if (RT >= 1.0f){
+			ray.color = glm::vec3(0.0f,1.0f,0.0f);
+			ray.isAlive = false;
+			return;
+		}
+
+		// Specular
+		//printf("%f\n",RT);
+		if (randNum < RT){
+			ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
+			ray.color = ray.color * m.specular.color;
+			//ray.color = ray.color * m.specular.color * RT / specProb;
+			//ray.color = ray.color * m.specular.color / specProb;
+			ray.origin = intersect;
+		}
+		else {
+			ray.direction = glm::normalize(ray.direction);
+			ray.direction = glm::refract(ray.direction, normal, n1 / n2);
+
+			ray.origin = intersect + 0.0003f * ray.direction;
+
+			glm::vec3 new_intersect;
+			glm::vec3 new_normal;
+			bool new_outside;
+			bool isIntersection;
+
+			if (g.type == SPHERE){
+				isIntersection = sphereIntersectionTest(g, ray, new_intersect, new_normal, new_outside);
+			}
+			else{
+				isIntersection = boxIntersectionTest(g, ray, new_intersect, new_normal, new_outside);
+			}
+
+			ray.direction = glm::refract(ray.direction, new_normal, n1 / n2);
+			if (ray.direction == glm::vec3(0.0)){
+				ray.color = glm::vec3(0.0,1.0,0.0);
+				ray.isAlive = false;
+			}
+
+			ray.origin = new_intersect + 0.0003f * ray.direction;
+		}
+		return;
+	}
 
 	// Specular
 	if (randNum < specProb){
