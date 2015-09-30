@@ -1,14 +1,15 @@
 #pragma once
 
+#include <src/sceneStructs.h>
+
 namespace StreamCompaction {
 namespace Shared {
-    __global__ void kernMapToBoolean(int n, int *bools, const int *idata);
+    __global__ void kernMapToBoolean(int n, int valid, int *bools, Pixel *idata);
 
-    __global__ void kernScatter(int n, int *odata, int *indices, int *idata);
+    __global__ void kernScatter(int n, Pixel *odata, int *indices, Pixel *idata);
 
     void dv_scan(int n, int *odata);
-    void scan(int n, int *odata, int *idata);
 
-    int compact(int n, int *odata, const int *idata);
+    int compact(int n, Pixel *input);
 }
 }
