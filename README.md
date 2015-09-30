@@ -18,19 +18,15 @@ This was done as HW3 for CIS 565 2015, GPU Programming at the University of Penn
 
 **Materials**
 
-![](images/cornell.2015-09-28_12-01-33z.1409samp.png)
+![](images/cornell.2015-09-30_01-56-56z.5000samp.png)
 
 The content of this assignment was weighted more towards learning CUDA than pathtracing. As such, this path tracer only supports perfectly reflective and perfect "diffuse" materials at the moment. Code in interactions.h exists with the intent to enable support in the future for simple refraction as well as fresnel reflection/refraction approximated using Schlick's law. However, these features are not complete as can be seen below:
 
-![](images/cornell.2015-09-29_06-25-17z.1403samp.png)
+![](images/cornell.2015-09-30_02-04-20z.5000samp.png)
 
-We can still get some interesting images, however, such as this one with an interesting lensing effect:
+We can still get some interesting images, however, such as this one with a lensing effect:
 
-![](images/cornell.2015-09-29_12-26-54z.5000samp.png)
-
-Another observation: a scene with brighter RGB lights on a diffuse surface produces CMYK shadows!
-
-![](images/cornell.2015-09-29_12-50-41z.5000samp.png)
+![](images/cornell.2015-09-30_02-17-23z.5000samp.png)
 
 All lights are just geometry objects with an emissive material. I will elaborate on the scene file format further down.
 
@@ -43,16 +39,12 @@ Removing bottomed out rays from the pool uses stream compaction. This program in
 The work-efficient scan implementations are available in [stream_compaction/efficient.cu](stream_compaction/efficient.cu). The function scan_components_test() also contains some unit tests for the components of work-efficient global memory scan. The shared memory size can be changed by tweaking DEVICE_SHARED_MEMORY in [stream_compaction/efficient.h](stream_compaction/efficient.h).
 
 Stream compaction meanwhile is implemented in [src/pathtrace.cu](src/pathtrace.cu). To switch between different stream compaction implementations, see [line 362](src/pathtrace.cu#L362).
-
-It's worth noting that both of my implementations of stream compaction seem to cause artifacts in the render. The thrust implementation, however, does not feature such problems. The reasons for this are somewhat nonobvious, as my unit tests on shared memory stream compaction seem to make sense and cover both power-of-two and non-power-of-two.
-
-Here is a render using thrust:
-![](images/cornell.2015-09-28_02-38-37z.5000samp.png)
-
-And here is the same scene rendered using the work-efficient shared memory implementation:
-![](images/cornell.2015-09-28_22-38-33z.5000samp.png)
-
 Unit tests for work-efficient shared memory implementation can be run on the first path tracing iteration by uncommenting code at line 296 in [src/pathtrace.cu](src/pathtrace.cu#L296).
+
+**Artifacting**
+![](images/cornell.2015-09-30_02-09-52z.5000samp.png)
+
+Some of my renders have noticeable artifacting, which seemed to come and go throughout the process. At one point I thought it might have been a difference in stream compaction since images rendered with thrust seemed cleaner than those rendered with my implementations, but more recent tests show artifacting across all implementations. This is an area I want to investigate further.
 
 **Scene File Changes**
 
@@ -76,12 +68,18 @@ Implementing motion blur required modifying the scene primitives' intersection f
 
 When an intersection test is run between a ray and a scene primitive, the primitive's transformation is recalculated to accomodate the translation from the initial position calculated from the ray's timestamp and the primitive's SPEED.
 
-Motion blur does not add samples like anti-aliasing and depth of field do, so it should not cause orders of magnitude performance loss per iteration. However, it may increase noise for the same number of samples since the samples are spread out "over time".
+Although the additional recomputation in intersection testing causes a slight performance hit compared to stationary rendering, motion blur does not add samples like anti-aliasing and depth of field do, so it should not cause orders of magnitude performance loss per iteration. However, it may increase noise for the same number of samples since the samples are spread out "over time".
 
 **Mesh loading**
 
 ![](images/cornell.2015-09-29_11-44-39z.5000samp.png)
 
-The mesh loading and rendering in this project are both very straightforward. All the host mesh loading code can be found in [src/Mesh.cpp](src/Mesh.cpp), which expects meshes that have already been triangulated and have indices in counter clockwise order.
+The mesh loading and rendering in this project are both very straightforward. All the host mesh loading code can be found in [src/Mesh.cpp](src/Mesh.cpp), which expects meshes that have already been triangulated and have indices in counter clockwise order. Normals are currently ignored and calculated in the mesh intersection checker in [src/intersections.h](src/intersections.h).
 
 At the moment rendering scenes with meshes causes drastic performance decreases compared to rendering scenes with sphere and cube primitives. In addition to the additonal number of intersection tests that must be done in naive mesh rendering (every triangle must be checked against every ray), the mesh is also stored exclusively in device global memory, slowing down access time.
+
+**Estimates on Performance**
+
+In anecdotal tests, the work efficient/shared memory version can render [scenes/cornell_reflect.txt](scenes/cornell_reflect.txt) out to 1000 iterations in about 50 seconds, while the thrust implementation can take up to a 75 seconds. Surprisingly, the work-efficient global memory implementation was able to do the same render in 35 seconds. However, it should be noted that the work efficient/shared memory version has not been optimized for block size.
+
+Rendering [scenes/cornell_teapot.txt](scenes/cornell_teapot.txt) to 1000 iterations took the work efficient/shared memory implementation about 4 minutes and 45 seconds.

@@ -58,7 +58,7 @@ __host__ __device__ void reflect(
 	// perfect reflection: http://paulbourke.net/geometry/reflected/
 	rayStep.ray.direction = rayStep.ray.direction - 2.0f * normal *
 		(glm::dot(rayStep.ray.direction, normal));
-	//rayStep.ray.origin = intersect;
+	rayStep.ray.origin = intersect;
 	//if (m.hasRefractive) {
 	//	// compute using Schlick's approximation
 	//	float cosTheta = glm::dot(rayStep.ray.direction, normal);
@@ -155,17 +155,17 @@ void scatterRay(
 	else if (rayStep.depth <= 0){ // bottoming out
 		rayStep.color = glm::vec3(0, 0, 0);
 	}
-	else if (m.hasReflective > 0.0f && m.hasRefractive > 0.0f) {
-		thrust::uniform_real_distribution<float> u01(0, 1);
-		// 50/50 split where the ray goes
-		if (u01(rng) <= 0.5f) {
-			refract(rayStep, intersect, normal, m, 1.0f);
-		}
-		else {
-			reflect(rayStep, intersect, normal, m, 1.0f);
-		}
-
-	}
+	//else if (m.hasReflective > 0.0f && m.hasRefractive > 0.0f) {
+	//	thrust::uniform_real_distribution<float> u01(0, 1);
+	//	// 50/50 split where the ray goes
+	//	if (u01(rng) <= 0.5f) {
+	//		refract(rayStep, intersect, normal, m, 1.0f);
+	//	}
+	//	else {
+	//		reflect(rayStep, intersect, normal, m, 1.0f);
+	//	}
+	//
+	//}
 	else if (m.hasReflective > 0.0f && m.hasRefractive < 1.0f) { // hitting a simple mirrored object
 		reflect(rayStep, intersect, normal, m, 1.0f);
 	}
