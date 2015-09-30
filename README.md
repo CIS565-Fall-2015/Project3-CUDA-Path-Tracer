@@ -11,6 +11,7 @@ CUDA Path Tracer
 In this project, a CUDA-based path tracer capable of rendering globally-illuminated images is implemented. The features includes,
 * Diffuse surfaces
 * Perfectly specular-reflective (mirrored) surfaces
+* Non-perfect specular surfaces
 * Antialiasing
 * Motion blur
 * Work-efficient stream compaction using shared memory
@@ -23,6 +24,10 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 
 ![](img/specular.png)
 
+### Non-perfect specular surfaces
+
+![](img/nonperfect.png)
+
 ### Antialiasing
 
 ![](img/antialias.png)
@@ -33,7 +38,10 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 
 ### Work-efficient stream compaction
 
-![](img/blur.png)
+![](img/compaction.png)
+
+Work-efficient stream compaction removes all the terminated rays to improve the rendering performance. This figure shows how the number of
+active rays changing as trace depth increases in one single iteration. From the figure we can come to the conclusion that stream compaction only improves the rendering performance of open scenes since in closed scenes the rays will never terminate before reaching the maximum trace depth.
 
 ## Scene File Format
 
@@ -77,9 +85,9 @@ Objects are defined in the following fashion:
 * TRANS (float transx) (float transy) (float transz) //translation
 * ROTAT (float rotationx) (float rotationy) (float rotationz) //rotation
 * SCALE (float scalex) (float scaley) (float scalez) //scale
-* MOVING //if the object is moving or not
+* MOVING //define whether the object is moving or not
 * TRANSGOAL (float transx) (float transy) (float transz) //translation of the movement goal
-* FRAMES (int) //the frame span of the moving animation
+* FRAMES (int) //the frame span of the movement
 
 Examples are provided in the `scenes/` directory: a single emissive sphere,
 and a simple cornell box made using cubes for walls and lights and a sphere in

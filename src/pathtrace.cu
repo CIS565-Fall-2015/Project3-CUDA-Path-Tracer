@@ -278,8 +278,10 @@ void pathtrace(uchar4 *pbo, int frame, int frames, int iter) {
     		fillImage<<<blocksPerGrid, blockSize2d>>>(frame, frames, iter, d, dev_image_antialias, dev_rays, dev_geoms, dev_materials);
     		checkCUDAError("fillImage");
 
+//    		if(iter == 50){
+//    			printf("ray number is: %d", rayNumber);
+//    		}
     		rayNumber = StreamCompaction::Efficient::compact(rayNumber, dev_raysNew, dev_rays);
-    		//printf("ray number is: %d", rayNumber);
     		cudaMemcpy(dev_rays, dev_raysNew, pixelcount * sizeof(Ray), cudaMemcpyDeviceToDevice);
     	}
     }

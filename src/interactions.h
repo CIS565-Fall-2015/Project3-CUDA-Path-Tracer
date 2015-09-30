@@ -78,15 +78,27 @@ void scatterRay(
 	thrust::uniform_real_distribution<float> u01(0, 1);
 
 	if(m.hasReflective){
-		// perfect-reflective
-		ray.origin = intersect + normal * EPSILON;
-		ray.direction = glm::reflect(ray.direction, normal);
-		color *= m.specular.color;
+		if(m.specular.exponent == 0) {
+			// perfect-reflective
+			ray.origin = intersect + normal * EPSILON;
+			ray.direction = glm::reflect(ray.direction, normal);
+			color *= m.specular.color;
+		} else {
+			if( u01(rng)<0.5 ) {
+				ray.origin = intersect + normal * EPSILON;
+				ray.direction = glm::reflect(ray.direction, normal);
+				color *= m.specular.color;
+			} else {
+				ray.origin = intersect + normal * EPSILON;
+				ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+				color *= m.color;
+			}
+		}
 	} else {
 		// pure-diffuse
 		ray.origin = intersect + normal * EPSILON;
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
-		color *= m.color;;
+		color *= m.color;
 	}
 
 }
