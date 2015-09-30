@@ -45,7 +45,6 @@ __device__ float schlick(glm::vec3 inc, glm::vec3 normal, float n1, float n2){
 	// Schlick's reflectance approximation
 	float R0 = (n1 - n2) * (n1 - n2) / ((n1 + n2) * (n1 + n2));
 	float cosi = -glm::dot(normal, inc);
-	//float cosi = glm::dot(inc, normal);
 
 	if (n1 > n2){
 		float n = n1 / n2;
@@ -56,6 +55,7 @@ __device__ float schlick(glm::vec3 inc, glm::vec3 normal, float n1, float n2){
 
 	float cosii = 1.0f - cosi;
 	float RT = R0 + (1.0f - R0)*cosii*cosii*cosii*cosii*cosii;
+
 	return RT;
 }
 
@@ -126,6 +126,8 @@ void scatterRay(
 		float n1 = 1.0f;
 		float n2 = m.indexOfRefraction;
 
+		ray.direction = glm::normalize(ray.direction);
+
 		float RT = schlick(ray.direction, normal, n1, n2);
 		if (RT >= 1.0f){
 			ray.color = glm::vec3(0.0f,1.0f,0.0f);
@@ -138,8 +140,6 @@ void scatterRay(
 		if (randNum < RT){
 			ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
 			ray.color = ray.color * m.specular.color;
-			//ray.color = ray.color * m.specular.color * RT / specProb;
-			//ray.color = ray.color * m.specular.color / specProb;
 			ray.origin = intersect;
 		}
 		else {
@@ -161,6 +161,7 @@ void scatterRay(
 			}
 
 			ray.direction = glm::refract(ray.direction, new_normal, n1 / n2);
+			ray.direction = glm::normalize(ray.direction);
 			if (ray.direction == glm::vec3(0.0)){
 				ray.color = glm::vec3(0.0,1.0,0.0);
 				ray.isAlive = false;
@@ -174,11 +175,13 @@ void scatterRay(
 	// Specular
 	if (randNum < specProb){
 		ray.direction = ray.direction - 2.0f * (glm::dot(ray.direction, normal)) * normal;
+		ray.direction = glm::normalize(ray.direction);
 		ray.color = ray.color * m.specular.color * (1.0f/specProb);
 	}
 	// Diffuse
 	else{
 		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		ray.direction = glm::normalize(ray.direction);
 		ray.color = ray.color * m.color * (1.0f/(1.0f-specProb));
 	}
 	ray.origin = intersect;
