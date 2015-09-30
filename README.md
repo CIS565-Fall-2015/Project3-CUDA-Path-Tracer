@@ -8,7 +8,9 @@ CUDA Path Tracer
 
 ![](img/motion_blur_1000.png "Motion blur after 1000 iterations")
 
+![](img/refraction_correct3(glass).png "Refraction with an IOR of glass")
 
+![](img/final1000.png "Final image after 1000 iterations")
 
 ### Analysis
 
