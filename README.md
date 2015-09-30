@@ -41,10 +41,17 @@ PART IX: Performance Analysis
   2 Frensel's law vs no Frensel's law
     I believe this does not affect a lot in the performance. If using the Frensel's law, in each iteration I only have on more random number generation on device. Becuase the ray is either reflected or refracted, either way we compute just on block in the function but not both.
   3 Kdtree vs no Kdtree
-    Using the naive method, one iteration with a sphere object with 2000+ faces need almost 10s. However, if using the kdtree structure, one iteration use less than one third second. Theoretically, the time complexity of the kdtree is also logrithmic, and the naive method is also linear. However, in runtime the kdtree may not be that fast due to the space need to store all the triangle indexs. The space needed maybe large(say rendering of the stanford dragon with 100k faces), which may reduce the performance of a block.
+    Using the naive method, one iteration with a sphere object with 2000+ faces need almost 10s. However, if using the kdtree structure, one iteration use less than one third second. Theoretically, the time complexity of the kdtree is also logrithmic, and the naive method is also linear. However, in runtime the kdtree may not be that fast due to the space need to store all the triangle indexs. The space needed maybe large(say rendering of the stanford dragon with 100k faces), which may reduce the performance of a block. But the same thing never happens on CPU.
   4 open scene vs closed scene
     I actually not tested on the closed scene, but I am sure it will be slower than the open scene. Because in the open scene a lot of ray terminated by hitting nothing, but in the closed scene that never happens. This effect will be enlarged when the depth is very large.
   5 global variable vs loacl variable
     In the beginning I used a lot of local variables. I initiate them, allocate them and free them in every iteration, even in every depth. Then I changed the local variables to global variables and I only need to allocate and free once. And the fps for a simple scene raised from 5 to 6.6. That means the cuda malloc and memcpy may use a lot of time.
   6 large blocksize vs small blocksize
     In my testing, the speed of the large blocksize overwhelm the speed of small blocksize. I believe it is because of the warp size restriction. The small blocksize may not be able to use full computation ability, but large blocksize can, but suffer from the problem of dealing with terminated rays. So after stream compaction, this problem is solved and large blocksize is obviously faster than small blocksize.
+
+PART X: Nice Rendered images:
+![](img/ball3.png)
+![](img/basic2.png)
+![](img/nobarycenter.png)
+![](img/barycenter.png)
+note: the last two images are comparison of barycenter vs non-barycenter. The last used barycenter, which greatly smooth the surface of the object.
