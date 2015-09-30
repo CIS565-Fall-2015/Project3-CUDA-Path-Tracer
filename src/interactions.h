@@ -2,6 +2,7 @@
 
 #include "intersections.h"
 
+#define RAY_EPSILON 0.001f
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -73,8 +74,120 @@ void scatterRay(
         glm::vec3 intersect,
         glm::vec3 normal,
         const Material &m,
-        thrust::default_random_engine &rng) {
+        thrust::default_random_engine &rng) 
+{
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
+	
+	
+
+
+	float schlickR = 1;
+
+	
+	int num_ray_type = 0;
+	int scatter_type_array[3];
+
+	//diffuse
+	if (!m.hasReflective && !m.hasRefractive)
+	{
+		scatter_type_array[num_ray_type] = 0;
+		num_ray_type++;
+	}
+
+	if(m.hasReflective)
+	{
+		scatter_type_array[num_ray_type] = 1;
+		num_ray_type++;
+	}
+
+	if(m.hasRefractive)
+	{
+		scatter_type_array[num_ray_type] = 2;
+		num_ray_type++;
+	}
+
+	//TODO: other ray type (sub scatter...)
+
+
+	int scatter_ray_type = scatter_type_array[0];
+	//random choose;
+	if(num_ray_type > 1)
+	{
+		thrust::uniform_int_distribution<int> uirand(0, num_ray_type-1);
+		scatter_ray_type = scatter_type_array[uirand(rng)];
+	}
+	
+	
+
+
+	
+	if(scatter_ray_type == 2)
+	{
+		//refractive
+		
+
+		float cosi = glm::dot(-ray.direction, normal);
+		float sini = sqrtf(1 - cosi*cosi);
+		float ni, nt;
+
+		float normal_sign;
+		
+		if (cosi > 0)
+		{
+			//from outside
+			ni = 1;
+			nt = m.indexOfRefraction;
+			normal_sign = 1;
+		}
+		else
+		{
+			ni = m.indexOfRefraction;
+			nt = 1;
+			normal_sign = -1;
+		}
+
+		float sint = ni * sini / nt;
+		float R0 = (ni - nt) / (ni + nt);
+		R0 *= R0;
+		schlickR = R0 + (1 - R0) * powf(1 - cosi, 5);
+		if (sint > 1)
+		{
+			//total reflect
+			num_ray_type--;
+			scatter_ray_type = 1;
+
+			
+		}
+		else
+		{
+			float cost = sqrtf(1 - sint*sint);
+			color *= m.color*(float)num_ray_type * (1 - schlickR);
+			glm::vec3 horizontal = (ray.direction + normal * normal_sign * cosi) / sini;
+			ray.direction = horizontal * sint - normal * normal_sign * cost;
+			//ray.direction = ray.direction * ni / nt + normal * normal_sign * (ni / nt*cosi - cost);
+			ray.origin = intersect - normal * normal_sign * RAY_EPSILON;
+		}
+	}
+
+
+	if (scatter_ray_type == 0)
+	{
+		//diffuse
+		ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+		//color *= m.color * glm::dot( ray.direction, normal) * (float)num_ray_type;
+		color *= m.color  * (float)num_ray_type;
+		ray.origin = intersect + normal * RAY_EPSILON;
+
+	}
+	else if (scatter_ray_type == 1)
+	{
+		//reflective
+		color *= m.specular.color * (float)num_ray_type * schlickR;
+		ray.direction = ray.direction + 2 * glm::dot(-ray.direction, normal) * normal;
+		ray.origin = intersect + normal * RAY_EPSILON;
+	}
+	
+	
 }

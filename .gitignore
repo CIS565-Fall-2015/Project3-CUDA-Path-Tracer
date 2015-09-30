@@ -558,3 +558,7 @@ xcuserdata
 *.xccheckout
 *.moved-aside
 *.xcuserstate
+
+
+#my
+test_img
