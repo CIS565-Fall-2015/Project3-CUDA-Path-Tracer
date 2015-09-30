@@ -43,6 +43,21 @@ In this project, a CUDA-based path tracer capable of rendering globally-illumina
 Work-efficient stream compaction removes all the terminated rays to improve the rendering performance. This figure shows how the number of
 active rays changing as trace depth increases in one single iteration. From the figure we can come to the conclusion that stream compaction only improves the rendering performance of open scenes since in closed scenes the rays will never terminate before reaching the maximum trace depth.
 
+## Running the code
+
+The main function requires a scene description file. Call the program with
+one as an argument: `cis565_path_tracer scenes/sphere.txt`.
+(In Visual Studio, `../scenes/sphere.txt`.)
+
+If you are using Visual Studio, you can set this in the Debugging > Command
+Arguments section in the Project properties. Make sure you get the path right -
+read the console for errors.
+
+### Controls
+
+* Esc to save an image and exit.
+* Space to save an image. Watch the console for the output filename.
+* W/A/S/D and R/F move the camera. Arrow keys rotate.
 ## Scene File Format
 
 This project uses a custom scene description format. Scene files are flat text
