@@ -48,8 +48,8 @@ FILE        car
 EYE         5.0 5 10.5
 VIEW        -1 0.5 -1
 UP          0 1 0
-//CAMERATIME	0
-//SHUTTERDURATION  70
+CAMERATIME	0
+SHUTTERDURATION  70
 
 // ground
 OBJECT 0
@@ -99,11 +99,11 @@ TRANS       500 500 0
 ROTAT       0 0 0
 SCALE       .01 1000 1000
 
-// teapot
+// enterprise
 OBJECT 6
 mesh
 material 1
-//SPEED		0 0 0.01
+SPEED		0 0 0.01
 TRANS       0 5 -3
 ROTAT       0 0 0
 SCALE       1 1 1

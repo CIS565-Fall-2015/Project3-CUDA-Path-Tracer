@@ -40,7 +40,7 @@ Removing bottomed out rays from the pool uses stream compaction. This program in
 
 The work-efficient scan implementations are available in [stream_compaction/efficient.cu](stream_compaction/efficient.cu). The function scan_components_test() also contains some unit tests for the components of work-efficient global memory scan. The shared memory size can be changed by tweaking DEVICE_SHARED_MEMORY in [stream_compaction/efficient.h](stream_compaction/efficient.h).
 
-Stream compaction meanwhile is implemented in [src/pathtrace.cu](src/pathtrace.cu). To switch between different stream compaction implementations, see like 362.
+Stream compaction meanwhile is implemented in [src/pathtrace.cu](src/pathtrace.cu). To switch between different stream compaction implementations, see [line 362](src/pathtrace.cu#L362).
 
 It's worth noting that both of my implementations of stream compaction seem to cause artifacts in the render. The thrust implementation, however, does not feature such problems. The reasons for this are somewhat nonobvious, as my unit tests on shared memory stream compaction seem to make sense and cover both power-of-two and non-power-of-two.
 
@@ -50,4 +50,13 @@ Here is a render using thrust:
 And here is the same scene rendered using the work-efficient shared memory implementation:
 ![](images/cornell.2015-09-28_22-38-33z.5000samp.png)
 
-Unit tests for work-efficient shared memory implementation can be run on the first path tracing iteration by uncommenting code at like 296 in [src/pathtrace.cu](src/pathtrace.cu).
+Unit tests for work-efficient shared memory implementation can be run on the first path tracing iteration by uncommenting code at line 296 in [src/pathtrace.cu](src/pathtrace.cu#L296).
+
+**Scene File Changes**
+The scene file format has some extensions from the original format described [here](https://github.com/CIS565-Fall-2015/Project3-CUDA-Path-Tracer#scene-file-format).
+
+My modifications exist to enable motion blur and arbitrary obj file loading. The scene file [scenes/toBoldlyGo.txt](scenes/toBoldlyGo.txt) is a pretty representative example.
+
+At [line 51 and 52](scenes/toBoldlyGo.txt#L51) I added CAMERATIME and SHUTTERDURATION, which define the current "world" time in the path tracer world and how long the camera shutter stays open in milliseconds. [Line 106](scenes/toBoldlyGo.txt#L106) defines a translational "speed" for the object as distance in world units traveled per millisecond. When a SPEED is defined, the object's original TRANS value will be treated as its initial position.
+
+[Line 110](scenes/toBoldlyGo.txt#L110) simply includes the file name of the obj file to be loaded.
