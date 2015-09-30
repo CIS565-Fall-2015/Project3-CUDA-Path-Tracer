@@ -129,7 +129,7 @@ __global__ void generateNoiseDeleteMe(Camera cam, int iter, glm::vec3 *image) {
         int index = x + (y * cam.resolution.x);
 
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-        thrust::uniform_real_distribution<float> u01(0, 1);
+        thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
 
         // CHECKITOUT: Note that on every iteration, noise gets added onto
         // the image (not replaced). As a result, the image smooths out over
@@ -154,17 +154,17 @@ __global__ void initializeRay(Camera *cam, Ray *pathRays, int iter, glm::vec3 *i
 		}
 
 		glm::vec3 vA = glm::cross(cam->view, cam->up);
-		glm::vec3 vB = glm::normalize(glm::cross(vA, cam->view));
+		glm::vec3 vB = glm::cross(vA, cam->view);
 		glm::vec3 midPoint = cam->position + cam->view;
 
-		glm::vec3 vH = vA * glm::length(cam->view) * atan(glm::radians(cam->fov.x));
-		glm::vec3 vV = vB * glm::length(cam->view) * atan(glm::radians(cam->fov.y));
-
+		glm::vec3 vV = glm::normalize(vB) * (glm::length(cam->view) * glm::tan(glm::radians(cam->fov.y)));
+		glm::vec3 vH = glm::normalize(vA) * (glm::length(cam->view) * glm::tan(glm::radians(cam->fov.x)));
+		
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
 		thrust::uniform_real_distribution<float> u01(0, 1);
 
-		glm::vec3 pW = midPoint + vH * (2.0f * (float(x + u01(rng))/float(cam->resolution.x - 1.0f)) - 1) 
-			+ vV * (1 - (2.0f * (float(y + u01(rng))/float(cam->resolution.y - 1.0f))));
+		glm::vec3 pW = midPoint - vH * (2.0f * float(x + u01(rng))/float(cam->resolution.x) - 1.0f) 
+			+ vV * (2.0f * (1.0f - float(y + u01(rng))/float(cam->resolution.y)) - 1.0f);
 	
 		pathRays[index].origin = cam->position;
 		pathRays[index].direction = glm::normalize(pW - cam->position);
@@ -183,22 +183,18 @@ __global__ void trace_ray(Camera *cam, Ray* pathRays, Geom* geoms, Material* mat
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 	int pixel_index = x + (y * cam->resolution.x);
 
-	if(depth == maxDepth) {
-		pathRays[pixel_index].isTerminated = true;
-	}
-
 	if (x < cam->resolution.x && y < cam->resolution.y) {
        
-		int t = INT_MAX;
+		float t = FLT_MAX;
 		glm::vec3 intersectionPoint, normal;
 		glm::vec3 nearestIntersectionPoint, theNormal;
 		Geom intersectedGeom;
-		bool isOutside;
+		bool isOutside = true;
 		bool intersected = false;
 
 		for (int i = 0; i < geom_number; i++) {
 
-			int currentT = t;
+			float currentT = FLT_MIN;
 				//check if it intersected anything
 				if (geoms[i].type == GeomType::SPHERE) {
 					currentT = sphereIntersectionTest(geoms[i], pathRays[pixel_index], 
@@ -208,30 +204,31 @@ __global__ void trace_ray(Camera *cam, Ray* pathRays, Geom* geoms, Material* mat
 						intersectionPoint, normal, isOutside);
 				}
 
-				if (currentT > 0 && currentT < t) {
+				if (currentT > 0.0f && currentT < t) {
 					intersected = true;
 					t = currentT;
 					intersectedGeom = geoms[i];
 					nearestIntersectionPoint = intersectionPoint;
 					theNormal = normal;
+					pathRays[pixel_index].isOutside = isOutside;
 				}
-			}
-
-			if (intersected) {
-				//terminate if it's a light source
-				if (materials[intersectedGeom.materialid].emittance > 0) {
-						pathRays[pixel_index].isTerminated = true;
-						image[pixel_index] += pathRays[pixel_index].color;
-				} else {
-					thrust::default_random_engine rng = makeSeededRandomEngine(iter, pixel_index, depth);
-					scatterRay(pathRays[pixel_index], pathRays[pixel_index].color, nearestIntersectionPoint, 
-								theNormal, materials[intersectedGeom.materialid], rng);
-				}
-			} else {
-				pathRays[pixel_index].isTerminated = true;
-			}
 		}
 
+		if (intersected) {
+			//terminate if it's a light source
+			if (materials[intersectedGeom.materialid].emittance > 0) {
+				pathRays[pixel_index].isTerminated = true;
+				image[pixel_index] += pathRays[pixel_index].color;
+			} else {
+				thrust::default_random_engine rng = makeSeededRandomEngine(pixel_index, iter, depth);
+				scatterRay(pathRays[pixel_index], pathRays[pixel_index].color, nearestIntersectionPoint, 
+								theNormal, materials[intersectedGeom.materialid], rng);
+			}
+		} else {
+			pathRays[pixel_index].isTerminated = true;
+			pathRays[pixel_index].color = glm::vec3(0.0f);
+		}
+	}
 }
 
 
@@ -267,14 +264,14 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	int iterated_depth = 0;
 	int alive_rays = pixelcount;
 
-	for(int i = 0; i < traceDepth; i++) {
+	while(iterated_depth <= traceDepth) {
 		trace_ray<<<blocksPerGrid2d, blockSize2d>>>(dev_cam, dev_rays, dev_geoms, 
-			dev_materials, dev_image, iter, hst_scene->geoms.size(), i, traceDepth);
+			dev_materials, dev_image, iter, hst_scene->geoms.size(), iterated_depth, traceDepth);
 
 		//alive_rays = StreamCompaction::Efficient::rayCompact(alive_rays, dev_compaction, dev_rays);
 		//cudaMemcpy(dev_rays, dev_compaction, alive_rays * sizeof(Ray), cudaMemcpyDeviceToDevice);
 
-		//iterated_depth++;
+		iterated_depth++;
 	}
 	
 	checkCUDAError("trace ray");

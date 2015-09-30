@@ -38,6 +38,26 @@ REFR        0
 REFRIOR     0
 EMITTANCE   0
 
+// glass
+MATERIAL 4
+RGB         1 1 1
+SPECEX      0
+SPECRGB     1 1 1
+REFL        0
+REFR        1
+REFRIOR     1.5
+EMITTANCE   0
+
+// Mirror
+MATERIAL 5
+RGB         1 1 0
+SPECEX      0
+SPECRGB     1 1 1
+REFL        1
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
 // Camera
 CAMERA
 RES         800 800
@@ -56,7 +76,7 @@ cube
 material 0
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       3 0.3 3
+SCALE       5 0.3 5
 
 // Floor
 OBJECT 1
@@ -64,7 +84,7 @@ cube
 material 1
 TRANS       0 0 0
 ROTAT       0 0 0
-SCALE       10 .01 10
+SCALE       10 .02 10
 
 // Ceiling
 OBJECT 2
@@ -72,7 +92,7 @@ cube
 material 1
 TRANS       0 10 0
 ROTAT       0 0 90
-SCALE       .01 10 10
+SCALE       .02 10 10
 
 // Back wall
 OBJECT 3
@@ -80,7 +100,7 @@ cube
 material 1
 TRANS       0 5 -5
 ROTAT       0 90 0
-SCALE       .01 10 10
+SCALE       .03 10 10
 
 // Left wall
 OBJECT 4
@@ -88,7 +108,7 @@ cube
 material 2
 TRANS       -5 5 0
 ROTAT       0 0 0
-SCALE       .01 10 10
+SCALE       .02 10 10
 
 // Right wall
 OBJECT 5
@@ -96,12 +116,28 @@ cube
 material 3
 TRANS       5 5 0
 ROTAT       0 0 0
-SCALE       .01 10 10
+SCALE       .02 10 10
 
 // Sphere
 OBJECT 6
 sphere
 material 1
-TRANS       -1 4 -1
+TRANS       -2 4 -1
+ROTAT       0 0 0
+SCALE       3 3 3
+
+// Sphere
+OBJECT 7
+sphere
+material 5
+TRANS       2.5 6 -2
+ROTAT       0 0 0
+SCALE       2 2 2
+
+// Sphere
+OBJECT 8
+sphere
+material 4
+TRANS       2 2.5 1
 ROTAT       0 0 0
 SCALE       3 3 3

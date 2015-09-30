@@ -124,7 +124,7 @@ int compact(int n, int *odata, const int *idata) {
  * @param idata  The array of elements to compact.
  * @returns      The number of elements remaining after compaction.
  */
-int rayCompact(int n, Ray *odata, Ray *idata) {
+/*int rayCompact(int n, Ray *odata, Ray *idata) {
     
 	int d = ilog2ceil(n);
 	int total = (int) pow(2.0, d);
@@ -151,7 +151,7 @@ int rayCompact(int n, Ray *odata, Ray *idata) {
 	cudaMemcpy(odata, predicate_array, total * sizeof(int), cudaMemcpyDeviceToHost);
 	
     return totalAfterCompaction;
-}
+}*/
 
 }
 }

@@ -77,17 +77,74 @@ void scatterRay(
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
 
-			if(m.emittance > 0) {
-				color *= m.emittance;
-			}
-			
-			if (m.hasReflective) {
-				ray.origin = intersect + normal;
-				ray.direction = glm::reflect(ray.direction, normal);
-			} else {
-				ray.origin = intersect + normal;
-				ray.direction = calculateRandomDirectionInHemisphere(normal,rng);
-			}
+	thrust::uniform_real_distribution<float> u01(0, 1);
+	float randNum = u01(rng);
+
+	float specularProb = m.specular.color.r + m.specular.color.g + m.specular.color.b;
+	float diffuseProb = m.color.r + m.color.g + m.color.b;
+	float total = specularProb + diffuseProb;
+	specularProb = specularProb / total;
+	diffuseProb = diffuseProb/total;
+	
+	// Reflective
+	if (m.hasReflective){
+
+		ray.origin = intersect + normal * FLT_EPSILON;
+		ray.direction = glm::reflect(ray.direction, normal);
+		ray.isOutside = true;
+		color *= m.color;
+
+	} else if(m.hasRefractive) {
+	// Refractive
+		float r0, c, rTheta, tTheta;
+		float ior = m.indexOfRefraction;
+
+		if (ray.isOutside) {
+			ior = 1.0f/ior;
+			r0 = glm::pow((1.0f - m.indexOfRefraction) / (1.0f + m.indexOfRefraction), 2);
+			c = 1.0f - glm::dot(-ray.direction, normal);
+			rTheta = r0 + (1.0f - r0) * glm::pow(c, 5);
+			tTheta = 1.0f - rTheta;
+		} else {
+			r0 = glm::pow((m.indexOfRefraction - 1.0f) / (1.0f + m.indexOfRefraction), 2);
+			c = 1.0f - glm::dot(-ray.direction, normal);
+			rTheta = r0 + (1.0f - r0) * glm::pow(c, 5);
+			tTheta = 1.0f - rTheta;
+		}
+
+		ray.isOutside = !ray.isOutside;
+		
+		float randomNum = u01(rng);
+		if (randomNum <= rTheta) {
+			ray.direction = glm::reflect(calculateRandomDirectionInHemisphere(normal, rng), 
+				glm::normalize(normal));
 			color *= m.color;
 			
+		} else {
+			ray.direction = glm::refract(ray.direction, glm::normalize(normal), ior);
+			color *= m.color;
+		}
+		
+		ray.origin = intersect + normal + ray.direction * 0.001f;
+
+
+	} else {
+	// Diffuse
+		ray.origin = intersect;
+		if(m.specular.exponent > 0 && specularProb < randNum) {
+			glm::vec3 h = glm::vec3(0.0f, 1.0f, 0.0f);
+			ray.direction = glm::reflect(h, normal);
+			float specTerm = glm::pow(glm::dot(normal, h), m.specular.exponent);
+			color *= m.specular.color * specTerm;
+		} else {
+			ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
+			color *= m.color;
+		}
+	}
+
+	if (m.emittance > 0) {
+		color *= m.emittance;
+	}
+
+	
 }
