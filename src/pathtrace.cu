@@ -17,7 +17,7 @@
 
 #include <stream_compaction/efficient.h>
 
-#define DI 1
+#define DI 0
 #define DOF 0
 #define ERRORCHECK 1
 
@@ -165,8 +165,8 @@ __global__ void kernGetRayDirections(Camera * camera, RayState* rays, int iter)
 		float sy = float(y) / ((float) (camera->resolution.y) - 1.0f);
 
 		glm::vec3 rayDir = (camera->M - (2.0f*sx - 1.0f + u01(rng)) * camera->H - (2.0f*sy - 1.0f + u01(rng)) * camera->V);
-
 //		glm::vec3 rayDir = (camera->M - (2.0f*sx - 1.0f) * camera->H - (2.0f*sy - 1.0f) * camera->V);
+
 		rayDir -= camera->position;
 		rayDir = glm::normalize(rayDir);
 
@@ -257,7 +257,9 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 				 {
 					 //Light source, end ray here
 					 r.isAlive = false;
-					 image[r.pixelIndex] += (r.rayColor * materials[geoms[nearestIndex].materialid].emittance);
+					 image[r.pixelIndex] += (r.rayColor
+							 * materials[geoms[nearestIndex].materialid].emittance
+							 * materials[geoms[nearestIndex].materialid].color);
 				 }
 
 				 else
@@ -304,7 +306,9 @@ __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms
 			if(t > 0)
 			{
 				//Intersection with light, write the color
-				image[r.pixelIndex] += (r.rayColor * materials[geoms[i].materialid].emittance);
+				image[r.pixelIndex] += (r.rayColor
+											 * materials[geoms[i].materialid].emittance
+											 * materials[geoms[i].materialid].color);
 			}
 		}
 	}

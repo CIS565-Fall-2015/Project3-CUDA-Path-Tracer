@@ -155,20 +155,11 @@ The scene files can be found in the `scene/` folder.
   (i.e. no light can escape the scene). Again, compare the performance effects
   of stream compaction! Remember, stream compaction only affects rays which
   terminate, so what might you expect?
-
-
-## Submit
-
-If you have modified any of the `CMakeLists.txt` files at all (aside from the
-list of `SOURCE_FILES`), you must test that your project can build in Moore
-100B/C. Beware of any build issues discussed on the Google Group.
-
-1. Open a GitHub pull request so that we can see that you have finished.
-   The title should be "Submission: YOUR NAME".
-2. Send an email to the TA (gmail: kainino1+cis565@) with:
-   * **Subject**: in the form of `[CIS565] Project N: PENNKEY`.
-   * Direct link to your pull request on GitHub.
-   * Estimate the amount of time you spent on the project.
-   * If there were any outstanding problems, or if you did any extra
-     work, *briefly* explain.
-   * Feedback on the project itself, if any.
+  
+  
+### Next Steps
+Building up on my current code, I plan to implement the following things :
+* Mesh geometry: Using the assimp library, I plan to import obj meshes in the scene to get awesome renders
+* Subsurface scattering: Currently my Subsurface scattering method does not give very nice results, I plan to improve that.
+* Non perfect specular: This is easy to implement and would give me good physically correct specular highlights.
+* Make it fast: And yes, optimize the code futher to make the renderer even faster.

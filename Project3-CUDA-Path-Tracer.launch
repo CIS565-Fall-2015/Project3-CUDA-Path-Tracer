@@ -6,7 +6,7 @@
 <intAttribute key="org.eclipse.cdt.launch.ATTR_BUILD_BEFORE_LAUNCH_ATTR" value="1"/>
 <stringAttribute key="org.eclipse.cdt.launch.DEBUGGER_ID" value="com.nvidia.cuda.ide.debug.cudagdb"/>
 <stringAttribute key="org.eclipse.cdt.launch.DEBUGGER_START_MODE" value="run"/>
-<stringAttribute key="org.eclipse.cdt.launch.PROGRAM_ARGUMENTS" value="scenes/cornell.txt"/>
+<stringAttribute key="org.eclipse.cdt.launch.PROGRAM_ARGUMENTS" value="scenes/sssTest.txt"/>
 <stringAttribute key="org.eclipse.cdt.launch.PROGRAM_NAME" value="build/cis565_path_tracer"/>
 <stringAttribute key="org.eclipse.cdt.launch.PROJECT_ATTR" value="Project3-CUDA-Path-Tracer"/>
 <booleanAttribute key="org.eclipse.cdt.launch.PROJECT_BUILD_CONFIG_AUTO_ATTR" value="true"/>

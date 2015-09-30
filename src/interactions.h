@@ -169,61 +169,49 @@ void scatterRay(
         int *lightIndices,
         int *lightCount)
 {
-    // TODO: implement this.
-    // A basic implementation of pure-diffuse shading will just call the
-    // calculateRandomDirectionInHemisphere defined above.
 
 	Ray &r = ray.ray;
 
 	if(m.hasTranslucence > 0)
 	{
-		ray.rayColor *= (m.color);
-
-//		printf ("%f\n", m.hasTranslucence);
+		ray.rayColor *= (m.color) * 2.0f; // multiply by 2 as we take a 50% between
+										  // diffused and SSS
 
 		//Sub Surface Scattering
+		//Do random splitting between diffused and sub surface for a better result
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
 		r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
 
-		//Create the hemisphere to intersect
-//		Geom hemisphere;
-//		hemisphere.translation = intersect;
-//		hemisphere.rotation = glm::vec3(0.0f);
-//		hemisphere.scale = glm::vec3(m.hasTranslucence);
-//
-//		hemisphere.transform = utilityCore::buildTransformationMatrix(
-//					hemisphere.translation, hemisphere.rotation, hemisphere.scale);
-//		hemisphere.inverseTransform = glm::inverse(hemisphere.transform);
-//		hemisphere.invTranspose = glm::inverseTranspose(hemisphere.transform);
-//
-//		glm::vec3 hemiIntersect, hemiNormal;
-//		sphereIntersectionTest(hemisphere, r, hemiIntersect, hemiNormal);
-
-		//Intersect the ray with the geometry again to get a point on the geom
-		Ray newR;
-		newR.origin = getPointOnRay(r, m.hasTranslucence);
-		newR.direction = -normal;
-		int t;
-		glm::vec3 hemiIntersect, hemiNormal;
-
-		if(g[geomIndex].type == SPHERE)
+		if(u01(rng) > 0.5)
 		{
-			t = sphereIntersectionTest(g[geomIndex], newR, hemiIntersect, hemiNormal);//, outside);
-		}
+			//Do Sub Surface Scattering
 
-		else if(g[geomIndex].type == CUBE)
-		{
-			t = boxIntersectionTest(g[geomIndex], newR, hemiIntersect, hemiNormal);//, outside);
-		}
+			//Intersect the ray with the geometry again to get a point on the geom
+			Ray newR;
+			newR.origin = getPointOnRay(r, m.hasTranslucence);
+			newR.direction = glm::normalize(g[geomIndex].translation - newR.origin);
 
-		if(t > 0)
-		{
-			hemiIntersect -= 0.0001f * hemiNormal;
-			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(hemiNormal, rng) - hemiIntersect);
-			r.origin = hemiIntersect + 0.001f * r.direction;
+			int t;
+			glm::vec3 newIntersect, newNormal;
+
+			if(g[geomIndex].type == SPHERE)
+			{
+				t = sphereIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);//, outside);
+			}
+
+			else if(g[geomIndex].type == CUBE)
+			{
+				t = boxIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);//, outside);
+			}
+
+			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(newNormal, rng));
+			r.origin = newIntersect + 0.001f * r.direction;
 		}
 
 		else
 		{
+			//Do diffused
 			r.origin = intersect + 0.001f * r.direction;
 		}
 	}
