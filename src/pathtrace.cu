@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <cmath>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
@@ -19,6 +20,7 @@
 
 #define DI 0
 #define DOF 0
+#define SHOW_TIMING 0
 #define ERRORCHECK 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -279,7 +281,7 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 				 }
 			 }
 		 }
-    }
+	 }
 }
 
 __global__ void kernDirectLightPath(Camera * camera, RayState *ray, Geom * geoms, int * lightIndices, int* lightCount, Material* materials, glm::vec3* image, int iter, int currDepth, int rayCount)
@@ -375,17 +377,29 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     for(int i=0; (i<traceDepth && rayCount > 0); ++i)
     {
+//    	cudaEvent_t start, stop;
+//    	cudaEventCreate(&start);
+//    	cudaEventCreate(&stop);
+//    	cudaEventRecord(start);
+
     	//Take one step, should make dead rays as false
     	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, i, rayCount);
 
     	//Stream compaction using work efficient
-//    	rayCount = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);
+    	rayCount = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);
 
 //    	Compact rays, dev_rays_end points to the new end
-    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
-    	rayCount = dev_rays_end - dev_rays_begin;
+//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+//    	rayCount = dev_rays_end - dev_rays_begin;
 
     	numBlocks = (rayCount + numThreads - 1) / numThreads;
+
+//    	cudaEventRecord(stop);
+//    	cudaEventSynchronize(stop);
+//    	float milliseconds = 0;
+//    	cudaEventElapsedTime(&milliseconds, start, stop);
+//    	if(SHOW_TIMING)
+//    		std::cout<</*"Iter : "<<iter<<" Depth : "<<i<<" Total time in milliseconds : "<<*/milliseconds<<std::endl;
     }
 
     //Direct Illumination

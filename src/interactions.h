@@ -192,17 +192,16 @@ void scatterRay(
 			newR.origin = getPointOnRay(r, m.hasTranslucence);
 			newR.direction = glm::normalize(g[geomIndex].translation - newR.origin);
 
-			int t;
 			glm::vec3 newIntersect, newNormal;
 
 			if(g[geomIndex].type == SPHERE)
 			{
-				t = sphereIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);//, outside);
+				sphereIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);
 			}
 
 			else if(g[geomIndex].type == CUBE)
 			{
-				t = boxIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);//, outside);
+				boxIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);
 			}
 
 			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(newNormal, rng));

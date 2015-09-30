@@ -150,14 +150,11 @@ The scene files can be found in the `scene/` folder.
 
 ### Analysis on Stream Compaction
 
-* Stream compaction helps most after a few bounces. Print and plot the
-  effects of stream compaction within a single iteration (i.e. the number of
-  unterminated rays after each bounce) and evaluate the benefits you get from
-  stream compaction.
-* Compare scenes which are open (like the given cornell box) and closed
-  (i.e. no light can escape the scene). Again, compare the performance effects
-  of stream compaction! Remember, stream compaction only affects rays which
-  terminate, so what might you expect?
+Here I have done an analysis for stream compaction and how it helps make the path tracer faster. I compared my excution time for one iteration for a 1600x1600 image for a depth of 30. The time were compared for the case of no stream compaction, for stream compaction with thrust and for the work efficient stream compaction implemented using shared memory. The results are as follows :
+
+![](analysis/table.png) ![](analysis/graph.png)
+
+The graph clearly shows that both the stream compaction implementations are better than the case with no stream compaction. This is because we only send the live rays in the next depth when we do stream compaction. In the case of no stream compaction, all the rays are send to the kernel. This wastes CPU kernels and hence the implementation is slower.
   
   
 ### Next Steps

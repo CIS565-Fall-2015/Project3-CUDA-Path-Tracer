@@ -1,0 +1,65 @@
+thrust
+Iter : 1 Depth : 0 Total time in milliseconds : 147.66
+Iter : 1 Depth : 1 Total time in milliseconds : 96.4427
+Iter : 1 Depth : 2 Total time in milliseconds : 63.1974
+Iter : 1 Depth : 3 Total time in milliseconds : 51.2053
+Iter : 1 Depth : 4 Total time in milliseconds : 42.8323
+Iter : 1 Depth : 5 Total time in milliseconds : 35.1711
+Iter : 1 Depth : 6 Total time in milliseconds : 29.285
+Iter : 1 Depth : 7 Total time in milliseconds : 25.4358
+Iter : 1 Depth : 8 Total time in milliseconds : 18.5513
+Iter : 1 Depth : 9 Total time in milliseconds : 16.762
+Iter : 1 Depth : 10 Total time in milliseconds : 14.1321
+Iter : 1 Depth : 11 Total time in milliseconds : 11.1406
+Iter : 1 Depth : 12 Total time in milliseconds : 12.3563
+Iter : 1 Depth : 13 Total time in milliseconds : 7.9721
+Iter : 1 Depth : 14 Total time in milliseconds : 6.90838
+Iter : 1 Depth : 15 Total time in milliseconds : 5.59555
+Iter : 1 Depth : 16 Total time in milliseconds : 4.59462
+Iter : 1 Depth : 17 Total time in milliseconds : 6.86899
+Iter : 1 Depth : 18 Total time in milliseconds : 3.33146
+Iter : 1 Depth : 19 Total time in milliseconds : 2.86045
+
+work efficient stream compaction
+Iter : 1 Depth : 0 Total time in milliseconds : 170.167
+Iter : 1 Depth : 1 Total time in milliseconds : 100.931
+Iter : 1 Depth : 2 Total time in milliseconds : 73.884
+Iter : 1 Depth : 3 Total time in milliseconds : 62.7633
+Iter : 1 Depth : 4 Total time in milliseconds : 52.2794
+Iter : 1 Depth : 5 Total time in milliseconds : 43.5842
+Iter : 1 Depth : 6 Total time in milliseconds : 35.3052
+Iter : 1 Depth : 7 Total time in milliseconds : 29.5678
+Iter : 1 Depth : 8 Total time in milliseconds : 25.8252
+Iter : 1 Depth : 9 Total time in milliseconds : 21.4094
+Iter : 1 Depth : 10 Total time in milliseconds : 16.6724
+Iter : 1 Depth : 11 Total time in milliseconds : 16.2083
+Iter : 1 Depth : 12 Total time in milliseconds : 13.3919
+Iter : 1 Depth : 13 Total time in milliseconds : 10.584
+Iter : 1 Depth : 14 Total time in milliseconds : 8.27101
+Iter : 1 Depth : 15 Total time in milliseconds : 7.18643
+Iter : 1 Depth : 16 Total time in milliseconds : 6.2561
+Iter : 1 Depth : 17 Total time in milliseconds : 5.45731
+Iter : 1 Depth : 18 Total time in milliseconds : 4.6345
+Iter : 1 Depth : 19 Total time in milliseconds : 4.04605
+
+no stream compaction
+Iter : 1 Depth : 0 Total time in milliseconds : 103.17
+Iter : 1 Depth : 1 Total time in milliseconds : 114.543
+Iter : 1 Depth : 2 Total time in milliseconds : 65.1628
+Iter : 1 Depth : 3 Total time in milliseconds : 62.2088
+Iter : 1 Depth : 4 Total time in milliseconds : 59.0111
+Iter : 1 Depth : 5 Total time in milliseconds : 54.4897
+Iter : 1 Depth : 6 Total time in milliseconds : 51.723
+Iter : 1 Depth : 7 Total time in milliseconds : 47.6574
+Iter : 1 Depth : 8 Total time in milliseconds : 45.1733
+Iter : 1 Depth : 9 Total time in milliseconds : 40.6239
+Iter : 1 Depth : 10 Total time in milliseconds : 38.72
+Iter : 1 Depth : 11 Total time in milliseconds : 36.603
+Iter : 1 Depth : 12 Total time in milliseconds : 34.4538
+Iter : 1 Depth : 13 Total time in milliseconds : 32.9707
+Iter : 1 Depth : 14 Total time in milliseconds : 30.8865
+Iter : 1 Depth : 15 Total time in milliseconds : 29.1897
+Iter : 1 Depth : 16 Total time in milliseconds : 27.8829
+Iter : 1 Depth : 17 Total time in milliseconds : 26.4288
+Iter : 1 Depth : 18 Total time in milliseconds : 24.4782
+Iter : 1 Depth : 19 Total time in milliseconds : 23.1112
