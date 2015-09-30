@@ -64,3 +64,7 @@ I am actually testing the new method on top on last project, and I get the testi
 ![alt tag](https://github.com/ziyezhou-Jerry/Project3-CUDA-Path-Tracer/blob/master/img/share_mem_testing.png?raw=true)
 
 It proved our assumption that using shared memory can speed up the program.
+
+Conclusion and Future Work
+========================
+By doing this project, I actually get a better understanding of Path Tracing Algorithm. What's more, since I have already implemented a CPU version of Path Tracer in CIS 560, implementing this time using CUDA on GPU give me the chance to compare CPU and GPU programming. Due to the limit of time, I haven't implement more advanced accelaration algorithm for the intersection check in this project, which means it is still far from __real-time__ rendering. I am willing to implement algorithms like K-D tree to help this speed up later.
