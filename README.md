@@ -46,3 +46,5 @@ PART IX: Performance Analysis
     I actually not tested on the closed scene, but I am sure it will be slower than the open scene. Because in the open scene a lot of ray terminated by hitting nothing, but in the closed scene that never happens. This effect will be enlarged when the depth is very large.
   5 global variable vs loacl variable
     In the beginning I used a lot of local variables. I initiate them, allocate them and free them in every iteration, even in every depth. Then I changed the local variables to global variables and I only need to allocate and free once. And the fps for a simple scene raised from 5 to 6.6. That means the cuda malloc and memcpy may use a lot of time.
+  6 large blocksize vs small blocksize
+    In my testing, the speed of the large blocksize overwhelm the speed of small blocksize. I believe it is because of the warp size restriction. The small blocksize may not be able to use full computation ability, but large blocksize can, but suffer from the problem of dealing with terminated rays. So after stream compaction, this problem is solved and large blocksize is obviously faster than small blocksize.
