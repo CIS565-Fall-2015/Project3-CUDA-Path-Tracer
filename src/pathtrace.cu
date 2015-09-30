@@ -13,6 +13,8 @@
 #include "pathtrace.h"
 #include "intersections.h"
 #include "interactions.h"
+#include "../stream_compaction/common.h"
+#include "../stream_compaction/efficient.h"
 
 
 #define ERRORCHECK 1
@@ -170,7 +172,7 @@ __global__ void initializeRay(Camera *cam, Ray *pathRays, int iter, glm::vec3 *i
 		pathRays[index].direction = glm::normalize(pW - cam->position);
 		pathRays[index].color = glm::vec3(1.0f);
 		pathRays[index].isOutside = true;
-		pathRays[index].isTerminated = false;
+		pathRays[index].isAlive = false;
 		
 	}
 
@@ -217,7 +219,7 @@ __global__ void trace_ray(Camera *cam, Ray* pathRays, Geom* geoms, Material* mat
 		if (intersected) {
 			//terminate if it's a light source
 			if (materials[intersectedGeom.materialid].emittance > 0) {
-				pathRays[pixel_index].isTerminated = true;
+				pathRays[pixel_index].isAlive = true;
 				image[pixel_index] += pathRays[pixel_index].color;
 			} else {
 				thrust::default_random_engine rng = makeSeededRandomEngine(pixel_index, iter, depth);
@@ -225,7 +227,7 @@ __global__ void trace_ray(Camera *cam, Ray* pathRays, Geom* geoms, Material* mat
 								theNormal, materials[intersectedGeom.materialid], rng);
 			}
 		} else {
-			pathRays[pixel_index].isTerminated = true;
+			pathRays[pixel_index].isAlive = true;
 			pathRays[pixel_index].color = glm::vec3(0.0f);
 		}
 	}
@@ -268,7 +270,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		trace_ray<<<blocksPerGrid2d, blockSize2d>>>(dev_cam, dev_rays, dev_geoms, 
 			dev_materials, dev_image, iter, hst_scene->geoms.size(), iterated_depth, traceDepth);
 
-		//alive_rays = StreamCompaction::Efficient::rayCompact(alive_rays, dev_compaction, dev_rays);
+		//alive_rays = StreamCompaction::Efficient::compact(alive_rays, dev_compaction, dev_rays);
 		//cudaMemcpy(dev_rays, dev_compaction, alive_rays * sizeof(Ray), cudaMemcpyDeviceToDevice);
 
 		iterated_depth++;

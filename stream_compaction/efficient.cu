@@ -9,12 +9,13 @@ namespace Efficient {
 #define blockSize 1024
 int *temp_scan;
 int *scan_result;
+Ray *rays;
 
 __global__ void upSweep(int n, int d, int *o_data, int *i_data) {
 	int index =  (blockIdx.x * blockDim.x) + threadIdx.x;	
 	if (index <= n) {
 		if (index % (int)pow(2.0, d+1) == 0) {
-			o_data[index-1] = i_data[index - 1 - (int)pow(2.0, d)] + i_data[index - 1];
+			o_data[index-1] = (int)i_data[index - 1 - (int)pow(2.0, d)] + (int)i_data[index - 1];
 		} 
 	}
 }
@@ -32,14 +33,20 @@ __global__ void downSweep(int n, int d, int *o_data, int *i_data) {
 
 }
 
+__global__ void rayToInt(int n, int *o_data, Ray *i_data) {
+	int index =  (blockIdx.x * blockDim.x) + threadIdx.x;
+	int temp = 0;
+	if (index <= n) {
+		o_data[index] = (int) i_data[index].isAlive;
+	}
+}
+
 void scan(int n, int *odata, const int *idata) {
     int d = ilog2ceil(n);
 	int total = (int) pow(2.0, d);
 
 	cudaMalloc((void**)&scan_result, total * sizeof(int));
 	cudaMalloc((void**)&temp_scan, total * sizeof(int));
-	
-	cudaMemcpy(temp_scan, idata, total * sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(scan_result, idata, total * sizeof(int), cudaMemcpyHostToDevice);
 
 	dim3 fullBlocksPerGrid((total + blockSize - 1) / blockSize);
@@ -55,8 +62,9 @@ void scan(int n, int *odata, const int *idata) {
 	}
 
 	
+	scan_result[total-1] = 0;
 	cudaMemcpy(odata, scan_result, total * sizeof(int), cudaMemcpyDeviceToHost);
-	odata[total-1] = 0;
+	
 
 	cudaMemcpy(scan_result, odata, total * sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(temp_scan, odata, total * sizeof(int), cudaMemcpyHostToDevice);
@@ -86,72 +94,49 @@ void scan(int n, int *odata, const int *idata) {
  * @param idata  The array of elements to compact.
  * @returns      The number of elements remaining after compaction.
  */
-int compact(int n, int *odata, const int *idata) {
+int compact(int n, Ray *odata, const Ray *idata) {
     
 	int d = ilog2ceil(n);
 	int total = (int) pow(2.0, d);
 
 	int *predicate_array;
 	int *hst_predicate_array;
-	int *dev_idata;
+	Ray *dev_idata;
+	Ray *compacted_rays;
 	int *compact_array;
+
+	int *hst_indices;
+	int *dev_indices;
 
 	cudaMalloc((void**)&predicate_array, total * sizeof(int));
 	cudaMalloc((void**)&hst_predicate_array, total * sizeof(int));
-	cudaMalloc((void**)&dev_idata, total * sizeof(int));
+	cudaMalloc((void**)&dev_idata, total * sizeof(Ray));
 	cudaMalloc((void**)&compact_array, total * sizeof(int));
+	cudaMalloc((void**)&hst_indices, total * sizeof(int));
+	cudaMalloc((void**)&dev_indices, total * sizeof(int));
 
-	cudaMemcpy(dev_idata, idata, total * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_idata, idata, total * sizeof(Ray), cudaMemcpyHostToDevice);
 
 	dim3 fullBlocksPerGrid((total + blockSize - 1) / blockSize);
 
-	Common::kernMapToBoolean<<<fullBlocksPerGrid, blockSize>>>(total, predicate_array, dev_idata);
-	cudaMemcpy(hst_predicate_array, predicate_array, total * sizeof(int), cudaMemcpyDeviceToHost);
+	Common::kernMapRayToBoolean<<<fullBlocksPerGrid, blockSize>>>(total, predicate_array, 
+		dev_idata);
+
+	cudaMemcpy(hst_predicate_array, predicate_array, 
+		total * sizeof(int), cudaMemcpyDeviceToHost);
 	
-	scan(total, odata, hst_predicate_array);
-	int totalAfterCompaction = odata[total-1];
-	cudaMemcpy(odata, predicate_array, total * sizeof(int), cudaMemcpyDeviceToHost);
+	scan(total, hst_indices, hst_predicate_array);
+	cudaMemcpy(dev_indices, hst_indices, total * sizeof(int), cudaMemcpyHostToDevice);
+
+	int totalAfterCompaction = hst_indices[total-1];
 	
+	cudaMalloc((void**)&compacted_rays, totalAfterCompaction * sizeof(Ray));
+	Common::kernScatter<<<fullBlocksPerGrid, blockSize>>>(total, odata,
+        dev_idata, predicate_array, dev_indices);
+
     return totalAfterCompaction;
 }
 
-/**
- * Performs stream compaction on idata, storing the result into odata.
- * All zeroes are discarded.
- *
- * @param n      The number of elements in idata.
- * @param odata  The array into which to store elements.
- * @param idata  The array of elements to compact.
- * @returns      The number of elements remaining after compaction.
- */
-/*int rayCompact(int n, Ray *odata, Ray *idata) {
-    
-	int d = ilog2ceil(n);
-	int total = (int) pow(2.0, d);
-
-	int *predicate_array;
-	int *hst_predicate_array;
-	int *dev_idata;
-	int *compact_array;
-
-	cudaMalloc((void**)&predicate_array, total * sizeof(int));
-	cudaMalloc((void**)&hst_predicate_array, total * sizeof(int));
-	cudaMalloc((void**)&dev_idata, total * sizeof(int));
-	cudaMalloc((void**)&compact_array, total * sizeof(int));
-
-	cudaMemcpy(dev_idata, idata, total * sizeof(int), cudaMemcpyHostToDevice);
-
-	dim3 fullBlocksPerGrid((total + blockSize - 1) / blockSize);
-
-	Common::kernMapRayToBoolean<<<fullBlocksPerGrid, blockSize>>>(total, predicate_array, dev_idata);
-	cudaMemcpy(hst_predicate_array, predicate_array, total * sizeof(int), cudaMemcpyDeviceToHost);
-	
-	scan(total, odata, hst_predicate_array);
-	int totalAfterCompaction = odata[total-1];
-	cudaMemcpy(odata, predicate_array, total * sizeof(int), cudaMemcpyDeviceToHost);
-	
-    return totalAfterCompaction;
-}*/
 
 }
 }
