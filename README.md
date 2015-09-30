@@ -43,7 +43,7 @@ In this project, I aimed at implementing a CUDA base Path Tracer. The features i
 * Refractive surfaces implemented with Fresnels reflectance
 * Depth of field
 * Direct Illumination by sampling a light source at random
-* Attempted Subsurface Scattering
+* Subsurface Scattering
 * Work Efficient stream compaction with shared memory to remove dead rays quickly
 * Effects like color bleeding, caustics, soft shadow can be observed
 
@@ -87,8 +87,11 @@ The important part of this is sampling the lights. For this I borrowed the code 
 <a href="url"><img src="FinalRenders/noDI.png"  height="300" width="300"></a> <a href="url"><img src="FinalRenders/DI.png"  height="300" width="300"></a>
 
 ##### Subsurface Scattering ->
-Getting physically accurate subsurface scattering effect is very expensive to compute (Algorithm explained in PBRT). I tried to hack around it and get a very small effect.
-In my method, I get a random reflection direction from the intersection point. Next, I assume that there is a hemisphere of some radius centered at the intersection point. I get the intersection point of this ray with this hemishpere. Then I create a new ray with this point as the origin and the negative direction of the original intersection normal as its direction. Now we intersect this ray with our original geometry to get the offset point from where the ray will bounce. Give this ray a random direction within the hemishpere.
+Getting physically accurate subsurface scattering effect is very expensive to compute (Algorithm explained in PBRT). I tried to hack around it got a decent effect.
+In my method, I get a random reflection direction within the hemishpere from the intersection point. Then I move the ray in this direction by some distance which is the SSS value in the scene file. Now I create a new ray that goes from this point to the center of the object. I find the intersection of this ray with the same object and get the new point on the geometry. This point acts as the origin for the ray bounce. To get the direction, I choose a random ray direction in the hemisphere. 
+For better visual results, I took a 50-50 split between the sub surface scattering and diffused bounce. This gives me some nice results as shown below. The sphere on the left is diffused while the one on the right shows sub surface scattering properties.
+
+<a href="url"><img src="FinalRenders/sss1.png" align="center" height="350" width="350"></a> <a href="url"><img src="FinalRenders/sss2.png" align="center" height="350" width="350"></a>
 
 ##### Work efficient Stream Compaction ->
 In the path tracer, the rays that do not hit any object or hit a light are considered to be dead. If we hit the light then we are done and we can add the color to the corresponding pixel. If it does not hit anything then also we are done. So we mark all these rays as dead. In the next step, we have to remove all these rays from our array and consider only the one's that are alive. The work efficient stream compaction helps speeding this process by doing it in parallel over the shared memory of a block.
@@ -160,6 +163,5 @@ The scene files can be found in the `scene/` folder.
 ### Next Steps
 Building up on my current code, I plan to implement the following things :
 * Mesh geometry: Using the assimp library, I plan to import obj meshes in the scene to get awesome renders
-* Subsurface scattering: Currently my Subsurface scattering method does not give very nice results, I plan to improve that.
 * Non perfect specular: This is easy to implement and would give me good physically correct specular highlights.
 * Make it fast: And yes, optimize the code futher to make the renderer even faster.
