@@ -716,11 +716,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		depth ++;
 
 		////stream compaction
-		dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
-		num_path = dev_path_end - dev_path;
+		//dev_path_end = thrust::remove_if(thrust::device, dev_path, dev_path_end, is_path_terminated() );
+		//num_path = dev_path_end - dev_path;
 
 		//TODO:self work efficient
-		//num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
+		num_path = StreamCompaction::Efficient::compact(num_path, dev_path);
 		
 		checkCUDAError("stream compaction");
 

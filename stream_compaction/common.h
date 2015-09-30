@@ -16,8 +16,8 @@
 
 
 //const int blockSize = 192;
-const int blockSize = 128;
-//const int blockSize = 32;
+//const int blockSize = 128;
+const int blockSize = 32;
 //const int blockSize = 4;
 
 /**

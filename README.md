@@ -17,7 +17,7 @@ CUDA Path Tracer
 ![lens](img/lens.png)
 
 * Obj File
-![obj](img/obj.png)
+![obj](img/teapot.png)
 
 -----------------------------------
 
@@ -80,7 +80,7 @@ I implement kd-backtrack algorithm. Which use backtrack to play the role of popp
 ![master_depth0](img/master_depth0.png)   ![kdtree_depth0](img/kdtree_depth0.png)
 
 * hit depth = 1
-![master_depth1](img/master_depth0.png)   ![kdtree_depth1](img/kdtree_depth1.png)
+![master_depth1](img/master_depth1.png)   ![kdtree_depth1](img/kdtree_depth1.png)
 
 * kd tree wrong
  ![kdtree_wrong](img/kdtree_wrong.png)
