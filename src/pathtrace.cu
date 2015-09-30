@@ -511,9 +511,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	int depth=hst_scene->state.traceDepth;
 	int remain=cam.resolution.x*cam.resolution.y;
 
-	cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	//jitterRay<<<(remain+127)/128,128>>>(dev_origin,dev_direction,origin,dev_V,dev_H,dev_M,cam.resolution.x,iter,remain);
+	//cudaMemcpy(dev_origin, cameraOrigin, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	//cudaMemcpy(dev_direction, cameraDirection, remain* sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	jitterRay<<<(remain+127)/128,128>>>(dev_origin,dev_direction,origin,dev_V,dev_H,dev_M,cam.resolution.x,iter,remain);
 	initDeviceValue<<<(remain+127)/128,128>>>(dev_copyImage,dev_pixes,dev_pos,dev_terminated,dev_inside,remain);
 	
 	for(int i=0;i<depth;++i){
