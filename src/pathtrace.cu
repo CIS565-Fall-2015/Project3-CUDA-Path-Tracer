@@ -80,7 +80,7 @@ static glm::vec3 *dev_image = NULL;
 static Geom *dev_geoms = NULL;
 static Material *dev_mats = NULL;
 static Ray *dev_rayArray = NULL; 
-int* g_idata;
+
 int* dev_bools;
 int* dev_indices;
 
@@ -321,11 +321,14 @@ __device__ float closestIntersection(Ray ray, const Geom* geoms, glm::vec3 &inte
 
 //Function to find next ray
 __global__ void kernPathTracer(Camera cam, Ray* rayArray, const Geom* geoms, const Material* mats, const int numGeoms, const int numMats, glm::vec3* dev_image, int iter, int depth, int traceDepth, bool m_blur, int size){
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int index = x + (y * cam.resolution.x);
+	//int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	//int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//int index = x + (y * cam.resolution.x);
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int imageSize = (cam.resolution.x * cam.resolution.y);
 	//find closest intersection
-	if (x < cam.resolution.x && y < cam.resolution.y && rayArray[index].terminated == false) {
+	
+	if (rayArray[index].index < imageSize && rayArray[index].terminated == false) {//x < cam.resolution.x && y < cam.resolution.y && rayArray[index].terminated == false) {
 		
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, depth);
 		glm::vec3 interPoint;
@@ -443,6 +446,7 @@ void scan(int n, const int *idata, int *odata, int newSize) {
 	int* maxArray;
 	int* newArray;
 	int randomNum = 0;
+	int* g_idata;
 	cudaMalloc((void**)&g_idata, powTwo * sizeof(int));
 	cudaMalloc((void**)&newArray, powTwo * sizeof(int));
 	cudaMemset(g_idata, 0, powTwo * sizeof(int));
@@ -451,14 +455,17 @@ void scan(int n, const int *idata, int *odata, int newSize) {
 	//scanArray[0] = 0;
 	for (int i = 0; i < n; i++) {
 		scanArray[i] = idata[i];
+		printf("bool %i: %i \n", i, scanArray[i]);
 	}
 	
 	cudaMalloc((void**)&maxArray, (((powTwo/2) + blockSize - 1) / blockSize)  * sizeof(int));
-	cudaMemcpy(g_idata, scanArray, n*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(newArray, scanArray, n*sizeof(int), cudaMemcpyHostToDevice);
 	
-	kernScan<<<fullBlocksPerGrid, blockSize, 2*blockSize*sizeof(int)>>>(maxArray, g_idata, n);
-	cudaMemcpy(odata, g_idata, n*sizeof(int), cudaMemcpyDeviceToHost);
-
+	kernScan<<<fullBlocksPerGrid, blockSize, 2*blockSize*sizeof(int)>>>(maxArray, newArray, n);
+	cudaMemcpy(odata, newArray, n*sizeof(int), cudaMemcpyDeviceToHost);
+	for(int m = 0; m < n; m++) {
+		printf("in scan, odata %i: %i \n", m, odata[m]);
+	}
 	int maxSize = ((powTwo/2) + blockSize - 1) / blockSize;
 	if (maxSize != 1) {
 		int* hst_maxArray = new int[maxSize];
@@ -523,9 +530,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     const int blockSideLength = 8;
     const dim3 blockSize(blockSideLength, blockSideLength);
     const dim3 blocksPerGrid(
-            (cam.resolution.x + blockSize.x - 1) / blockSize.x,
-            (cam.resolution.y + blockSize.y - 1) / blockSize.y);
-
+           (cam.resolution.x + blockSize.x - 1) / blockSize.x,
+           (cam.resolution.y + blockSize.y - 1) / blockSize.y);
+	//const dim3 blocksPerGrid((pixelcount + blockSize - 1) / blockSize);
     ///////////////////////////////////////////////////////////////////////////
 
     // Recap:
@@ -576,11 +583,12 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		cudaMemcpy(dev_geoms, geoms, hst_scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 	}
 	int newSize = pixelcount;
+	printf("Heyo starting over \n newSize: %i \n", newSize);
 	Ray* dev_rayShort;
 	cudaMalloc((void**)&dev_rayShort, pixelcount * sizeof(Ray));
-
+	cudaMalloc((void**)&dev_rayArray, pixelcount * sizeof(Ray));
 	kernRayGenerate<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, iter, dof);
-
+	
 	//cuda events
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
@@ -592,52 +600,71 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		int* dev_bool;
 		int* dev_indices;
 		int* hst_indices = new int[newSize];
-		
-		
-		kernPathTracer<<<blocksPerGrid, blockSize>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth, m_blur, newSize);
+		int blockSizeNew = 64;
+		dim3 blocksGridNew((newSize + blockSizeNew - 1) / blockSizeNew);
+		printf("BlocksPerGrid: %i \n", (newSize + blockSizeNew - 1) / blockSizeNew);
+		kernPathTracer<<<blocksGridNew, blockSizeNew>>>(cam, dev_rayArray, dev_geoms, dev_mats, numGeoms, numMats, dev_image, iter, i, traceDepth, m_blur, newSize);
 		
 		cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
 		
 		if (streamCompaction) {
-		/*
-			for (int m = 0; m < 100; m++) {
-				if (m % 2 == 0) {
+			/*
+			for (int m = 0; m < newSize; m++) {
+				float ran = rand()%100;
+				if (ran < 50) {
 					hst_bool[m] = 0;
+					printf("%i: %i \n", m, hst_bool[m]);
 				}
 				else {
 					hst_bool[m] = 1;
+					printf("%i: %i \n", m, hst_bool[m]);
 				}
 			}
-
-			scan(100, hst_bool, hst_indices, newSize);
-			
-		*/
+			if (newSize > 1) {
+				scan(newSize, hst_bool, hst_indices, newSize);
+				newSize = hst_bool[newSize - 1] + hst_indices[newSize - 1];
+			}*/
+		  
 			for (int m = 0; m < newSize; m++) {
+					
 				if (rayArray[m].terminated) {
 					hst_bool[m] = 0;
-					//printf("%i: %i \n", m, hst_bool[m]);
+					
+						printf("%i: %i \n", m, hst_bool[m]);
+					
 				} else {
 					hst_bool[m] = 1;
+					
+						printf("%i: %i \n", m, hst_bool[m]);
+					
 					//printf("%i: %i \n", m, hst_bool[m]);
 				}
 			}
 			int oldSize = newSize;
-			
-			scan(oldSize, hst_bool, hst_indices, newSize);
-			newSize = hst_bool[oldSize - 1] + hst_indices[oldSize - 1];
-			printf("size: %i \n", newSize );
+			if (newSize > 1) {
+				printf("old Size: %i \n", oldSize );
+				
+				scan(oldSize, hst_bool, hst_indices, newSize);
+				for (int m = 0; m < newSize; m++) {
+					printf("%i index: %i \n", m, hst_indices[m]);
+				}
+				newSize = hst_bool[oldSize - 1] + hst_indices[oldSize - 1];
+				printf("new Size: %i \n", newSize );
 		
-			cudaMalloc((void**)&dev_bool, newSize * sizeof(int));
-			cudaMalloc((void**)&dev_indices, newSize * sizeof(int));
+				cudaMalloc((void**)&dev_bool, newSize * sizeof(int));
+				cudaMalloc((void**)&dev_indices, newSize * sizeof(int));
 		
 
 
-			cudaMemcpy(dev_bool, hst_bool, newSize*sizeof(int), cudaMemcpyHostToDevice);
-			cudaMemcpy(dev_indices, hst_indices, newSize*sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(dev_bool, hst_bool, newSize*sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(dev_indices, hst_indices, newSize*sizeof(int), cudaMemcpyHostToDevice);
 
-			//kernScatter<<<blocksPerGrid, blockSize>>>(oldSize, dev_rayShort, dev_rayArray, dev_bool, dev_indices);
+				kernScatter<<<blocksGridNew, blockSizeNew>>>(oldSize, dev_rayShort, dev_rayArray, dev_bool, dev_indices);
 		
-			//cudaMemcpy(dev_rayArray, dev_rayShort, newSize*sizeof(int), cudaMemcpyDeviceToDevice);
+				cudaMemcpy(dev_rayArray, dev_rayShort, newSize*sizeof(int), cudaMemcpyDeviceToDevice);
+			}
+			int k;
+			std::cin >> k;
 		}
 		
 		cudaEventRecord(stop);
@@ -648,7 +675,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
 
-	printf("%f - ", milliseconds);
+	//printf("%f - ", milliseconds);
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
 	
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);
