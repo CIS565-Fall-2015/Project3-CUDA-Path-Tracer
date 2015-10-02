@@ -172,10 +172,103 @@ void scatterRay(
 
 	Ray &r = ray.ray;
 
-	if(m.hasTranslucence > 0)
+	if(m.emittance > 0 && m.emittance < 1)
+	{
+		//Glowing material
+		ray.rayColor *= (m.color) / m.emittance;
+
+		//Do SSS + Fresnel split using russian roulette
+		thrust::uniform_real_distribution<float> u01(0, 1);
+
+		float split = u01(rng);
+
+		if(split > 0.5)
+		{
+			//Do SSS
+			r.direction = glm::normalize(calculateRandomDirectionInHemisphere(normal, rng));
+
+			if(split > 0.75)
+			{
+				//Do Sub Surface Scattering
+
+				//Intersect the ray with the geometry again to get a point on the geom
+				Ray newR;
+				newR.origin = getPointOnRay(r, m.hasTranslucence);
+				newR.direction = glm::normalize(g[geomIndex].translation - newR.origin);
+
+				glm::vec3 newIntersect, newNormal;
+
+				if(g[geomIndex].type == SPHERE)
+				{
+					sphereIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);
+				}
+
+				else if(g[geomIndex].type == CUBE)
+				{
+					boxIntersectionTest(g[geomIndex], newR, newIntersect, newNormal);
+				}
+
+				r.direction = glm::normalize(calculateRandomDirectionInHemisphere(newNormal, rng));
+				r.origin = newIntersect + 0.001f * r.direction;
+			}
+
+			else
+			{
+				//Do diffused
+				r.origin = intersect + 0.001f * r.direction;
+			}
+		}
+
+		else
+		{
+			//Do refraction to get refracted ray dir
+					glm::vec3 transmittedDir = (glm::refract(r.direction, normal, 1.0f / m.indexOfRefraction));
+
+					float cos_t = glm::dot(transmittedDir, -normal),
+							cos_i = glm::dot(-r.direction, normal);
+
+					float r_parallel = (m.indexOfRefraction * cos_i - cos_t) / (m.indexOfRefraction * cos_i + cos_t),
+						r_perpendicular = (cos_i - m.indexOfRefraction * cos_t) / (cos_i + m.indexOfRefraction * cos_t);
+
+					if(split < 0.25f * (r_parallel * r_parallel + r_perpendicular * r_perpendicular))
+					{
+						//do reflection
+
+						ray.rayColor *= (m.color);
+						r.direction = (glm::reflect(r.direction, normal));
+						r.origin = intersect + 0.001f * r.direction;
+					}
+
+					else
+					{
+						//Do refraction
+						ray.rayColor *= (m.color);
+						r.direction = transmittedDir;
+						r.origin = intersect + 0.001f * r.direction;
+
+						//Intersect with the object again
+						//float t;
+						//bool outside;
+						if(g[geomIndex].type == SPHERE)
+						{
+							/*t = */sphereIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
+						}
+
+						else if(g[geomIndex].type == CUBE)
+						{
+							/*t = */boxIntersectionTest(g[geomIndex], r, intersect, normal);//, outside);
+						}
+
+						r.direction = (glm::refract(r.direction, normal, m.indexOfRefraction));
+						r.origin = intersect + 0.001f * r.direction;
+					}
+		}
+	}
+
+	else if(m.hasTranslucence > 0)
 	{
 		ray.rayColor *= (m.color) * 2.0f; // multiply by 2 as we take a 50% between
-										  // diffused and SSS
+											  // diffused and SSS
 
 		//Sub Surface Scattering
 		//Do random splitting between diffused and sub surface for a better result
@@ -230,7 +323,8 @@ void scatterRay(
 			specTerm = powf(specTerm, m.specular.exponent);
 
 			ray.rayColor *= ( m.specular.color * specTerm );
-			r.direction = glm::reflect(r.direction, normal);
+
+			//r.direction = glm::reflect(r.direction, normal);
 			r.origin = intersect + 0.001f * r.direction;
 		}
 

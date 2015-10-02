@@ -7,7 +7,7 @@ SSS			0
 REFL        0
 REFR        0
 REFRIOR     0
-EMITTANCE   5
+EMITTANCE   10
 
 // Diffuse white
 MATERIAL 1
@@ -67,7 +67,7 @@ EMITTANCE   0
 // Camera
 CAMERA
 RES         800 800
-FOVY        45
+FOVY        60
 ITERATIONS  5000
 DEPTH      	5
 FILE        cornell
@@ -79,8 +79,8 @@ UP          0 1 0
 
 // Ceiling light
 OBJECT 0
-sphere
-material 1
+cube
+material 0
 TRANS       0 10 0
 ROTAT       0 0 0
 SCALE       3 .3 3
@@ -127,26 +127,26 @@ SCALE       .01 10 10
 
 // Sphere
 OBJECT 6
-sphere
+cube
 material 4
-TRANS       -1.5 5 -1
-ROTAT       0 0 0
-SCALE       3 3 3
+TRANS       -2 4 2
+ROTAT       0 45 0
+SCALE       2 7 2
 
 // Sphere
 OBJECT 7
-sphere
+cube
 material 5
-TRANS       1.5 5 -1
-ROTAT       0 0 0
-SCALE       3 3 3
+TRANS       2 4 2
+ROTAT       0 45 0
+SCALE       2 7 2
 
 // Sphere
-OBJECT 8
-sphere
-material 0
-TRANS       0 7 0
-ROTAT       0 0 0
-SCALE       1 1 1
+//OBJECT 8
+//sphere
+//material 0
+//TRANS       0 7 0
+//ROTAT       0 0 0
+//SCALE       1 1 1
 
 

@@ -18,7 +18,7 @@
 
 #include <stream_compaction/efficient.h>
 
-#define DI 0
+#define DI 1
 #define DOF 0
 #define SHOW_TIMING 0
 #define ERRORCHECK 1
@@ -117,11 +117,12 @@ void pathtraceInit(Scene *scene) {
 
     //Allocate memory for rays
     cudaMalloc((void**)&dev_rays_begin, pixelcount * sizeof(RayState));
-    cudaMalloc((void**)&dev_rays_end, pixelcount * sizeof(RayState));
+//    cudaMalloc((void**)&dev_rays_end, sizeof(RayState));
 
     //Copy Light Indices
     cudaMalloc((void**)&dev_light_indices, hst_scene->state.lightIndices.size() * sizeof(int));
     cudaMemcpy(dev_light_indices, hst_scene->state.lightIndices.data(), hst_scene->state.lightIndices.size() * sizeof(int), cudaMemcpyHostToDevice);
+
     //Copy Light Count
     int lightCount = hst_scene->state.lightIndices.size();
     cudaMalloc((void**)&dev_light_count, sizeof(int));
@@ -137,11 +138,11 @@ void pathtraceFree() {
 
     cudaFree(dev_camera);
     cudaFree(dev_geoms);
+    cudaFree(dev_geoms_count);
     cudaFree(dev_materials);
     cudaFree(dev_state);
-    cudaFree(dev_geoms_count);
     cudaFree(dev_rays_begin);
-    cudaFree(dev_rays_end);
+//    cudaFree(dev_rays_end);
     cudaFree(dev_light_indices);
     cudaFree(dev_light_count);
 
@@ -255,7 +256,7 @@ __global__ void kernTracePath(Camera * camera, RayState *ray, Geom * geoms, int 
 			 //else find the material color
 			 else
 			 {
-				 if(materials[geoms[nearestIndex].materialid].emittance > 0)
+				 if(materials[geoms[nearestIndex].materialid].emittance >= 1)
 				 {
 					 //Light source, end ray here
 					 r.isAlive = false;
@@ -386,11 +387,11 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     	kernTracePath<<<numBlocks, numThreads>>>(dev_camera, dev_rays_begin, dev_geoms, dev_geoms_count, dev_light_indices, dev_light_count, dev_materials, dev_image, iter, i, rayCount);
 
     	//Stream compaction using work efficient
-    	rayCount = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);
+//    	rayCount = StreamCompaction::Efficient::compact(rayCount, dev_rays_begin);
 
 //    	Compact rays, dev_rays_end points to the new end
-//    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
-//    	rayCount = dev_rays_end - dev_rays_begin;
+    	dev_rays_end = thrust::remove_if(thrust::device, dev_rays_begin, dev_rays_end, isDead());
+    	rayCount = dev_rays_end - dev_rays_begin;
 
     	numBlocks = (rayCount + numThreads - 1) / numThreads;
 
