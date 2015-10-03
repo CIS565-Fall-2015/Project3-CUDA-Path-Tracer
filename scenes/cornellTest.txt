@@ -70,12 +70,12 @@ EMITTANCE   0
 
 // Camera
 CAMERA
-RES         100 100
+RES         800 800
 FOVY        45
-ITERATIONS  1
+ITERATIONS  5000
 DEPTH       8
 FILE        cornell
-EYE         0.0 5 11.5
+EYE         0.0 5 10.5
 VIEW        0 0 -1
 UP          0 1 0
 
