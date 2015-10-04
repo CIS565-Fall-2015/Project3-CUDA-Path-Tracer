@@ -27,7 +27,7 @@ CUDA Path Tracer
   stream compaction.
   ![](img/Proj3_chart1.png "Threads vs. Trace Depth")
   ![](img/Proj3_chart2.png "Milliseconds vs. Trace Depth")
-  * 
+  * As you can see from the above graphs, as the number of threads decreases, the amount of time spend in each path trace decreases.  The green line shows when there is no stream compaction.  It is clear why the time stays fairly consistant, becuase there is no change in the number of threads being used on the GPU.  It starts off taking less time than the stream compaction because of the memory transfers that the stream compaction must do.  However, in the end, the stream compaction saves enough time, by lowering the number of threads used in each path trace, that the overall time to run is lower when stream compaction is used.  It is also clear from these graphs, that stream compaction allows for more of a speer-up in an open room.  This is talked about more in the below paragraph.  
 * Compare scenes which are open (like the given cornell box) and closed
   (i.e. no light can escape the scene). Again, compare the performance effects
   of stream compaction! Remember, stream compaction only affects rays which
