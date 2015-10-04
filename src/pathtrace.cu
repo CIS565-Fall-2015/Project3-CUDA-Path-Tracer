@@ -187,7 +187,7 @@ __global__ void kernRayGenerate(Camera cam, Ray *ray, int iter, bool dof){
 		if (dof == true) {
 			glm::vec3 apOff = glm::vec3(dofDistrib(rng), dofDistrib(rng), 0.0f);
 			glm::vec3 new_E = cam.position + apOff;
-			float focal = 12.339f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
+			float focal = 11.5866f; //glm::length(glm::vec3(-2.0f, 5.0f,2.0f) - new_E);
 			dir *= focal;
 			dir -= apOff;
 			dir = glm::normalize(dir);
@@ -587,9 +587,9 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 
     
     // TODO: perform one iteration of path tracing
-	bool dof = false;
+	bool dof = true;
 	bool m_blur = false;
-	bool streamCompaction = false;
+	bool streamCompaction = true;
 	int size = pixelcount;
 	
 	if (m_blur && iter < max_iter) {
@@ -637,6 +637,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		checkCUDAError("pathtrace");
 		//printf("BlocksPerGrid: %i \n", (newSize + blockSizeNew - 1) / blockSizeNew);
 		if (newSize == 0) {
+			cudaEventRecord(stop);
 			break;
 		}
 		//printf("size: %i \n", newSize);
@@ -704,6 +705,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 				checkCUDAError("pathtrace");
 				cudaFree(dev_bool);
 				cudaFree(dev_indices);
+				
 			}
 			
 			int k;
@@ -712,13 +714,15 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
 		
 		
 	}
-	
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
+	//printf("time per iteration: %f \n", milliseconds);
+	
+	
 	checkCUDAError("pathtrace");
-	printf("time per iteration: %f \n", milliseconds);
+	
 	cudaMemcpy(rayArray, dev_rayArray, pixelcount*sizeof(Ray), cudaMemcpyDeviceToHost);
 	checkCUDAError("pathtrace");
     //generateNoiseDeleteMe<<<blocksPerGrid, blockSize>>>(cam, iter, dev_image);

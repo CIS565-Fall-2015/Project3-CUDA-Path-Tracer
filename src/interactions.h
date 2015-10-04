@@ -125,7 +125,7 @@ void scatterRay(
 	else if (m.specular.exponent > 0) {
 		thrust::uniform_real_distribution<float> probDistrib(0.0f, 1.0f);
 		float prob = probDistrib(rng);
-		if (.2f > prob) {
+		if (.1f > prob) {
 			ray.direction = ray.direction - 2.0f*normal*(glm::dot(ray.direction, normal));
 			ray.origin = intersect + glm::vec3(0.01f, 0.01f, 0.01f)*(glm::normalize(ray.direction));
 			color *= m.specular.color;
