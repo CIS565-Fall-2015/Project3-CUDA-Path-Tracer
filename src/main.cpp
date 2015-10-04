@@ -1,6 +1,10 @@
 #include "main.h"
-#include "preview.h"
+
 #include <cstring>
+
+#include "preview.h"
+#include "image.h"
+
 
 static std::string startTimeString;
 static bool camchanged = false;

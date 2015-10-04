@@ -15,7 +15,6 @@
 #include <string>
 
 #include "sceneStructs.h"
-#include "image.h"
 #include "pathtrace.h"
 #include "utilities.h"
 #include "scene.h"

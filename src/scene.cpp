@@ -1,8 +1,11 @@
-#include <iostream>
 #include "scene.h"
+
+#include <iostream>
 #include <cstring>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include "stb_image.h"
+
 
 Scene::Scene(string filename) {
     cout << "Reading scene from " << filename << " ..." << endl;
@@ -20,13 +23,12 @@ Scene::Scene(string filename) {
             vector<string> tokens = utilityCore::tokenizeString(line);
             if (strcmp(tokens[0].c_str(), "MATERIAL") == 0) {
                 loadMaterial(tokens[1]);
-                cout << " " << endl;
             } else if (strcmp(tokens[0].c_str(), "OBJECT") == 0) {
                 loadGeom(tokens[1]);
-                cout << " " << endl;
             } else if (strcmp(tokens[0].c_str(), "CAMERA") == 0) {
                 loadCamera();
-                cout << " " << endl;
+            } else if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
+                loadTexture(tokens[1].c_str());
             }
         }
     }
@@ -38,7 +40,7 @@ int Scene::loadGeom(string objectid) {
         cout << "ERROR: OBJECT ID does not match expected number of geoms" << endl;
         return -1;
     } else {
-        cout << "Loading Geom " << id << "..." << endl;
+        cout << "+ Geom " << id << " ";
         Geom newGeom;
         string line;
 
@@ -46,10 +48,10 @@ int Scene::loadGeom(string objectid) {
         utilityCore::safeGetline(fp_in, line);
         if (!line.empty() && fp_in.good()) {
             if (strcmp(line.c_str(), "sphere") == 0) {
-                cout << "Creating new sphere..." << endl;
+                cout << "[sphere]\t";
                 newGeom.type = SPHERE;
             } else if (strcmp(line.c_str(), "cube") == 0) {
-                cout << "Creating new cube..." << endl;
+                cout << "[cube]  \t";
                 newGeom.type = CUBE;
             }
         }
@@ -59,7 +61,7 @@ int Scene::loadGeom(string objectid) {
         if (!line.empty() && fp_in.good()) {
             vector<string> tokens = utilityCore::tokenizeString(line);
             newGeom.materialid = atoi(tokens[1].c_str());
-            cout << "Connecting Geom " << objectid << " to Material " << newGeom.materialid << "..." << endl;
+            cout << "mat " << newGeom.materialid << endl;
         }
 
         //load transformations
@@ -90,7 +92,6 @@ int Scene::loadGeom(string objectid) {
 }
 
 int Scene::loadCamera() {
-    cout << "Loading Camera ..." << endl;
     RenderState &state = this->state;
     Camera &camera = state.camera;
     float fovy;
@@ -142,7 +143,24 @@ int Scene::loadCamera() {
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
 
-    cout << "Loaded camera!" << endl;
+    cout << "+ Camera" << endl;
+    return 1;
+}
+
+int Scene::loadTexture(const char *filename) {
+    Texture newTexture;
+    int img_width, img_height, n;
+    newTexture.data = stbi_load(filename,
+            &newTexture.width, &newTexture.height, &newTexture.channels, 0);
+    if (newTexture.data == NULL) {
+        cout << "ERROR: failed to load texture from \"" << filename << "\"" << endl;
+        return -1;
+    } else {
+        cout << "+ Texture " << textures.size() << ": " << "\"" << filename <<
+            "\": (" << newTexture.width << " x " << newTexture.height << ")" << endl;
+    }
+
+    textures.push_back(newTexture);
     return 1;
 }
 
@@ -152,11 +170,12 @@ int Scene::loadMaterial(string materialid) {
         cout << "ERROR: MATERIAL ID does not match expected number of materials" << endl;
         return -1;
     } else {
-        cout << "Loading Material " << id << "..." << endl;
+        cout << "+ Material " << id;
         Material newMaterial;
+        newMaterial.textureid = -1;
 
         //load static properties
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 6; i++) {
             string line;
             utilityCore::safeGetline(fp_in, line);
             vector<string> tokens = utilityCore::tokenizeString(line);
@@ -168,8 +187,6 @@ int Scene::loadMaterial(string materialid) {
             } else if (strcmp(tokens[0].c_str(), "SPECRGB") == 0) {
                 glm::vec3 specColor(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
                 newMaterial.specular.color = specColor;
-            } else if (strcmp(tokens[0].c_str(), "REFL") == 0) {
-                newMaterial.hasReflective = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "REFR") == 0) {
                 newMaterial.hasRefractive = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "REFRIOR") == 0) {
@@ -178,7 +195,21 @@ int Scene::loadMaterial(string materialid) {
                 newMaterial.emittance = atof(tokens[1].c_str());
             }
         }
+
+        // load optional properties
+        string line;
+        utilityCore::safeGetline(fp_in, line);
+        while (!line.empty() && fp_in.good()) {
+            vector<string> tokens = utilityCore::tokenizeString(line);
+            if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
+                newMaterial.textureid = atoi(tokens[1].c_str());
+                cout << ", texture " << newMaterial.textureid;
+            }
+            utilityCore::safeGetline(fp_in, line);
+        }
+
         materials.push_back(newMaterial);
+        cout << endl;
         return 1;
     }
 }

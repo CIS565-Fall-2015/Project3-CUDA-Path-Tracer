@@ -26,13 +26,21 @@ struct Geom {
     glm::mat4 invTranspose;
 };
 
+struct Texture {
+    int width;
+    int height;
+    int channels;
+    unsigned char *data;
+};
+
 struct Material {
     glm::vec3 color;
     struct {
         float exponent;
         glm::vec3 color;
     } specular;
-    float hasReflective;
+    int textureid;
+    Texture texture;
     float hasRefractive;
     float indexOfRefraction;
     float emittance;

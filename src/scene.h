@@ -13,8 +13,9 @@ using namespace std;
 class Scene {
 private:
     ifstream fp_in;
-    int loadMaterial(string materialid);
     int loadGeom(string objectid);
+    int loadMaterial(string materialid);
+    int loadTexture(const char *filename);
     int loadCamera();
 public:
     Scene(string filename);
@@ -22,5 +23,6 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
+    std::vector<Texture> textures;
     RenderState state;
 };

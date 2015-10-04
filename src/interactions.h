@@ -111,7 +111,7 @@ void scatterRay(
             ray.direction = glm::refract(ray.direction, normal, ior);
         }
     } else {
-        glm::vec3 spec = m.hasReflective > 0 ? m.specular.color : glm::vec3(0.f);
+        glm::vec3 spec = m.specular.color;
         float specularIntensity = spec.x + spec.y + spec.z;
         float diffIntensity     = m.color.x + m.color.y + m.color.z;
         float totalIntensity    = specularIntensity + diffIntensity;

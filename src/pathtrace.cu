@@ -74,10 +74,10 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 }
 
 /* Static variables for device memory, scene/camera info, etc */
-static Scene *hst_scene = NULL;
-static glm::vec3 *dev_image = NULL;
-static Geom *dev_geom = NULL;
-static Material *dev_mats = NULL;
+static Scene *hst_scene      = NULL;
+static glm::vec3 *dev_image  = NULL;
+static Geom *dev_geom        = NULL;
+static Material *dev_mats    = NULL;
 
 static Pixel *dev_pixels = NULL;
 
@@ -91,11 +91,27 @@ void pathtraceInit(Scene *scene) {
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 
     cudaMalloc(&dev_geom, scene->geoms.size() * sizeof(Geom));
-    cudaMemcpy(dev_geom,  scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+    cudaMemcpy( dev_geom, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
-    cudaMalloc(&dev_mats, scene->materials.size() * sizeof(Material));
-    cudaMemcpy(dev_mats,  scene->materials.data(), scene->materials.size() *
-            sizeof(Material), cudaMemcpyHostToDevice);
+    for (int i = 0; i < scene->textures.size(); i++) {
+        Texture &t = scene->textures[i];
+        unsigned char *dev_imgdata;
+        int size = t.width * t.height * t.channels;
+        cudaMalloc(&dev_imgdata, size * sizeof(unsigned char));
+        cudaMemcpy( dev_imgdata, t.data, sizeof(Texture), cudaMemcpyHostToDevice);
+        t.data = dev_imgdata;
+    }
+
+    int materialC = scene->materials.size();
+    for (int i = 0; i < materialC; i++) {
+        Material &m = scene->materials[i];
+        if (m.textureid >= 0) {
+            m.texture = scene->textures[m.textureid];
+        }
+    }
+    cudaMalloc(&dev_mats, materialC * sizeof(Material));
+    cudaMemcpy( dev_mats, scene->materials.data(), materialC * sizeof(Material),
+            cudaMemcpyHostToDevice);
 
     cudaMalloc(&dev_pixels, pixelcount * sizeof(Pixel));
     cudaMemset(dev_pixels, 0, pixelcount * sizeof(Pixel));
