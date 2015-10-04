@@ -14,12 +14,17 @@ CUDA Path Tracer
 ![](img/DOF1.png "Depth of Field")
 * Depth of field: This was implemented by jittering the location of the aperatus, as the rays were being shot through it.  Given a specific distance, we can choose which objects that are in focus and which are not.  This was helpful to do on the GPU, because each ray could easily be jittered on the GPU.  Again, like antialiasing, this did not cause any slow down on the overall run time.  Doing this on the CPU would also not cause any slow down.  It is a small calculation to change the original direction of the ray being shot at a pixel, so it does not require much memory or time. 
 
-![](img/specular2.png "Specular sphere")
+![](img/specular1.png "Specular sphere")
+* Specular:  As you can see in the reference image at the top, and this image above, both perfectly specular and nonperfect specular surfaces have been implemented.  The perfectly specular surface is a mirror and every ray that hits it will be reflected and bounce off of it, going off the surface at exactly the same angle it hit the surface.  In a nonperfect specular surface, some rays will bounce off like it does on a mirror, and others will bounce off like it hit a diffuse surface, where each ray goes in a random direction.  This allows there to be some reflection on the surface, but not quite as strong as a mirror, as seen in this image.  There is no additional speed up that comes from these calculations between doing this on a CPU or GPU.  
 
 ![](img/refraction_correct3(glass).png "Refraction with an IOR of glass")
+* Refraction:  When a surface is refractive, it allows some rays to bounce off of it, while others go through the surface and come out at a different point.  In order to implement refraction, we needed to use Schlick's approximation.  This was used to calculate the probabilty that a ray would either bounce off or go through the surface.  If a ray bounced off, it was treated like a mirror.  If it went through the surface, it was refracted, and the exact point was then calculated and the ray would bounce out on the other side in a new direction.  This allows for glass and water-like surfaces.  The image above shows a surface with the index of refraction equal to that of glass.  The image below shows one with an IOR equal to water.
+* 
+![](img/refraction_correct2(water).png "Refraction with an IOR of water")
+
 
 ![](img/final1000.png "Final image after 1000 iterations")
-* This final image shows the refracting surfaces, specular surfaces, difuse, and mirros.  
+* This final image shows the refracting surfaces, specular surfaces, difuse, and mirrors.  
 
 ### Analysis
 
