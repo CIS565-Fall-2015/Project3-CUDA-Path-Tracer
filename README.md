@@ -7,10 +7,12 @@ CUDA Path Tracer
 * Tested on: Windows 7, i7-4770 @ 3.40GHz 16GB (Moore 100 Lab C)
 
 ![](img/motion_blur_1000.png "Motion blur after 1000 iterations")
-* Motion blur was implemented by iterating an object through space while the rays were being shot.  This allowed for different rays to hit the object when it was in different locations.  
+* This is the final image of my GPU Path Tracing project.  It shows a combination of different surfaces, motion blur, and antialiasing.  
+
+* Antialiasing: Antialiasing was done by jittering each ray as it was shot to a pixel.  A random variable was created, and the ray was offset by that amount.  This occured in every iteration on the GPU.  As this occurred while each ray was being generated on the GPU, it did not cause any time to be added to the overall run time of the path tracer.  The same would be true if it had been done on a CPU, as it is such a small amount of work.  However, if I were to have done pixel sampling, which would have added the amount of rays that are shot for each pixel, this would have greatly increased the time, whether on a CPU or GPU.  It would have caused less of a slow down on the GPU, however. It would have increased the amount of threads needed, but would still be faster than creating an even larger for loop on the CPU.  
 
 ![](img/DOF1.png "Depth of Field")
-* Depth of field was implemented by jittering the location of the aperatus, as the rays were being shot through it.  Given a specific distance, we can choose which objects are in focus and which are not.  This was helpful to do on the GPU, because each ray could easily be jittered on the GPU.
+* Depth of field: This was implemented by jittering the location of the aperatus, as the rays were being shot through it.  Given a specific distance, we can choose which objects that are in focus and which are not.  This was helpful to do on the GPU, because each ray could easily be jittered on the GPU.  Again, like antialiasing, this did not cause any slow down on the overall run time.  Doing this on the CPU would also not cause any slow down.  It is a small calculation to change the original direction of the ray being shot at a pixel, so it does not require much memory or time. 
 
 ![](img/specular2.png "Specular sphere")
 
