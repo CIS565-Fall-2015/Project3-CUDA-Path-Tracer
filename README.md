@@ -25,6 +25,8 @@ CUDA Path Tracer
   effects of stream compaction within a single iteration (i.e. the number of
   unterminated rays after each bounce) and evaluate the benefits you get from
   stream compaction.
+  ![](img/Proj3_chart1.png "Threads vs. Trace Depth")
+  ![](img/Proj3_chart2.png "Milliseconds vs. Trace Depth")
   * 
 * Compare scenes which are open (like the given cornell box) and closed
   (i.e. no light can escape the scene). Again, compare the performance effects
