@@ -23,8 +23,7 @@ CUDA Path Tracer
 ![](img/refraction_correct2(water).png "Refraction with an IOR of water")
 
 ![](img/motion_blur1.png "Motion blur after 150 iterations")
-
-
+* Motion Blur:  Motion blur was implemented on the CPU rather than the GPU.  This is because it needed to update the position of the moving object in every iteration.  This meant the array the held all the objects needed to be updated.  This could not be done on the GPU, individually for each ray.  It needed to occur before the object array was passed onto the GPU.  The way the motion blur was calculated, was that the object had a new property that was a vec3, that held the information of how far the object moved within the number of max iterations.  Within each iteration, the object moved a portion of the to its new destination.  As more iterations occur, the object moves to it's new position, with the rays hitting it in a different spot every iteration.  Thus, creating a image that looks as if it has been in motion.  This implementation may have caused a slight slow down, as the object array had to be updated every iteration, causing a memory transfer to occur every iteration, rather than just once at the beginning of the path trace.  If this were to be done on the CPU, this memory transfor would not have to occur and it probably would not slow down the implementation all that much.  
 
 
 ![](img/final1000.png "Final image after 1000 iterations")
