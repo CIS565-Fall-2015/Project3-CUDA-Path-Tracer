@@ -1,6 +1,6 @@
 // Camera
 CAMERA
-RES         500 500
+RES         350 350
 FOVY        45
 ITERATIONS  5000
 DEPTH       8
@@ -95,8 +95,8 @@ SCALE       0.1 10 10
 
 // Yellow textured
 OBJECT 7
-sphere
+cube
 material 4
-TRANS       0 4 -1.5
-ROTAT       45 0 0
-SCALE       5 5 5
+TRANS       0 4.5 -1.5
+ROTAT       25 25 0
+SCALE       4 4 4

@@ -1,0 +1,163 @@
+// Camera
+CAMERA
+RES         700 700
+FOVY        45
+ITERATIONS  1000
+DEPTH       8
+FILE        timing
+DOF         -1 -1
+EYE         0.0 5 4.5
+VIEW        0 0 -1
+UP          0 1 0
+
+// ---------------------- Materials ---------------------- \\
+
+TEXTURE textures/globe-normal.png
+
+TEXTURE textures/globe-texture.jpg
+
+// Emissive material (light)
+MATERIAL 0
+RGB         1 1 1
+EMITTANCE   3
+
+// Diffuse white
+MATERIAL 1
+RGB         .98 .98 .98
+
+// Diffuse orange
+MATERIAL 2
+RGB         0.85 .5 .3
+
+// Diffuse purple
+MATERIAL 3
+RGB         0.55 .55 .85
+
+// Globe textured
+MATERIAL 4
+NORMAL      0
+TEXTURE     1
+
+// Perfect specular
+MATERIAL 5
+RGB         .3 .3 .3
+SPECRGB     .8 .8 .8
+SPECEX      0
+
+// Imperfect specular
+MATERIAL 6
+RGB         .3 .3 .3
+SPECRGB     .8 .8 .8
+SPECEX      30
+
+// Refractive (ice)
+MATERIAL 7
+RGB         1 1 1
+SPECRGB     .8 .8 .8
+SPECEX      50
+IOR         1.31
+
+// Refractive (glass)
+MATERIAL 8
+RGB         1 1 1
+SPECRGB     .8 .8 .8
+SPECEX      50
+IOR         1.7
+
+// ---------------------- Objects ---------------------- \\
+
+// Ceiling light
+OBJECT 0
+cube
+material 0
+TRANS       0 10 0
+ROTAT       0 0 0
+SCALE       6 .3 6
+
+// Floor
+OBJECT 1
+cube
+material 1
+TRANS       0 0 0
+ROTAT       0 0 0
+SCALE       10 0.1 10
+
+// Ceiling
+OBJECT 2
+cube
+material 1
+TRANS       0 10 0
+ROTAT       0 0 90
+SCALE       0.1 10 10
+
+// Back wall
+OBJECT 3
+cube
+material 1
+TRANS       0 5 -5
+ROTAT       0 90 0
+SCALE       0.1 10 10
+
+// Front wall
+OBJECT 4
+cube
+material 1
+TRANS       0 5 5
+ROTAT       0 90 0
+SCALE       0.1 10 10
+
+// Left wall
+OBJECT 5
+cube
+material 2
+TRANS       -5 5 0
+ROTAT       0 0 0
+SCALE       0.1 10 10
+
+// Right wall
+OBJECT 6
+cube
+material 3
+TRANS       5 5 0
+ROTAT       0 0 0
+SCALE       0.1 10 10
+
+// Globe textured
+OBJECT 7
+sphere
+material 4
+TRANS       0 4.5 -2.5
+ROTAT       45 25 0
+SCALE       3 3 3
+
+// Perfect specular
+OBJECT 8
+sphere
+material 5
+TRANS       -3 4.5 -1.5
+ROTAT       0 0 0
+SCALE       3 3 3
+
+// Imperfect specular
+OBJECT 9
+sphere
+material 6
+TRANS       3 4.5 -1.5
+ROTAT       0 0 0
+SCALE       3 3 3
+
+// Bottom left refractive
+OBJECT 10
+sphere
+material 7
+TRANS       -1.5 2 -2
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5
+
+// Bottom right refractive
+OBJECT 11
+sphere
+material 8
+TRANS       1.5 2 -2
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5

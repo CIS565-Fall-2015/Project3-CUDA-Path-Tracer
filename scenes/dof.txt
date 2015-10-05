@@ -5,7 +5,7 @@ FOVY        45
 ITERATIONS  5000
 DEPTH       8
 FILE        dof
-DOF         -1 -1
+DOF         5.5 0.4
 EYE         0.0 5 4.5
 VIEW        0 0 -1
 UP          0 1 0

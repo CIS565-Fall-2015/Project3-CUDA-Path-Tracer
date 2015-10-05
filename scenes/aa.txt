@@ -1,0 +1,100 @@
+// Camera
+CAMERA
+RES         100 100
+FOVY        45
+ITERATIONS  5000
+DEPTH       8
+FILE        aa
+DOF         -1 -1
+EYE         0 8 2.5
+VIEW        0 0 -1
+UP          0 1 0
+
+// ---------------------- Materials ---------------------- \\
+
+// Emissive material (light)
+MATERIAL 0
+RGB         1 1 1
+EMITTANCE   2
+
+// Diffuse white
+MATERIAL 1
+RGB         .98 .98 .98
+
+// Diffuse orange
+MATERIAL 2
+RGB         0.85 .5 .3
+
+// Diffuse purple
+MATERIAL 3
+RGB         0.55 .55 .85
+
+// Textured
+MATERIAL 4
+RGB         .35 .75 .35
+
+// ---------------------- Objects ---------------------- \\
+
+// Ceiling light
+OBJECT 0
+cube
+material 0
+TRANS       0 10 0
+ROTAT       0 0 0
+SCALE       6 .3 6
+
+// Floor
+OBJECT 1
+cube
+material 1
+TRANS       0 0 0
+ROTAT       0 0 0
+SCALE       10 0.1 10
+
+// Ceiling
+OBJECT 2
+cube
+material 1
+TRANS       0 10 0
+ROTAT       0 0 90
+SCALE       0.1 10 10
+
+// Back wall
+OBJECT 3
+cube
+material 1
+TRANS       0 5 -5
+ROTAT       0 90 0
+SCALE       0.1 10 10
+
+// Front wall
+OBJECT 4
+cube
+material 1
+TRANS       0 5 5
+ROTAT       0 90 0
+SCALE       0.1 10 10
+
+// Left wall
+OBJECT 5
+cube
+material 2
+TRANS       -5 5 0
+ROTAT       0 0 0
+SCALE       0.1 10 10
+
+// Right wall
+OBJECT 6
+cube
+material 3
+TRANS       5 5 0
+ROTAT       0 0 0
+SCALE       0.1 10 10
+
+// White textured
+OBJECT 7
+cube
+material 4
+TRANS       0 6 -1.5
+ROTAT       0 15 25
+SCALE       3 3 3
