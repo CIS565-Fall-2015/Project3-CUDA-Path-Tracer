@@ -48,10 +48,10 @@ int Scene::loadGeom(string objectid) {
         utilityCore::safeGetline(fp_in, line);
         if (!line.empty() && fp_in.good()) {
             if (strcmp(line.c_str(), "sphere") == 0) {
-                cout << "[sphere]\t";
+                cout << "[sphere]  ";
                 newGeom.type = SPHERE;
             } else if (strcmp(line.c_str(), "cube") == 0) {
-                cout << "[cube]  \t";
+                cout << "[cube]    ";
                 newGeom.type = CUBE;
             }
         }
@@ -156,8 +156,11 @@ int Scene::loadTexture(const char *filename) {
         cout << "ERROR: failed to load texture from \"" << filename << "\"" << endl;
         return -1;
     } else {
-        cout << "+ Texture " << textures.size() << ": " << "\"" << filename <<
-            "\": (" << newTexture.width << " x " << newTexture.height << ")" << endl;
+        cout << "+ Texture " << textures.size() << ": "
+            << "\"" << filename << "\": ("
+            << newTexture.width << " x " << newTexture.height << ") "
+            << newTexture.channels
+            << endl;
     }
 
     textures.push_back(newTexture);
@@ -173,6 +176,7 @@ int Scene::loadMaterial(string materialid) {
         cout << "+ Material " << id;
         Material newMaterial;
         newMaterial.textureid = -1;
+        newMaterial.normalid  = -1;
 
         //load static properties
         for (int i = 0; i < 6; i++) {
@@ -204,6 +208,9 @@ int Scene::loadMaterial(string materialid) {
             if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
                 newMaterial.textureid = atoi(tokens[1].c_str());
                 cout << ", texture " << newMaterial.textureid;
+            } else if (strcmp(tokens[0].c_str(), "NORMAL") == 0) {
+                newMaterial.normalid = atoi(tokens[1].c_str());
+                cout << ", normal " << newMaterial.normalid;
             }
             utilityCore::safeGetline(fp_in, line);
         }

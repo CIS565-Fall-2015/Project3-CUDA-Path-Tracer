@@ -41,6 +41,8 @@ struct Material {
     } specular;
     int textureid;
     Texture texture;
+    int normalid;
+    Texture normalMap;
     float hasRefractive;
     float indexOfRefraction;
     float emittance;

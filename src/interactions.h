@@ -1,8 +1,9 @@
 #pragma once
 
+#include "sceneStructs.h"
 #include "intersections.h"
 
-__host__ __device__ glm::vec3 localToWorldTransform(glm::vec3 local,
+__device__ glm::vec3 localToWorldTransform(glm::vec3 local,
         float up, float over, float around) {
 
     // Find a direction that is not the normal based off of whether or not the
@@ -33,8 +34,7 @@ __host__ __device__ glm::vec3 localToWorldTransform(glm::vec3 local,
  * Computes a cosine-weighted random direction in a hemisphere.
  * Used for diffuse lighting.
  */
-__host__ __device__
-glm::vec3 calculateRandomDirectionInHemisphere(
+__device__ glm::vec3 calculateRandomDirectionInHemisphere(
         glm::vec3 normal, thrust::default_random_engine &rng) {
     thrust::uniform_real_distribution<float> u01(0, 1);
 
@@ -44,8 +44,7 @@ glm::vec3 calculateRandomDirectionInHemisphere(
     return localToWorldTransform(normal, up, over, around);
 }
 
-__host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
-        glm::vec3 normal,
+__device__ glm::vec3 sampleSpecular(Ray &ray, glm::vec3 normal,
         const Material &m,
         thrust::default_random_engine &rng) {
     thrust::uniform_real_distribution<float> u(-1, 1);
@@ -63,6 +62,17 @@ __host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
     return localToWorldTransform(specular, up, over, around);
 }
 
+__device__ glm::vec3 sampleTexture(Texture t, glm::vec2 uv) {
+    int x = 1.5f * glm::clamp(uv.x, 0.f, 1.f) * (t.width - 1);
+    int y = glm::clamp(uv.y, 0.f, 1.f) * (t.height - 1);
+    x %= t.width;
+    y %= t.height;
+    int i = (x + (y * t.width))*t.channels;
+    unsigned char* data = t.data;
+    glm::vec3 sample = glm::vec3(data[i], data[i+1], data[i+2]) / 255.f;
+    return sample;
+}
+
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -75,15 +85,15 @@ __host__ __device__ glm::vec3 sampleSpecular(Ray &ray,
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__
-void scatterRay(
-        Ray &ray,
-        glm::vec3 &color,
-        glm::vec3 intersect,
-        glm::vec3 normal,
-        bool outside,
+__device__ void scatterRay(
+        Ray &ray, glm::vec3 &color,
+        glm::vec3 intersect, glm::vec3 normal, glm::vec2 uv, bool outside,
         const Material &m,
         thrust::default_random_engine &rng) {
+
+    if (m.normalid >= 0) {
+        normal = sampleTexture(m.normalMap, uv);
+    }
 
     thrust::uniform_real_distribution<float> u01(0, 1);
     float rand = u01(rng);
@@ -112,8 +122,9 @@ void scatterRay(
         }
     } else {
         glm::vec3 spec = m.specular.color;
+        glm::vec3 diff = m.textureid >= 0 ? sampleTexture(m.texture, uv) : m.color;
         float specularIntensity = spec.x + spec.y + spec.z;
-        float diffIntensity     = m.color.x + m.color.y + m.color.z;
+        float diffIntensity     = diff.x + diff.y + diff.z;
         float totalIntensity    = specularIntensity + diffIntensity;
         float specularProb = specularIntensity / totalIntensity;
         float diffProb = diffIntensity / totalIntensity;
@@ -126,7 +137,7 @@ void scatterRay(
             ray.direction = specular;
         } else {
             // Diffuse
-            color *= m.color / diffProb;
+            color *= diff / diffProb;
             ray.origin = intersect;
             ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
         }

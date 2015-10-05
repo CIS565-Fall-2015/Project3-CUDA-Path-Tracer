@@ -96,9 +96,9 @@ void pathtraceInit(Scene *scene) {
     for (int i = 0; i < scene->textures.size(); i++) {
         Texture &t = scene->textures[i];
         unsigned char *dev_imgdata;
-        int size = t.width * t.height * t.channels;
-        cudaMalloc(&dev_imgdata, size * sizeof(unsigned char));
-        cudaMemcpy( dev_imgdata, t.data, sizeof(Texture), cudaMemcpyHostToDevice);
+        int size = t.width * t.height * t.channels * sizeof(unsigned char);
+        cudaMalloc(&dev_imgdata, size);
+        cudaMemcpy( dev_imgdata, t.data, size, cudaMemcpyHostToDevice);
         t.data = dev_imgdata;
     }
 
@@ -107,6 +107,9 @@ void pathtraceInit(Scene *scene) {
         Material &m = scene->materials[i];
         if (m.textureid >= 0) {
             m.texture = scene->textures[m.textureid];
+        }
+        if (m.normalid >= 0) {
+            m.normalMap = scene->textures[m.normalid];
         }
     }
     cudaMalloc(&dev_mats, materialC * sizeof(Material));
@@ -218,7 +221,8 @@ __global__ void debugCameraRays(Camera cam, glm::vec3 *image, Pixel *pixels) {
 /******************************************************************************/
 
 __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount,
-        Geom& nearest, glm::vec3 &intersection, glm::vec3 &normal, bool &outside) {
+        Geom &nearest, glm::vec3 &intersection, glm::vec3 &normal, glm::vec2 &uv,
+        bool &outside) {
     float nearest_t = -1;
     for (int i = 0; i < geomCount; i++) {
         Geom g = geoms[i];
@@ -226,10 +230,10 @@ __device__ float nearestIntersectionGeom(Ray r, Geom *geoms, int geomCount,
 
         switch (g.type) {
         case SPHERE:
-            t = sphereIntersectionTest(g, r, intersection, normal, outside);
+            t = sphereIntersectionTest(g, r, intersection, normal, uv, outside);
             break;
         case CUBE:
-            t = boxIntersectionTest(g, r, intersection, normal, outside);
+            t = boxIntersectionTest(g, r, intersection, normal, uv, outside);
             break;
         }
 
@@ -248,17 +252,19 @@ __global__ void intersect(Pixel *pixels, int livePixelCount, int depth, int iter
     if (k < livePixelCount) {
         Pixel& px = pixels[k];
 
+        glm::vec2 uv = glm::vec2(0, 0);
         glm::vec3 intersection = glm::vec3(0, 0, 0);
         glm::vec3 normal = glm::vec3(0, 0, 0);
         bool outside;
         Geom nearest;
         float t = nearestIntersectionGeom(px.ray, geoms, geomCount, nearest,
-                intersection, normal, outside);
+                intersection, normal, uv, outside);
 
         if (t > 0) {
             Material m = mats[nearest.materialid];
             thrust::default_random_engine rng = random_engine(iter, px.index, depth);
-            scatterRay(px.ray, px.color, intersection, normal, outside, m, rng);
+            scatterRay(px.ray, px.color, intersection, normal, uv, outside, m,
+                    rng);
 
             if (m.emittance > 0) {
                 px.terminated = true;
@@ -290,7 +296,10 @@ __global__ void storePixels(glm::vec3 *image, Pixel *pixels, int raycount,
     if (k < raycount) {
         Pixel px = pixels[k];
         if (px.terminated == true && px.index < pixelcount && px.index > 0) {
-            image[px.index] += px.color;
+            if (px.color.x == px.color.x && px.color.y == px.color.y &&
+                    px.color.z == px.color.z) {
+                image[px.index] += px.color;
+            }
         }
     }
 }
@@ -334,10 +343,7 @@ void pathtrace(uchar4 *pbo, int frame, int iter) {
     int dGridSize = (pixelcount + dBlockSize - 1) / dBlockSize;
     int livePixelCount = pixelcount;
 
-    //printf("\n");
     for (int depth = 0; depth < traceDepth; depth++) {
-        //printf("depth %d, %d pixels, gridsize: %d, blocksize: %d\n",
-        //        depth, livePixelCount, dGridSize, dBlockSize);
         intersect<<<dGridSize, dBlockSize>>>(
                 dev_pixels, livePixelCount, depth, iter,
                 dev_geom, hst_scene->geoms.size(), dev_mats);

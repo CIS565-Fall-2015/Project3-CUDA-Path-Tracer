@@ -34,7 +34,6 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
     return glm::vec3(m * v);
 }
 
-// CHECKITOUT
 /**
  * Test intersection between a ray and a transformed cube. Untransformed,
  * the cube ranges from -0.5 to 0.5 in each axis and is centered at the origin.
@@ -44,7 +43,8 @@ __host__ __device__ glm::vec3 multiplyMV(glm::mat4 m, glm::vec4 v) {
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
 __host__ __device__ float boxIntersectionTest(Geom &box, Ray r,
-        glm::vec3& intersectionPoint, glm::vec3& normal, bool &outside) {
+        glm::vec3 &intersectionPoint, glm::vec3 &normal, glm::vec2& uv,
+        bool &outside) {
     Ray q;
     q.origin    =                multiplyMV(box.inverseTransform, glm::vec4(r.origin   , 1.0f));
     q.direction = glm::normalize(multiplyMV(box.inverseTransform, glm::vec4(r.direction, 0.0f)));
@@ -97,7 +97,8 @@ __host__ __device__ float boxIntersectionTest(Geom &box, Ray r,
  * @return                   Ray parameter `t` value. -1 if no intersection.
  */
 __host__ __device__ float sphereIntersectionTest(Geom &sphere, Ray r,
-        glm::vec3& intersectionPoint, glm::vec3& normal, bool &outside) {
+        glm::vec3 &intersectionPoint, glm::vec3 &normal, glm::vec2 &uv,
+        bool &outside) {
     float radius = .5;
 
     glm::vec3 ro = multiplyMV(sphere.inverseTransform, glm::vec4(r.origin, 1.0f));
@@ -130,6 +131,9 @@ __host__ __device__ float sphereIntersectionTest(Geom &sphere, Ray r,
     }
 
     glm::vec3 objspaceIntersection = getPointOnRay(rt, t);
+
+    uv.x = .5f - atan2(objspaceIntersection.z, objspaceIntersection.x)/TWO_PI;
+    uv.y = .5f - asin (objspaceIntersection.y/radius)/PI;
 
     intersectionPoint = multiplyMV(sphere.transform, glm::vec4(objspaceIntersection, 1.f));
     normal = glm::normalize(multiplyMV(sphere.invTranspose, glm::vec4(objspaceIntersection, 0.f)));
