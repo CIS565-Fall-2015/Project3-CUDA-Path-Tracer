@@ -5,7 +5,7 @@ FOVY        45
 ITERATIONS  2000
 DEPTH       8
 FILE        cornell
-DOF         5.5 0.3
+DOF         -1 -1
 EYE         0.0 5 4.5
 VIEW        0 0 -1
 UP          0 1 0
@@ -15,7 +15,7 @@ UP          0 1 0
 // Emissive material (light)
 MATERIAL 0
 RGB         1 1 1
-EMITTANCE   3
+EMITTANCE   6
 
 // Diffuse white
 MATERIAL 1
@@ -29,17 +29,18 @@ RGB         0.85 .5 .3
 MATERIAL 3
 RGB         0.55 .55 .85
 
-// Specular yellow
+// Mirror
 MATERIAL 4
-RGB         0.4 0.4 0
-SPECEX      50
+RGB         .3 .3 .3
 SPECRGB     1 1 1
+SPECEX      20
 
-// Refractive green
+
+// Mirror
 MATERIAL 5
-RGB         0.0 0.8 0.8
-REFR        1
-REFRIOR     1.5
+RGB         .3 .3 .3
+SPECRGB     1 1 1
+SPECEX      200
 
 // ---------------------- Objects ---------------------- \\
 
@@ -49,7 +50,7 @@ cube
 material 0
 TRANS       0 10 0
 ROTAT       0 0 0
-SCALE       6 .3 6
+SCALE       4 .3 4
 
 // Floor
 OBJECT 1
@@ -99,26 +100,18 @@ TRANS       5 5 0
 ROTAT       0 0 0
 SCALE       0.1 10 10
 
-// Yellow reflective box
+// Back mirror ball
 OBJECT 7
-cube
+sphere
 material 4
-TRANS       -3 2 -3
+TRANS       -2 4 -2
 ROTAT       0 0 0
-SCALE       2 2 2
+SCALE       3 3 3
 
-// Yellow reflective box
+// Front reflective ball
 OBJECT 8
-cube
-material 4
-TRANS       0 4 -2
+sphere
+material 5
+TRANS       2 4 -2
 ROTAT       0 0 0
-SCALE       2 2 2
-
-// Yellow reflective box
-OBJECT 9
-cube
-material 4
-TRANS       3 6 -1
-ROTAT       0 0 0
-SCALE       2 2 2
+SCALE       3 3 3

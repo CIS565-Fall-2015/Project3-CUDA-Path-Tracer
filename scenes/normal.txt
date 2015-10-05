@@ -1,16 +1,18 @@
 // Camera
 CAMERA
-RES         500 500
+RES         800 800
 FOVY        45
-ITERATIONS  2000
+ITERATIONS  5000
 DEPTH       8
 FILE        cornell
-DOF         5.5 0.3
+DOF         -1 -1
 EYE         0.0 5 4.5
 VIEW        0 0 -1
 UP          0 1 0
 
 // ---------------------- Materials ---------------------- \\
+
+TEXTURE textures/golf.jpg
 
 // Emissive material (light)
 MATERIAL 0
@@ -21,13 +23,13 @@ EMITTANCE   3
 MATERIAL 1
 RGB         .98 .98 .98
 
-// Diffuse orange
+// Diffuse red
 MATERIAL 2
-RGB         0.85 .5 .3
+RGB         .85 .35 .35
 
-// Diffuse purple
+// Diffuse green
 MATERIAL 3
-RGB         0.55 .55 .85
+RGB         .35 .85 .35
 
 // Specular yellow
 MATERIAL 4
@@ -40,6 +42,10 @@ MATERIAL 5
 RGB         0.0 0.8 0.8
 REFR        1
 REFRIOR     1.5
+
+// Diffuse orange
+MATERIAL 6
+RGB         .8 .8 .8
 
 // ---------------------- Objects ---------------------- \\
 
@@ -99,26 +105,10 @@ TRANS       5 5 0
 ROTAT       0 0 0
 SCALE       0.1 10 10
 
-// Yellow reflective box
+// Yellow textured
 OBJECT 7
-cube
-material 4
-TRANS       -3 2 -3
+sphere
+material 6
+TRANS       0 4 -1.5
 ROTAT       0 0 0
-SCALE       2 2 2
-
-// Yellow reflective box
-OBJECT 8
-cube
-material 4
-TRANS       0 4 -2
-ROTAT       0 0 0
-SCALE       2 2 2
-
-// Yellow reflective box
-OBJECT 9
-cube
-material 4
-TRANS       3 6 -1
-ROTAT       0 0 0
-SCALE       2 2 2
+SCALE       5 5 5

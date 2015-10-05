@@ -5,15 +5,54 @@ CUDA Path Tracer
 
 Terry Sun; Arch Linux, Intel i5-4670, GTX 750
 
-This project is a CUDA-accelerated path tracer. Many cool features, such as:
+A CUDA-accelerated path tracer.
 
-Some sample scenes are found in `scenes/`.
+## Features
 
-## Running the code
+### Materials
 
-To build: `make` 
+The pathtracer supports the following material surfaces:
+
+* diffuse: light scatters uniformly from the surface
+* specular/reflective (perfect and imperfect): light reflects perfectly off the
+  surface; or, light takes an imperfect reflected directly using the [Phong
+  BRDF][gpu-specular].
+* refractive (using [Schlick's Approximation][wiki-schlick] to blend reflective
+  and refractive light bounces): glass, water
+
+  [gpu-specular]: http://http.developer.nvidia.com/GPUGems3/gpugems3_ch20.html
+  [wiki-schlick]: https://en.wikipedia.org/wiki/Schlick%27s_approximation
+
+### Depth of Field
+
+Depth of field simulates a physical aperture by varying the origin and direction
+of rays shot from the camera. DOF is defined with a focal distance from the
+camera, at which objects are perfectly in focus, and an aperture radius,
+defining the amount of variance added to each ray.
+
+![](img/nodof.png)
+![](img/dof05.png)
+![](img/dof03.png)
+
+### Antialiasing
+
+Camera rays are shot from the camera's position in the direction of a pixel.
+Antialiasing jitters the target of the ray within a pixel.
+
+### Stream compaction.
+
+Shared-memory work-efficient stream compaction.
+
+### Texture mapping
+
+### Bump mapping
+
+## Run
+
+To build: `make`
 
 To run: `build/cis565_path_tracer SCENE_FILE.txt`.
+
 Some sample scene files are found in `scenes/`.
 
 ### Controls
@@ -22,95 +61,55 @@ Some sample scene files are found in `scenes/`.
 * Space to save an image. Watch the console for the output filename.
 * W/A/S/D and R/F move the camera. Arrow keys rotate.
 
-### Depth of Field
-
-![](img/dof.png)
-
-![](img/no-dof.png)
-
-### Antialiasing
-### Materials
-
-Diffuse, specular (perfectly and imperfectly reflective), refractive materials.
-
-### Stream compaction.
-
-Shared-memory work-efficient stream compaction.
-
-
-
-* Texture mapping
-* Bump mapping
-* Direct lighting (by taking a final ray directly to a random point on an
-  emissive object acting as a light source)
-* Some method of defining object motion, and motion blur
-* Subsurface scattering
-* Arbitrary mesh loading and rendering (e.g. `obj` files). You can find these
-  online or export them from your favorite 3D modeling application.
-  With approval, you may use a third-party OBJ loading code to bring the data
-  into C++.
-  * You can use the triangle intersection function `glm::intersectRayTriangle`.
-
-This 'extra features' list is not comprehensive. If you have a particular idea
-you would like to implement (e.g. acceleration structures, etc.), please
-contact us first.
-
-For each extra feature, you must provide the following analysis:
-
-* Overview write-up of the feature
-* Performance impact of the feature
-* If you did something to accelerate the feature, what did you do and why?
-* Compare your GPU version of the feature to a HYPOTHETICAL CPU version
-  (you don't have to implement it!) Does it benefit or suffer from being
-  implemented on the GPU?
-* How might this feature be optimized beyond your current implementation?
-
 ### Scene File Format
 
 This project uses a custom scene description format. Scene files are flat text
 files that describe all geometry, materials, lights, cameras, and render
-settings inside of the scene. Items in the format are delimited by new lines,
+settings inside of the scene. Items in the format are delimited by empty lines,
 and comments can be added using C-style `// comments`.
-
-Materials are defined in the following fashion:
-
-```
-MATERIAL (material ID) //material header
-RGB (float r) (float g) (float b) //diffuse color
-SPECX (float specx) //specular exponent
-SPECRGB (float r) (float g) (float b) //specular color
-REFL (bool refl) //reflectivity flag, 0 for no, 1 for yes
-REFR (bool refr) //refractivity flag, 0 for no, 1 for yes
-REFRIOR (float ior) //index of refraction for Fresnel effects
-EMITTANCE (float emittance) //the emittance of the material; >0 is a light source
-```
 
 The camera is defined in the following fashion:
 
 ```
 CAMERA //camera header
-RES (float x) (float y) //resolution
-FOVY (float fovy) //vertical field of view half-angle.
-ITERATIONS (float interations) //how many iterations to refine the image,
-only relevant for supersampled antialiasing, depth of field, area lights, and
-other distributed raytracing applications
-DEPTH (int depth) //maximum depth (number of times the path will bounce)
-FILE (string filename) //file to output render to upon completion
-EYE (float x) (float y) (float z) //camera's position in worldspace
-VIEW (float x) (float y) (float z) //camera's view direction
-UP (float x) (float y) (float z) //camera's up vector
+RES        (float x) (float y) //resolution
+FOVY       (float fovy)        //vertical field of view half-angle.
+ITERATIONS (float interations) //how many iterations to render the image before saving
+DEPTH      (int depth)         //maximum depth (number of times the path will bounce)
+FILE       (string filename)   //file to output render to upon completion
+EYE        (float x) (float y) (float z) //camera's position in worldspace
+VIEW       (float x) (float y) (float z) //camera's view direction
+UP         (float x) (float y) (float z) //camera's up vector
+DOF        (float focal dist) (float aperture radius)
+```
+
+Textures are defined in the following fashion:
+
+```
+TEXTURE (image name)
+```
+
+Materials are defined in the following fashion:
+
+```
+MATERIAL  (material ID)                 //material header
+RGB       (float r) (float g) (float b) //diffuse color
+SPECX     (float specx)                 //specular exponent
+SPECRGB   (float r) (float g) (float b) //specular color
+REFR      (bool refr)       //refractivity flag, 0 for no, 1 for yes
+REFRIOR   (float ior)       //index of refraction for Fresnel effects
+EMITTANCE (float emittance) //the emittance of the material; >0 is a light source
+TEXTURE   (int textureid)   //texture corresponding to diffuse coloring
+NORMAL    (int textureid)   //texture corresponding to a normal map
 ```
 
 Objects are defined in the following fashion:
 
 ```
-OBJECT (object ID) //object header
-(cube OR sphere OR mesh) //type of object, can be either "cube", "sphere", or
-"mesh". Note that cubes and spheres are unit sized and centered at the
-origin.
+OBJECT (object ID)     //object header
+(cube OR sphere)
 material (material ID) //material to assign this object
 TRANS (float x) (float y) (float z) //translation
 ROTAT (float x) (float y) (float z) //rotation
 SCALE (float x) (float y) (float z) //scale
-texture (FILE) // optional: image file for texture mapping.
 ```
