@@ -98,7 +98,7 @@ __device__ void scatterRay(
     thrust::uniform_real_distribution<float> u01(0, 1);
     float rand = u01(rng);
 
-    if (m.hasRefractive > 0) {
+    if (m.indexOfRefraction != -1) {
         float n1 = outside  ? 1.0f : m.indexOfRefraction;
         float n2 = !outside ? 1.0f : m.indexOfRefraction;
         float r0 = (n1 - n2) / (n1 + n2);

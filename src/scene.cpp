@@ -175,13 +175,18 @@ int Scene::loadMaterial(string materialid) {
     } else {
         cout << "+ Material " << id;
         Material newMaterial;
+        newMaterial.color = glm::vec3(0, 0, 0);
+        newMaterial.specular.exponent = 0;
+        newMaterial.specular.color = glm::vec3(0, 0, 0);
+        newMaterial.indexOfRefraction = -1;
+        newMaterial.emittance = 0;
         newMaterial.textureid = -1;
         newMaterial.normalid  = -1;
 
-        //load static properties
-        for (int i = 0; i < 6; i++) {
-            string line;
-            utilityCore::safeGetline(fp_in, line);
+        // load optional properties
+        string line;
+        utilityCore::safeGetline(fp_in, line);
+        while (!line.empty() && fp_in.good()) {
             vector<string> tokens = utilityCore::tokenizeString(line);
             if (strcmp(tokens[0].c_str(), "RGB") == 0) {
                 glm::vec3 color( atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()) );
@@ -191,21 +196,11 @@ int Scene::loadMaterial(string materialid) {
             } else if (strcmp(tokens[0].c_str(), "SPECRGB") == 0) {
                 glm::vec3 specColor(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
                 newMaterial.specular.color = specColor;
-            } else if (strcmp(tokens[0].c_str(), "REFR") == 0) {
-                newMaterial.hasRefractive = atof(tokens[1].c_str());
-            } else if (strcmp(tokens[0].c_str(), "REFRIOR") == 0) {
+            } else if (strcmp(tokens[0].c_str(), "IOR") == 0) {
                 newMaterial.indexOfRefraction = atof(tokens[1].c_str());
             } else if (strcmp(tokens[0].c_str(), "EMITTANCE") == 0) {
                 newMaterial.emittance = atof(tokens[1].c_str());
-            }
-        }
-
-        // load optional properties
-        string line;
-        utilityCore::safeGetline(fp_in, line);
-        while (!line.empty() && fp_in.good()) {
-            vector<string> tokens = utilityCore::tokenizeString(line);
-            if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
+            } else if (strcmp(tokens[0].c_str(), "TEXTURE") == 0) {
                 newMaterial.textureid = atoi(tokens[1].c_str());
                 cout << ", texture " << newMaterial.textureid;
             } else if (strcmp(tokens[0].c_str(), "NORMAL") == 0) {

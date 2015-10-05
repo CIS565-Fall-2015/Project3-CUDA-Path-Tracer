@@ -35,12 +35,32 @@ RGB         .3 .3 .3
 SPECRGB     1 1 1
 SPECEX      20
 
-
 // Mirror
 MATERIAL 5
 RGB         .3 .3 .3
 SPECRGB     1 1 1
 SPECEX      200
+
+// Refractive
+MATERIAL 6
+RGB         1 1 1
+SPECRGB     .8 .8 .8
+SPECEX      200
+IOR         1
+
+// Refractive
+MATERIAL 7
+RGB         1 1 1
+SPECRGB     .8 .8 .8
+SPECEX      200
+IOR         3
+
+// Refractive
+MATERIAL 8
+RGB         1 1 1
+SPECRGB     .8 .8 .8
+SPECEX      200
+IOR         5
 
 // ---------------------- Objects ---------------------- \\
 
@@ -100,18 +120,42 @@ TRANS       5 5 0
 ROTAT       0 0 0
 SCALE       0.1 10 10
 
-// Back mirror ball
+// Left reflective
 OBJECT 7
 sphere
 material 4
-TRANS       -2 4 -2
+TRANS       -1.25 4 -2
 ROTAT       0 0 0
-SCALE       3 3 3
+SCALE       .1 .1 .1
 
-// Front reflective ball
+// Right reflective
 OBJECT 8
 sphere
 material 5
-TRANS       2 4 -2
+TRANS       1.25 4 -2
 ROTAT       0 0 0
-SCALE       3 3 3
+SCALE       .1 .1 .1
+
+// Bottom middle refractive
+OBJECT 9
+sphere
+material 6
+TRANS       0 1.5 -2
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5
+
+// Bottom left refractive
+OBJECT 10
+sphere
+material 7
+TRANS       -2.5 1.5 -2
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5
+
+// Bottom right refractive
+OBJECT 11
+sphere
+material 8
+TRANS       2.5 1.5 -2
+ROTAT       0 0 0
+SCALE       2.5 2.5 2.5

@@ -43,7 +43,6 @@ struct Material {
     Texture texture;
     int normalid;
     Texture normalMap;
-    float hasRefractive;
     float indexOfRefraction;
     float emittance;
 };

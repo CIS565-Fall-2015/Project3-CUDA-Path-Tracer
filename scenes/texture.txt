@@ -1,10 +1,10 @@
 // Camera
 CAMERA
-RES         800 800
+RES         500 500
 FOVY        45
 ITERATIONS  5000
 DEPTH       8
-FILE        cornell
+FILE        uv-debug
 DOF         -1 -1
 EYE         0.0 5 4.5
 VIEW        0 0 -1
@@ -23,29 +23,16 @@ EMITTANCE   3
 MATERIAL 1
 RGB         .98 .98 .98
 
-// Diffuse red
-MATERIAL 2
-RGB         .85 .35 .35
-
-// Diffuse green
-MATERIAL 3
-RGB         .35 .85 .35
-
-// Specular yellow
-MATERIAL 4
-RGB         0.4 0.4 0
-SPECEX      50
-SPECRGB     1 1 1
-
-// Refractive green
-MATERIAL 5
-RGB         0.0 0.8 0.8
-REFR        1
-REFRIOR     1.5
-
 // Diffuse orange
-MATERIAL 6
-RGB         .8 .5 0
+MATERIAL 2
+RGB         0.85 .5 .3
+
+// Diffuse purple
+MATERIAL 3
+RGB         0.55 .55 .85
+
+// Textured
+MATERIAL 4
 TEXTURE     0
 
 // ---------------------- Objects ---------------------- \\
@@ -109,7 +96,7 @@ SCALE       0.1 10 10
 // Yellow textured
 OBJECT 7
 sphere
-material 6
+material 4
 TRANS       0 4 -1.5
-ROTAT       0 0 0
+ROTAT       45 0 0
 SCALE       5 5 5

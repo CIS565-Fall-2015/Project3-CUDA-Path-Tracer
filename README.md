@@ -5,7 +5,7 @@ CUDA Path Tracer
 
 Terry Sun; Arch Linux, Intel i5-4670, GTX 750
 
-A CUDA-accelerated path tracer.
+A CUDA-accelerated path tracer: a global-illumination renderer.
 
 ## Features
 
@@ -39,13 +39,21 @@ defining the amount of variance added to each ray.
 Camera rays are shot from the camera's position in the direction of a pixel.
 Antialiasing jitters the target of the ray within a pixel.
 
+[TODO: picture]
+
 ### Stream compaction.
 
 Shared-memory work-efficient stream compaction.
 
+[TODO: analysis]
+
 ### Texture mapping
 
+[TODO: picture(s)]
+
 ### Bump mapping
+
+[TODO: picture(s)]
 
 ## Run
 
