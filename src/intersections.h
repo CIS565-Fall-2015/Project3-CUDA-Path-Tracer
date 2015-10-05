@@ -80,7 +80,23 @@ __host__ __device__ float boxIntersectionTest(Geom &box, Ray r,
             tmin_n = tmax_n;
             outside = false;
         }
-        intersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(q, tmin), 1.0f));
+        glm::vec3 localPoint = getPointOnRay(q, tmin);
+
+        if (glm::abs(glm::abs(localPoint.x) - 0.5) < 0.001) {
+            // xy plane
+            uv.x = localPoint.z + .5f;
+            uv.y = localPoint.y + .5f;
+        } else if (glm::abs(glm::abs(localPoint.y) - 0.5) < 0.001) {
+            // xz plane
+            uv.x = localPoint.x + 0.5f;
+            uv.y = localPoint.z + 0.5f;
+        } else if (glm::abs(glm::abs(localPoint.z) - 0.5) < 0.001) {
+            // xy plane
+            uv.x =   (localPoint.x + 0.5f);
+            uv.y = - (localPoint.y - 0.5f);
+        }
+
+        intersectionPoint = multiplyMV(box.transform, glm::vec4(localPoint, 1.0f));
         normal = glm::normalize(multiplyMV(box.transform,
                     glm::vec4(outside ? tmin_n : -tmin_n, 0.0f)));
         return glm::length(r.origin - intersectionPoint);

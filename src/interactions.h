@@ -63,7 +63,7 @@ __device__ glm::vec3 sampleSpecular(Ray &ray, glm::vec3 normal,
 }
 
 __device__ glm::vec3 sampleTexture(Texture t, glm::vec2 uv) {
-    int x = 1.5f * glm::clamp(uv.x, 0.f, 1.f) * (t.width - 1);
+    int x = glm::clamp(uv.x, 0.f, 1.f) * (t.width - 1);
     int y = glm::clamp(uv.y, 0.f, 1.f) * (t.height - 1);
     x %= t.width;
     y %= t.height;
