@@ -88,6 +88,31 @@ A GPU based path tracer that supports several common material effects. Stream co
 ###### Depth-of-field comparison. Objects outside the focal plane are blurred.
 ![](img/dof_comparison.png)
 
+## Analysis
+
+* Cache vs. direct access:
+  * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, sometimes directly passing the array element around results in much better performance in terms of both exec time and memory access.
+  * For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple and short kernels like pixel painting.
+  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. On the other hand, long kernels tend to fill up the register limitation, causing much less warps available to run in parallel. Less warps means less chance to hide memory access latency.
+  * This effectively cancelled out the reduction in memory access. For short kernels, a cache variable sometimes can successfully hide memory access latency by carefully ordering operation orders.
+
+* Stream compaction, open scenes vs. closed scenes:
+  * Stream compaction greatly reduces input size in open scenes.
+  * Open scene renders much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits.
+  * Closed scene renders much slower. Less rays got terminated because all rays will hit at least a wall, if not a light source.
+    * As a result, closed scene is much brighter.
+
+###### Open vs. closed scene. Closed scene has many more active (unterminated) rays in each depth.
+![](img/ray_count.png)
+
+* Thrust vs. custom work-efficient compaction:
+  * Thrust is still faster performance-wise.
+  * Custom implementation only loosely match the performance of Thrust (~5ms slower per trace depth).
+  * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that are sub-optimal.
+
+###### Stream compaction performance. Time is for a complete trace (intersection test, paint, stream compaction, scatter). Difference is the stream compaction performance difference.
+![](img/comparison_new.png)
+
 ## Optimization
 
 **Baseline: `cornell6`, 200*200, scan block size 64**
@@ -168,31 +193,6 @@ A GPU based path tracer that supports several common material effects. Stream co
 
 ###### Optimized result.
 ![](img/optimized_new.png)
-
-## Analysis
-
-* Cache vs. direct access:
-  * Creating a temporary variable for caching elements in large arrays is not always effective in CUDA kernels. In fact, sometimes directly passing the array element around results in much better performance in terms of both exec time and memory access.
-  * For example, caching a `(ray, color)` pair for later computation only reduces performance in long computations such as intersection test. On the other hand, caching geometries for repetitive access across different threads increases performance. However, a caching variable increases performance in simple and short kernels like pixel painting.
-  * The rational is that for long kernels, register resources are often depleted easily. A "cache" variable in this case would further worsen the situation by taking up a lot of registers in the first hand, leaving much less registers for the rest of the computations. On the other hand, long kernels tend to fill up the register limitation, causing much less warps available to run in parallel. Less warps means less chance to hide memory access latency.
-  * This effectively cancelled out the reduction in memory access. For short kernels, a cache variable sometimes can successfully hide memory access latency by carefully ordering operation orders.
-
-* Stream compaction, open scenes vs. closed scenes:
-  * Stream compaction greatly reduces input size in open scenes.
-  * Open scene renders much faster. More rays got terminated due to rays shooting side ways are off to the ambient and thus no hits.
-  * Closed scene renders much slower. Less rays got terminated because all rays will hit at least a wall, if not a light source.
-    * As a result, closed scene is much brighter.
-
-###### Open vs. closed scene. Closed scene has many more active (unterminated) rays in each depth.
-![](img/ray_count.png)
-
-* Thrust vs. custom work-efficient compaction:
-  * Thrust is still faster performance-wise.
-  * Custom implementation only loosely match the performance of Thrust (~5ms slower per trace depth).
-  * Interestingly, the performance gap doesn't seem to change a lot with varying input size. Perhaps the bottlenecks are some fixed calculations that are sub-optimal.
-
-###### Stream compaction performance. Time is for a complete trace (intersection test, paint, stream compaction, scatter). Difference is the stream compaction performance difference.
-![](img/comparison_new.png)
 
 ## Appendix
 
