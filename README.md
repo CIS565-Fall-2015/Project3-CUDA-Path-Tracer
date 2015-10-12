@@ -50,7 +50,6 @@ the sorted number back to all the member of each blocks, and then we will get an
 accumulated sums.
 
 ![](img/perfs.PNG)
-
 From CUDA performance profiler, we can see that the amount of time needed per itration are significantly reduced (below), even when compared with the time spent on steam compaction in the first iteration (top)
 
 Since steam compaction's benefit is to reduce the number of rays we need to go through, it will
