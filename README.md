@@ -29,7 +29,7 @@ two mirrors facing each other.)
 
 ![](img/Capture2.PNG)
 
-## TWEAKS
+## TWEAK
 
 ### Work Efficient Steam Compaction
 
@@ -48,6 +48,10 @@ the biggest number in each block into another array to be scanned. If this array
 it needs to go through the same process (recursively). After the offset array is scanned, we add
 the sorted number back to all the member of each blocks, and then we will get an array with
 accumulated sums.
+
+![](img/perfs.PNG)
+
+From CUDA performance profiler, we can see that the amount of time needed per itration are significantly reduced (below), even when compared with the time spent on steam compaction in the first iteration (top)
 
 Since steam compaction's benefit is to reduce the number of rays we need to go through, it will
 only benefit in the scene that such conditions happen. (i.e. if we put the camera in a 6-sided
